@@ -8,10 +8,10 @@ El repositorio `kcalFrontend` contiene prototipos HTML estaticos generados desde
 
 - Spring Boot 3.5 + Java 21 para mantener el backend moderno y compatible con Jakarta.
 - Spring Security stateless con JWT Bearer para login, registro y consumo desde Vite.
-- Hibernate/JPA con PostgreSQL para persistir usuarios, catalogo de alimentos, comidas e hidratacion.
+- Hibernate/JPA con H2 en memoria por defecto para mocks locales; PostgreSQL queda opcional por Docker.
 - Enums para estados de dominio: `Gender`, `ActivityLevel`, `FitnessGoal`, `Role`, `FoodCategory`, `FoodUnit`, `MealType`.
 - OpenAPI en `/swagger-ui.html` para validar request/response desde navegador.
-- `docker-compose.yml` levanta PostgreSQL local con credenciales listas para desarrollo.
+- `docker-compose.yml` queda disponible para PostgreSQL real, pero no hace falta para probar el frontend.
 
 ## Vistas y endpoints cubiertos
 
@@ -90,7 +90,7 @@ El dashboard muestra litros consumidos contra meta.
 
 ## Datos semilla
 
-Se crean alimentos usados por las pantallas: pechuga de pollo, arroz blanco, palta, yogur griego, atun en lata y banana.
+Se crean alimentos usados por las pantallas en cada arranque del modo mock: pechuga de pollo, arroz blanco, palta, yogur griego, atun en lata y banana.
 
 Tambien se crea usuario demo:
 

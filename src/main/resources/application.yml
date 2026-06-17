@@ -2,12 +2,13 @@ spring:
   application:
     name: kcalBackend
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/kcal_db}
-    username: ${SPRING_DATASOURCE_USERNAME:kcal_user}
-    password: ${SPRING_DATASOURCE_PASSWORD:kcal_password}
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:kcal_mock;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.h2.Driver}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: create-drop
     open-in-view: false
     properties:
       hibernate:
@@ -16,8 +17,13 @@ spring:
     compose:
       enabled: false
 
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT:8081}
 
 app:
   jwt:
