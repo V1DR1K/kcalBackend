@@ -14,5 +14,5 @@ app:
     secret: TestSecretKeyForJwtTokenSigningThatIsLongEnough123456789
     expiration-minutes: 60
   cors:
-    allowed-origins: http://localhost:5173
-    allowed-origin-patterns: http://localhost:*,http://127.0.0.1:*
+    allowed-origins: https://localhost:5173,http://localhost:5173
+    allowed-origin-patterns: https://localhost:*,https://127.0.0.1:*,http://localhost:*,http://127.0.0.1:*
