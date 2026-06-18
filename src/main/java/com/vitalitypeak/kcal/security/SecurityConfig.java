@@ -62,7 +62,7 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource(
             @Value("${app.cors.allowed-origins}") String origins,
-            @Value("${app.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}") String originPatterns) {
+            @Value("${app.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*,http://192.168.7.249:*}") String originPatterns) {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(csv(origins));
         configuration.setAllowedOriginPatterns(csv(originPatterns));

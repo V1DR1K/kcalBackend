@@ -1,6 +1,6 @@
 # kcalBackend
 
-Backend Spring Boot para Vitality Peak / NutriTrack Pro.
+Backend Spring Boot para KazaFitness, producto de KazaDesarrollos.
 
 Por defecto corre en modo mock rapido con H2 en memoria y datos semilla. No necesita Docker ni PostgreSQL para probar el frontend.
 
@@ -41,7 +41,7 @@ El `docker-compose.yml` queda disponible por si despues queres volver a DB real.
 
 ## Usuario demo
 
-- Email: `alex@vitality.com`
+- Email: `alex@kazadesarrollos.com`
 - Password: `password123`
 
 ## Flujo base

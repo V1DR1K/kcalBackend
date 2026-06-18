@@ -1,6 +1,7 @@
 package com.vitalitypeak.kcal.nutrition;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,10 +13,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.vitalitypeak.kcal.common.CurrentUser;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddFoodLogRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddMealLogRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddWaterRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.DashboardResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.FoodLogResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.HistoryResponse;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.MealTypeResponse;
 
 import jakarta.validation.Valid;
 
@@ -35,9 +38,19 @@ public class NutritionController {
         return nutritionService.dashboard(currentUser.from(authentication), date);
     }
 
+    @GetMapping("/meal-types")
+    List<MealTypeResponse> mealTypes() {
+        return nutritionService.mealTypes();
+    }
+
     @PostMapping("/food-logs")
     FoodLogResponse addFood(Authentication authentication, @Valid @RequestBody AddFoodLogRequest request) {
         return nutritionService.addFoodLog(currentUser.from(authentication), request);
+    }
+
+    @PostMapping("/meal-logs")
+    FoodLogResponse addMealLog(Authentication authentication, @Valid @RequestBody AddMealLogRequest request) {
+        return nutritionService.addMealLog(currentUser.from(authentication), request);
     }
 
     @PostMapping("/water-logs")

@@ -18,6 +18,8 @@ import com.vitalitypeak.kcal.nutrition.FoodLogRepository;
 import com.vitalitypeak.kcal.nutrition.MealType;
 import com.vitalitypeak.kcal.nutrition.WaterLog;
 import com.vitalitypeak.kcal.nutrition.WaterLogRepository;
+import com.vitalitypeak.kcal.profile.NutritionPlan;
+import com.vitalitypeak.kcal.profile.NutritionPlanRepository;
 import com.vitalitypeak.kcal.user.ActivityLevel;
 import com.vitalitypeak.kcal.user.AppUser;
 import com.vitalitypeak.kcal.user.FitnessGoal;
@@ -28,16 +30,16 @@ import com.vitalitypeak.kcal.user.UserRepository;
 public class DataSeeder {
     @Bean
     CommandLineRunner seed(UserRepository users, FoodRepository foods, FoodLogRepository foodLogs,
-            WaterLogRepository waterLogs, PasswordEncoder passwordEncoder) {
+            WaterLogRepository waterLogs, NutritionPlanRepository nutritionPlans, PasswordEncoder passwordEncoder) {
         return args -> {
             if (foods.count() == 0) {
-                foods.save(food("Pechuga de Pollo", "Vitality Peak Premium Select", "7790000000011", FoodCategory.PROTEIN,
+                foods.save(food("Pechuga de Pollo", "KazaFitness Premium Select", "7790000000011", FoodCategory.PROTEIN,
                         165, 31, 0, 3.6, Set.of("Alta en Proteina", "Keto Friendly")));
                 foods.save(food("Arroz Blanco", "Generico", "7790000000028", FoodCategory.CEREAL,
                         130, 2.7, 28, 0.3, Set.of("Carbohidrato")));
                 foods.save(food("Palta (Aguacate)", "Fresco", "7790000000035", FoodCategory.FAT,
                         160, 2, 8.5, 14.7, Set.of("Grasas Saludables")));
-                foods.save(food("Yogur Griego Natural", "Vitality Dairy", "7790000000042", FoodCategory.DAIRY,
+                foods.save(food("Yogur Griego Natural", "KazaFitness Dairy", "7790000000042", FoodCategory.DAIRY,
                         59, 10, 3.6, 0.4, Set.of("Proteina")));
                 foods.save(food("Atun en lata", "Mar Azul", "7790000000059", FoodCategory.PROTEIN,
                         116, 26, 0, 1, Set.of("Alta Proteina", "Keto")));
@@ -45,10 +47,10 @@ public class DataSeeder {
                         89, 1.1, 22.8, 0.3, Set.of("Fruta")));
             }
 
-            if (!users.existsByEmailIgnoreCase("alex@vitality.com")) {
+            if (!users.existsByEmailIgnoreCase("alex@kazadesarrollos.com")) {
                 AppUser user = new AppUser();
                 user.setFullName("Alex Rivera");
-                user.setEmail("alex@vitality.com");
+                user.setEmail("alex@kazadesarrollos.com");
                 user.setPasswordHash(passwordEncoder.encode("password123"));
                 user.setWeightKg(BigDecimal.valueOf(75));
                 user.setHeightCm(BigDecimal.valueOf(180));
@@ -59,13 +61,27 @@ public class DataSeeder {
                 user.setGoal(FitnessGoal.LOSE);
                 user.setNutritionStyle("Keto");
                 users.save(user);
+                if (nutritionPlans.findByUserOrderByStartDateDesc(user).isEmpty()) {
+                    NutritionPlan plan = new NutritionPlan();
+                    plan.setUser(user);
+                    plan.setName("Balanceado");
+                    plan.setDailyCalories(user.getDailyCalorieGoal());
+                    plan.setProteinPercent(BigDecimal.valueOf(30));
+                    plan.setCarbsPercent(BigDecimal.valueOf(40));
+                    plan.setFatPercent(BigDecimal.valueOf(30));
+                    plan.setProteinGoalGrams(user.getProteinGoalGrams());
+                    plan.setCarbsGoalGrams(user.getCarbsGoalGrams());
+                    plan.setFatGoalGrams(user.getFatGoalGrams());
+                    plan.setStartDate(LocalDate.now().minusYears(1));
+                    nutritionPlans.save(plan);
+                }
 
                 Food chicken = foods.findByBarcode("7790000000011").orElseThrow();
                 Food rice = foods.findByBarcode("7790000000028").orElseThrow();
                 Food yogurt = foods.findByBarcode("7790000000042").orElseThrow();
                 addLog(foodLogs, user, chicken, MealType.LUNCH, 150);
                 addLog(foodLogs, user, rice, MealType.LUNCH, 100);
-                addLog(foodLogs, user, yogurt, MealType.SNACK, 200);
+                addLog(foodLogs, user, yogurt, MealType.AFTERNOON_SNACK, 200);
                 WaterLog water = new WaterLog();
                 water.setUser(user);
                 water.setLogDate(LocalDate.now());

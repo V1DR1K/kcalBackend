@@ -1,13 +1,9 @@
-package com.vitalitypeak.kcal.nutrition;
+package com.vitalitypeak.kcal.recipe;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
 
 import com.vitalitypeak.kcal.catalog.Food;
 import com.vitalitypeak.kcal.catalog.FoodUnit;
-import com.vitalitypeak.kcal.recipe.Recipe;
-import com.vitalitypeak.kcal.user.AppUser;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -18,6 +14,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Column;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -26,35 +23,23 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class FoodLog {
+public class RecipeIngredient {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(nullable = false)
-    private AppUser user;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    private Food food;
-
-    @ManyToOne(fetch = FetchType.LAZY)
     private Recipe recipe;
 
-    @Enumerated(EnumType.STRING)
-    private MealItemType itemType = MealItemType.FOOD;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(nullable = false)
+    private Food food;
 
     @Enumerated(EnumType.STRING)
-    private MealType mealType;
-
-    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     private FoodUnit unit;
 
-    private LocalDate logDate;
+    @Column(nullable = false)
     private BigDecimal quantity;
-    private Integer calories;
-    private BigDecimal proteinGrams;
-    private BigDecimal carbsGrams;
-    private BigDecimal fatGrams;
-    private OffsetDateTime createdAt = OffsetDateTime.now();
 }
