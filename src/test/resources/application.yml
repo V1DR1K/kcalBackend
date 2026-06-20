@@ -1,4 +1,6 @@
 spring:
+  flyway:
+    enabled: false
   datasource:
     url: jdbc:h2:mem:kcal_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver
@@ -13,6 +15,23 @@ app:
   jwt:
     secret: TestSecretKeyForJwtTokenSigningThatIsLongEnough123456789
     expiration-minutes: 60
+  storage:
+    endpoint: http://localhost:7480
+    public-base-url: http://localhost:7480
+    region: us-east-1
+    bucket: kcal-products
+    access-key: test
+    secret-key: test
+    max-image-size-bytes: 5242880
+  food-lookup:
+    enabled: false
+    timeout: 1s
+    open-food-facts:
+      base-url: http://localhost
+      user-agent: KazaFitnessTest/0.1
+    usda:
+      base-url: http://localhost
+      api-key:
   cors:
     allowed-origins: https://localhost:5173,http://localhost:5173
     allowed-origin-patterns: https://localhost:*,https://127.0.0.1:*,http://localhost:*,http://127.0.0.1:*

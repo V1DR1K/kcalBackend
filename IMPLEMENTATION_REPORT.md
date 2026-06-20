@@ -8,7 +8,7 @@ El repositorio `kcalFrontend` contiene prototipos HTML estaticos generados desde
 
 - Spring Boot 3.5 + Java 21 para mantener el backend moderno y compatible con Jakarta.
 - Spring Security stateless con JWT Bearer para login, registro y consumo desde Vite.
-- Hibernate/JPA con H2 en memoria por defecto para mocks locales; PostgreSQL queda opcional por Docker.
+- Hibernate/JPA con PostgreSQL persistente por defecto; H2 queda solo para tests automatizados.
 - Enums para estados de dominio: `Gender`, `ActivityLevel`, `FitnessGoal`, `Role`, `FoodCategory`, `FoodUnit`, `MealType`.
 - OpenAPI en `/swagger-ui.html` para validar request/response desde navegador.
 - `docker-compose.yml` queda disponible para PostgreSQL real, pero no hace falta para probar el frontend.

@@ -24,6 +24,8 @@ import com.vitalitypeak.kcal.catalog.FoodRepository;
 import com.vitalitypeak.kcal.catalog.FoodUnit;
 import com.vitalitypeak.kcal.common.BadRequestException;
 import com.vitalitypeak.kcal.common.NotFoundException;
+import com.vitalitypeak.kcal.externalfood.ExternalFoodCandidate;
+import com.vitalitypeak.kcal.externalfood.ExternalFoodLookupService;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddMealLogRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddFoodLogRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddWaterRequest;
@@ -47,6 +49,8 @@ import com.vitalitypeak.kcal.recipe.RecipeRepository;
 import com.vitalitypeak.kcal.profile.NutritionPlan;
 import com.vitalitypeak.kcal.profile.ProfileDtos.NutritionPlanResponse;
 import com.vitalitypeak.kcal.profile.ProfileService;
+import com.vitalitypeak.kcal.storage.ProductImageStorageService;
+import com.vitalitypeak.kcal.storage.StoredImage;
 import com.vitalitypeak.kcal.user.AppUser;
 
 @Service
@@ -56,14 +60,19 @@ public class NutritionService {
     private final FoodLogRepository foodLogs;
     private final WaterLogRepository waterLogs;
     private final ProfileService profileService;
+    private final ProductImageStorageService imageStorage;
+    private final ExternalFoodLookupService externalFoodLookup;
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
-            WaterLogRepository waterLogs, ProfileService profileService) {
+            WaterLogRepository waterLogs, ProfileService profileService, ProductImageStorageService imageStorage,
+            ExternalFoodLookupService externalFoodLookup) {
         this.foods = foods;
         this.recipes = recipes;
         this.foodLogs = foodLogs;
         this.waterLogs = waterLogs;
         this.profileService = profileService;
+        this.imageStorage = imageStorage;
+        this.externalFoodLookup = externalFoodLookup;
     }
 
     @Transactional(readOnly = true)
@@ -100,9 +109,22 @@ public class NutritionService {
         food.setProteinGrams(scale(request.proteinGrams()));
         food.setCarbsGrams(scale(request.carbsGrams()));
         food.setFatGrams(scale(request.fatGrams()));
+        food.setImageUrl(clean(request.imageUrl()));
         food.setTags(request.tags() == null ? new LinkedHashSet<>() : request.tags().stream()
                 .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
         return toFoodResponse(foods.save(food));
+    }
+
+    @Transactional
+    public FoodResponse uploadFoodImage(Long foodId, org.springframework.web.multipart.MultipartFile image) {
+        Food food = getFood(foodId);
+        StoredImage stored = imageStorage.storeFoodImage(food.getId(), image);
+        String oldKey = food.getImageObjectKey();
+        food.setImageObjectKey(stored.objectKey());
+        food.setImageUrl(stored.url());
+        Food saved = foods.save(food);
+        imageStorage.deleteQuietly(oldKey);
+        return toFoodResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -110,10 +132,38 @@ public class NutritionService {
         return toFoodResponse(getFood(id));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public FoodResponse findByBarcode(String barcode) {
-        return foods.findByBarcode(barcode).map(this::toFoodResponse)
-                .orElseThrow(() -> new NotFoundException("No encontramos un alimento con ese codigo."));
+        String cleanBarcode = clean(barcode);
+        if (cleanBarcode == null) {
+            throw new NotFoundException("No encontramos un alimento con ese codigo.");
+        }
+        return foods.findByBarcode(cleanBarcode).map(this::toFoodResponse)
+                .orElseGet(() -> externalFoodLookup.lookupByBarcode(cleanBarcode)
+                        .map(this::importExternalFood)
+                        .map(this::toFoodResponse)
+                        .orElseThrow(() -> new NotFoundException("No encontramos un alimento con ese codigo.")));
+    }
+
+    private Food importExternalFood(ExternalFoodCandidate candidate) {
+        Food food = new Food();
+        food.setName(candidate.name());
+        food.setBrand(clean(candidate.brand()));
+        food.setBarcode(candidate.barcode());
+        food.setCategory(candidate.category());
+        food.setBaseUnit(FoodUnit.GRAM);
+        food.setBaseQuantity(BigDecimal.valueOf(100));
+        food.setCalories(candidate.calories());
+        food.setProteinGrams(scale(candidate.proteinGrams()));
+        food.setCarbsGrams(scale(candidate.carbsGrams()));
+        food.setFatGrams(scale(candidate.fatGrams()));
+        food.setImageUrl(clean(candidate.imageUrl()));
+        food.setSource(candidate.source());
+        food.setSourceId(candidate.sourceId());
+        food.setLastSyncedAt(OffsetDateTime.now());
+        food.setTags(candidate.tags() == null ? new LinkedHashSet<>() : candidate.tags().stream()
+                .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
+        return foods.save(food);
     }
 
     @Transactional(readOnly = true)
@@ -319,7 +369,8 @@ public class NutritionService {
         if (food == null) return null;
         return new FoodResponse(food.getId(), food.getName(), food.getBrand(), food.getBarcode(), food.getCategory(),
                 food.getBaseUnit(), food.getBaseQuantity(), food.getCalories(), food.getProteinGrams(), food.getCarbsGrams(),
-                food.getFatGrams(), food.getImageUrl(), copyTags(food.getTags()));
+                food.getFatGrams(), food.getImageUrl(), food.getSource(), food.getSourceId(), food.getLastSyncedAt(),
+                copyTags(food.getTags()));
     }
 
     private FoodLogResponse toFoodLogResponse(FoodLog log) {

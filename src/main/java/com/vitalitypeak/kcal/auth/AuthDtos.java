@@ -14,7 +14,7 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
 public class AuthDtos {
-    public record LoginRequest(@Email @NotBlank String email, @NotBlank @Size(min = 6) String password) {
+    public record LoginRequest(@NotBlank String email, @NotBlank String password) {
     }
 
     public record RegisterRequest(

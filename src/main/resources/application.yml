@@ -2,13 +2,13 @@ spring:
   application:
     name: kcalBackend
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:kcal_mock;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1}
-    driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.h2.Driver}
-    username: ${SPRING_DATASOURCE_USERNAME:sa}
-    password: ${SPRING_DATASOURCE_PASSWORD:}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/kcal_db}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.postgresql.Driver}
+    username: ${SPRING_DATASOURCE_USERNAME:kcal_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:kcal_password}
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: update
     open-in-view: false
     properties:
       hibernate:
@@ -16,11 +16,8 @@ spring:
   docker:
     compose:
       enabled: false
-
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+  flyway:
+    enabled: false
 
 server:
   port: ${SERVER_PORT:8081}
@@ -36,6 +33,23 @@ app:
   jwt:
     secret: ${JWT_SECRET:VitalityPeakDevelopmentSecretKeyForJwtTokenSigningChangeMe12345}
     expiration-minutes: ${JWT_EXPIRATION_MINUTES:1440}
+  storage:
+    endpoint: ${STORAGE_ENDPOINT:http://localhost:7480}
+    public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost:7480}
+    region: ${STORAGE_REGION:us-east-1}
+    bucket: ${STORAGE_BUCKET:kcal-products}
+    access-key: ${STORAGE_ACCESS_KEY:kcal_access_key}
+    secret-key: ${STORAGE_SECRET_KEY:kcal_secret_key}
+    max-image-size-bytes: ${STORAGE_MAX_IMAGE_SIZE_BYTES:5242880}
+  food-lookup:
+    enabled: ${FOOD_LOOKUP_ENABLED:true}
+    timeout: ${FOOD_LOOKUP_TIMEOUT:3s}
+    open-food-facts:
+      base-url: ${OPEN_FOOD_FACTS_BASE_URL:https://world.openfoodfacts.org}
+      user-agent: ${OPEN_FOOD_FACTS_USER_AGENT:KazaFitness/0.1 (development; contact@kazadesarrollos.com)}
+    usda:
+      base-url: ${USDA_FOOD_DATA_BASE_URL:https://api.nal.usda.gov/fdc}
+      api-key: ${USDA_FOOD_DATA_API_KEY:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:https://127.0.0.1:5173,https://localhost:5173,http://127.0.0.1:5173,http://localhost:5173}
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:https://localhost:*,https://127.0.0.1:*,https://192.168.*.*:*,http://localhost:*,http://127.0.0.1:*,http://192.168.*.*:*}

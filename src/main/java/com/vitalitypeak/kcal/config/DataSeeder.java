@@ -24,6 +24,7 @@ import com.vitalitypeak.kcal.user.ActivityLevel;
 import com.vitalitypeak.kcal.user.AppUser;
 import com.vitalitypeak.kcal.user.FitnessGoal;
 import com.vitalitypeak.kcal.user.Gender;
+import com.vitalitypeak.kcal.user.Role;
 import com.vitalitypeak.kcal.user.UserRepository;
 
 @Configuration
@@ -32,20 +33,20 @@ public class DataSeeder {
     CommandLineRunner seed(UserRepository users, FoodRepository foods, FoodLogRepository foodLogs,
             WaterLogRepository waterLogs, NutritionPlanRepository nutritionPlans, PasswordEncoder passwordEncoder) {
         return args -> {
-            if (foods.count() == 0) {
-                foods.save(food("Pechuga de Pollo", "KazaFitness Premium Select", "7790000000011", FoodCategory.PROTEIN,
-                        165, 31, 0, 3.6, Set.of("Alta en Proteina", "Keto Friendly")));
-                foods.save(food("Arroz Blanco", "Generico", "7790000000028", FoodCategory.CEREAL,
-                        130, 2.7, 28, 0.3, Set.of("Carbohidrato")));
-                foods.save(food("Palta (Aguacate)", "Fresco", "7790000000035", FoodCategory.FAT,
-                        160, 2, 8.5, 14.7, Set.of("Grasas Saludables")));
-                foods.save(food("Yogur Griego Natural", "KazaFitness Dairy", "7790000000042", FoodCategory.DAIRY,
-                        59, 10, 3.6, 0.4, Set.of("Proteina")));
-                foods.save(food("Atun en lata", "Mar Azul", "7790000000059", FoodCategory.PROTEIN,
-                        116, 26, 0, 1, Set.of("Alta Proteina", "Keto")));
-                foods.save(food("Banana", "Fresco", "7790000000066", FoodCategory.FRUIT,
-                        89, 1.1, 22.8, 0.3, Set.of("Fruta")));
-            }
+            ensureFood(foods, "Pechuga de Pollo", "KazaFitness Premium Select", "7790000000011", FoodCategory.PROTEIN,
+                    165, 31, 0, 3.6, Set.of("Alta en Proteina", "Keto Friendly"));
+            ensureFood(foods, "Arroz Blanco", "Generico", "7790000000028", FoodCategory.CEREAL,
+                    130, 2.7, 28, 0.3, Set.of("Carbohidrato"));
+            ensureFood(foods, "Palta (Aguacate)", "Fresco", "7790000000035", FoodCategory.FAT,
+                    160, 2, 8.5, 14.7, Set.of("Grasas Saludables"));
+            ensureFood(foods, "Yogur Griego Natural", "KazaFitness Dairy", "7790000000042", FoodCategory.DAIRY,
+                    59, 10, 3.6, 0.4, Set.of("Proteina"));
+            ensureFood(foods, "Atun en lata", "Mar Azul", "7790000000059", FoodCategory.PROTEIN,
+                    116, 26, 0, 1, Set.of("Alta Proteina", "Keto"));
+            ensureFood(foods, "Banana", "Fresco", "7790000000066", FoodCategory.FRUIT,
+                    89, 1.1, 22.8, 0.3, Set.of("Fruta"));
+
+            ensureAdmin(users, passwordEncoder);
 
             if (!users.existsByEmailIgnoreCase("alex@kazadesarrollos.com")) {
                 AppUser user = new AppUser();
@@ -89,6 +90,27 @@ public class DataSeeder {
                 waterLogs.save(water);
             }
         };
+    }
+
+    private static void ensureAdmin(UserRepository users, PasswordEncoder passwordEncoder) {
+        if (users.existsByEmailIgnoreCase("admin@gmail.com")) {
+            return;
+        }
+        AppUser admin = new AppUser();
+        admin.setFullName("Admin");
+        admin.setEmail("admin@gmail.com");
+        admin.setPasswordHash(passwordEncoder.encode("admin"));
+        admin.setRole(Role.ADMIN);
+        admin.setNutritionStyle("Balanceado");
+        users.save(admin);
+    }
+
+    private static void ensureFood(FoodRepository foods, String name, String brand, String barcode, FoodCategory category,
+            int calories, double protein, double carbs, double fat, Set<String> tags) {
+        if (foods.existsByBarcode(barcode)) {
+            return;
+        }
+        foods.save(food(name, brand, barcode, category, calories, protein, carbs, fat, tags));
     }
 
     private static Food food(String name, String brand, String barcode, FoodCategory category, int calories,

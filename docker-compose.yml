@@ -17,5 +17,20 @@ services:
       timeout: 5s
       retries: 5
 
+  ceph-rgw:
+    image: docker.io/emadalblueshi/lite-ceph-s3-gw:v1.0.0
+    container_name: kcal_ceph_rgw
+    restart: unless-stopped
+    environment:
+      ACCESS_KEY: kcal_access_key
+      SECRET_KEY: kcal_secret_key
+      BUCKET_NAME: kcal-products
+    ports:
+      - "7480:7480"
+      - "7443:7443"
+    volumes:
+      - kcal_ceph_data:/var/lib/ceph
+
 volumes:
   kcal_postgres_data:
+  kcal_ceph_data:

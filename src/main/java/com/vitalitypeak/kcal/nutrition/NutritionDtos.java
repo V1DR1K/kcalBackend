@@ -2,6 +2,7 @@ package com.vitalitypeak.kcal.nutrition;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -20,7 +21,7 @@ import jakarta.validation.constraints.Size;
 public class NutritionDtos {
     public record FoodResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
             BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
-            String imageUrl, Set<String> tags) {
+            String imageUrl, String source, String sourceId, OffsetDateTime lastSyncedAt, Set<String> tags) {
     }
 
     public record PageResponse<T>(List<T> items, int page, int size, long totalElements, int totalPages) {
@@ -37,6 +38,7 @@ public class NutritionDtos {
             @NotNull @PositiveOrZero BigDecimal proteinGrams,
             @NotNull @PositiveOrZero BigDecimal carbsGrams,
             @NotNull @PositiveOrZero BigDecimal fatGrams,
+            @Size(max = 500) String imageUrl,
             @Size(max = 10) Set<@Size(max = 40) String> tags) {
     }
 

@@ -1,6 +1,7 @@
 package com.vitalitypeak.kcal.catalog;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -49,7 +50,13 @@ public class Food {
     private BigDecimal proteinGrams;
     private BigDecimal carbsGrams;
     private BigDecimal fatGrams;
+    @Column(length = 500)
     private String imageUrl;
+    @Column(length = 500)
+    private String imageObjectKey;
+    private String source = "LOCAL";
+    private String sourceId;
+    private OffsetDateTime lastSyncedAt;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "food_tags", joinColumns = @JoinColumn(name = "food_id"))

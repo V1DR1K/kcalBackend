@@ -2,7 +2,7 @@
 
 Backend Spring Boot para KazaFitness, producto de KazaDesarrollos.
 
-Por defecto corre en modo mock rapido con H2 en memoria y datos semilla. No necesita Docker ni PostgreSQL para probar el frontend.
+Por defecto usa PostgreSQL persistente y Ceph RGW compatible con S3 para imagenes de productos. Los datos demo se cargan con un initializer sin pisar datos existentes.
 
 ## Stack
 
@@ -10,34 +10,62 @@ Por defecto corre en modo mock rapido con H2 en memoria y datos semilla. No nece
 - Spring Boot 3.5
 - Spring Security + JWT token
 - Spring Data JPA / Hibernate Jakarta
-- H2 en memoria para mocks locales
-- PostgreSQL opcional en Docker
+- PostgreSQL en Docker
+- Flyway para migraciones
+- Ceph RGW/S3 local en Docker para imagenes
+- H2 en memoria para tests
 - Bean Validation
 - OpenAPI Swagger UI
 
 ## Correr local
 
+1. Levantar infraestructura:
+
+```powershell
+docker compose up -d
+```
+
+2. Correr backend:
+
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-API: `http://localhost:8080/api`
+API: `https://localhost:8081/api`
 
-Swagger: `http://localhost:8080/swagger-ui.html`
+Swagger: `https://localhost:8081/swagger-ui.html`
 
-H2 console: `http://localhost:8080/h2-console`
+PostgreSQL: `localhost:5433`, DB `kcal_db`, user `kcal_user`, password `kcal_password`
 
-JDBC URL: `jdbc:h2:mem:kcal_mock`
+Ceph/S3 local: `http://localhost:7480`, bucket `kcal-products`
 
-Si `8080` esta ocupado:
+## Fuentes externas de alimentos
+
+El endpoint `GET /api/foods/barcode/{barcode}` busca primero en PostgreSQL. Si no existe y `app.food-lookup.enabled=true`, consulta Open Food Facts, normaliza kcal/macros por 100g, guarda el alimento localmente y lo devuelve. USDA FoodData Central queda configurado para enriquecimiento generico posterior por texto.
+
+Variables utiles:
+
+- `FOOD_LOOKUP_ENABLED=true`
+- `FOOD_LOOKUP_TIMEOUT=3s`
+- `OPEN_FOOD_FACTS_BASE_URL=https://world.openfoodfacts.org`
+- `OPEN_FOOD_FACTS_USER_AGENT=KazaFitness/0.1 (development; contact@kazadesarrollos.com)`
+- `USDA_FOOD_DATA_API_KEY=`
+
+Fuentes: Open Food Facts y USDA FoodData Central.
+
+Si `8081` esta ocupado:
 
 ```powershell
-$env:SERVER_PORT='8081'; .\mvnw.cmd spring-boot:run
+$env:SERVER_PORT='8082'; .\mvnw.cmd spring-boot:run
 ```
 
-## PostgreSQL opcional
+## Tests
 
-El `docker-compose.yml` queda disponible por si despues queres volver a DB real. PostgreSQL queda expuesto en `localhost:5433`.
+Los tests usan H2 en memoria y no necesitan Docker:
+
+```powershell
+.\mvnw.cmd test
+```
 
 ## Usuario demo
 
