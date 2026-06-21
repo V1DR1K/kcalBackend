@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -78,7 +79,7 @@ class KcalBackendApplicationTests {
 	@Test
 	void seedsAdminUser() {
 		ResponseEntity<LoginResponse> login = rest.postForEntity("/api/auth/login",
-				new LoginRequest("admin", "admin"), LoginResponse.class);
+				new LoginRequest("admin@gmail.com", "admin"), LoginResponse.class);
 
 		assertThat(login.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(login.getBody().token()).isNotBlank();
@@ -121,6 +122,31 @@ class KcalBackendApplicationTests {
 		assertThat(second.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(second.getBody()).contains("Oreo Original");
 		verify(externalFoodLookup).lookupByBarcode(barcode);
+	}
+
+	@Test
+	void userCanDeleteOwnFoodLogAndUndoLatestWaterLog() {
+		HttpHeaders headers = authHeaders();
+		String date = "2030-01-15";
+		Map<String, Object> meal = Map.of("itemType", "FOOD", "itemId", 1, "mealType", "LUNCH",
+				"quantity", 100, "unit", "GRAM", "logDate", date);
+		ResponseEntity<Map> created = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(meal, headers), Map.class);
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+		Object logId = created.getBody().get("id");
+
+		ResponseEntity<Void> deleted = rest.exchange("/api/nutrition/food-logs/" + logId, HttpMethod.DELETE,
+				new HttpEntity<>(headers), Void.class);
+		assertThat(deleted.getStatusCode().is2xxSuccessful()).isTrue();
+
+		Map<String, Object> water = Map.of("liters", 0.5, "logDate", date);
+		rest.postForEntity("/api/nutrition/water-logs", new HttpEntity<>(water, headers), Void.class);
+		ResponseEntity<Void> undone = rest.exchange("/api/nutrition/water-logs/latest?date=" + date, HttpMethod.DELETE,
+				new HttpEntity<>(headers), Void.class);
+		assertThat(undone.getStatusCode().is2xxSuccessful()).isTrue();
+
+		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard?date=" + date, HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		assertThat(dashboard.getBody()).contains("\"waterConsumedLiters\":0");
 	}
 
 	private HttpHeaders authHeaders() {

@@ -5,6 +5,8 @@ import java.util.List;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -56,6 +58,16 @@ public class NutritionController {
     @PostMapping("/water-logs")
     void addWater(Authentication authentication, @Valid @RequestBody AddWaterRequest request) {
         nutritionService.addWater(currentUser.from(authentication), request);
+    }
+
+    @DeleteMapping("/food-logs/{id}")
+    void deleteFoodLog(Authentication authentication, @PathVariable Long id) {
+        nutritionService.deleteFoodLog(currentUser.from(authentication), id);
+    }
+
+    @DeleteMapping("/water-logs/latest")
+    void deleteLatestWaterLog(Authentication authentication, @RequestParam(required = false) LocalDate date) {
+        nutritionService.deleteLatestWaterLog(currentUser.from(authentication), date);
     }
 
     @GetMapping("/history")

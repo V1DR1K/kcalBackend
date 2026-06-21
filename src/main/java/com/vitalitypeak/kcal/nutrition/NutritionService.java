@@ -260,6 +260,21 @@ public class NutritionService {
         waterLogs.save(log);
     }
 
+    @Transactional
+    public void deleteFoodLog(AppUser user, Long logId) {
+        FoodLog log = foodLogs.findByIdAndUser(logId, user)
+                .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));
+        foodLogs.delete(log);
+    }
+
+    @Transactional
+    public void deleteLatestWaterLog(AppUser user, LocalDate date) {
+        LocalDate targetDate = date == null ? LocalDate.now() : date;
+        WaterLog log = waterLogs.findFirstByUserAndLogDateOrderByCreatedAtDesc(user, targetDate)
+                .orElseThrow(() -> new NotFoundException("No hay registros de agua para descontar."));
+        waterLogs.delete(log);
+    }
+
     @Transactional(readOnly = true)
     public DashboardResponse dashboard(AppUser user, LocalDate date) {
         LocalDate targetDate = date == null ? LocalDate.now() : date;
