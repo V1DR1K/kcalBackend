@@ -22,7 +22,7 @@ import com.vitalitypeak.kcal.catalog.FoodPreparation;
 public class NutritionDtos {
     public record FoodResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
             BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
-            FoodPreparation preparation, String preparationSource, String servingName, BigDecimal servingWeightGrams,
+            FoodPreparation preparation, String preparationSource, String preparationGroup, String servingName, BigDecimal servingWeightGrams,
             String imageUrl, String source, String sourceId, OffsetDateTime lastSyncedAt, Set<String> tags) {
     }
 

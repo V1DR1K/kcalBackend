@@ -23,6 +23,9 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 
     boolean existsByBarcode(String barcode);
 
+    @EntityGraph(attributePaths = "tags")
+    List<Food> findByPreparationGroupOrderByPreparationAsc(String preparationGroup);
+
     @Override
     @EntityGraph(attributePaths = "tags")
     Optional<Food> findById(Long id);

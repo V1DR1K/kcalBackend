@@ -36,6 +36,8 @@ public class DataSeeder {
         return args -> {
             ensureFood(foods, "Pechuga de Pollo", "KazaFitness Premium Select", "7790000000011", FoodCategory.PROTEIN,
                     165, 31, 0, 3.6, FoodPreparation.COOKED, "USDA FDC 171477", Set.of("Alta en Proteina", "Keto Friendly"));
+            ensureFood(foods, "Pechuga de Pollo", "KazaFitness Premium Select", "7790000000073", FoodCategory.PROTEIN,
+                    120, 22.5, 0, 2.6, FoodPreparation.RAW, "USDA FDC 171077", Set.of("Alta en Proteina", "Keto Friendly"));
             ensureFood(foods, "Arroz Blanco", "Generico", "7790000000028", FoodCategory.CEREAL,
                     130, 2.7, 28, 0.3, FoodPreparation.COOKED, "USDA FDC 168878", Set.of("Carbohidrato"));
             ensureFood(foods, "Palta (Aguacate)", "Fresco", "7790000000035", FoodCategory.FAT,
@@ -49,6 +51,7 @@ public class DataSeeder {
             setServing(foods, "7790000000028", "Taza cocida", 158);
             setServing(foods, "7790000000035", "Palta mediana", 201);
             setServing(foods, "7790000000066", "Banana mediana", 118);
+            setPreparationGroup(foods, "CHICKEN_BREAST", "7790000000011", "7790000000073");
 
             ensureAdmin(users, passwordEncoder);
 
@@ -147,6 +150,15 @@ public class DataSeeder {
             food.setServingWeightGrams(BigDecimal.valueOf(grams));
             foods.save(food);
         });
+    }
+
+    private static void setPreparationGroup(FoodRepository foods, String group, String... barcodes) {
+        for (String barcode : barcodes) {
+            foods.findByBarcode(barcode).ifPresent(food -> {
+                food.setPreparationGroup(group);
+                foods.save(food);
+            });
+        }
     }
 
     private static void addLog(FoodLogRepository foodLogs, AppUser user, Food food, MealType mealType, int quantity) {

@@ -136,6 +136,14 @@ public class NutritionService {
         return toFoodResponse(getFood(id));
     }
 
+    @Transactional(readOnly = true)
+    public List<FoodResponse> findPreparationOptions(Long id) {
+        Food food = getFood(id);
+        if (clean(food.getPreparationGroup()) == null) return List.of(toFoodResponse(food));
+        return foods.findByPreparationGroupOrderByPreparationAsc(food.getPreparationGroup()).stream()
+                .map(this::toFoodResponse).toList();
+    }
+
     @Transactional
     public FoodResponse findByBarcode(String barcode) {
         String cleanBarcode = clean(barcode);
@@ -424,7 +432,7 @@ public class NutritionService {
         if (food == null) return null;
         return new FoodResponse(food.getId(), food.getName(), food.getBrand(), food.getBarcode(), food.getCategory(),
                 food.getBaseUnit(), food.getBaseQuantity(), food.getCalories(), food.getProteinGrams(), food.getCarbsGrams(),
-                food.getFatGrams(), food.getPreparation(), food.getPreparationSource(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl(), food.getSource(), food.getSourceId(), food.getLastSyncedAt(),
+                food.getFatGrams(), food.getPreparation(), food.getPreparationSource(), food.getPreparationGroup(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl(), food.getSource(), food.getSourceId(), food.getLastSyncedAt(),
                 copyTags(food.getTags()));
     }
 

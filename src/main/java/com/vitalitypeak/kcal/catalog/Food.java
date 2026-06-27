@@ -53,6 +53,7 @@ public class Food {
     @Enumerated(EnumType.STRING)
     private FoodPreparation preparation = FoodPreparation.UNSPECIFIED;
     private String preparationSource;
+    private String preparationGroup;
     private String servingName;
     private BigDecimal servingWeightGrams;
     @Column(length = 500)

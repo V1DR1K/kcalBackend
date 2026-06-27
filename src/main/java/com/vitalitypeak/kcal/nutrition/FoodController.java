@@ -53,6 +53,11 @@ public class FoodController {
         return nutritionService.findFood(id);
     }
 
+    @GetMapping("/{id}/preparations")
+    List<FoodResponse> preparations(@PathVariable Long id) {
+        return nutritionService.findPreparationOptions(id);
+    }
+
     @PostMapping("/{id}/image")
     FoodResponse uploadImage(@PathVariable Long id, @RequestPart("image") MultipartFile image) {
         return nutritionService.uploadFoodImage(id, image);
