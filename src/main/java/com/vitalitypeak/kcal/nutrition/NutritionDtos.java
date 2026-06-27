@@ -17,10 +17,12 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+import com.vitalitypeak.kcal.catalog.FoodPreparation;
 
 public class NutritionDtos {
     public record FoodResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
             BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
+            FoodPreparation preparation, String preparationSource, String servingName, BigDecimal servingWeightGrams,
             String imageUrl, String source, String sourceId, OffsetDateTime lastSyncedAt, Set<String> tags) {
     }
 
@@ -38,6 +40,9 @@ public class NutritionDtos {
             @NotNull @PositiveOrZero BigDecimal proteinGrams,
             @NotNull @PositiveOrZero BigDecimal carbsGrams,
             @NotNull @PositiveOrZero BigDecimal fatGrams,
+            FoodPreparation preparation,
+            @Size(max = 80) String servingName,
+            @Positive BigDecimal servingWeightGrams,
             @Size(max = 500) String imageUrl,
             @Size(max = 10) Set<@Size(max = 40) String> tags) {
     }

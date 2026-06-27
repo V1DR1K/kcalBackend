@@ -109,6 +109,10 @@ public class NutritionService {
         food.setProteinGrams(scale(request.proteinGrams()));
         food.setCarbsGrams(scale(request.carbsGrams()));
         food.setFatGrams(scale(request.fatGrams()));
+        food.setPreparation(request.preparation() == null ? com.vitalitypeak.kcal.catalog.FoodPreparation.UNSPECIFIED : request.preparation());
+        food.setPreparationSource("Ingresado por el usuario");
+        food.setServingName(clean(request.servingName()));
+        food.setServingWeightGrams(request.servingWeightGrams());
         food.setImageUrl(clean(request.imageUrl()));
         food.setTags(request.tags() == null ? new LinkedHashSet<>() : request.tags().stream()
                 .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
@@ -138,11 +142,43 @@ public class NutritionService {
         if (cleanBarcode == null) {
             throw new NotFoundException("No encontramos un alimento con ese codigo.");
         }
-        return foods.findByBarcode(cleanBarcode).map(this::toFoodResponse)
+        return foods.findByBarcode(cleanBarcode)
+                .map(existing -> shouldEnrich(existing) ? externalFoodLookup.lookupByBarcode(cleanBarcode)
+                        .map(candidate -> enrichExistingFood(existing, candidate))
+                        .orElse(existing) : existing)
+                .map(this::toFoodResponse)
                 .orElseGet(() -> externalFoodLookup.lookupByBarcode(cleanBarcode)
                         .map(this::importExternalFood)
                         .map(this::toFoodResponse)
                         .orElseThrow(() -> new NotFoundException("No encontramos un alimento con ese codigo.")));
+    }
+
+    private boolean shouldEnrich(Food food) {
+        return (food.getSource() == null || "LOCAL".equals(food.getSource()))
+                && (food.getPreparation() == null
+                    || food.getPreparation() == com.vitalitypeak.kcal.catalog.FoodPreparation.UNSPECIFIED);
+    }
+
+    private Food enrichExistingFood(Food food, ExternalFoodCandidate candidate) {
+        // Same barcode means same product: enrich the existing row instead of creating a competing record.
+        if (food.getPreparation() == null || food.getPreparation() == com.vitalitypeak.kcal.catalog.FoodPreparation.UNSPECIFIED) {
+            food.setPreparation(candidate.preparation());
+            food.setPreparationSource(clean(candidate.preparationSource()));
+        }
+        if (food.getServingWeightGrams() == null && candidate.servingWeightGrams() != null) {
+            food.setServingName(clean(candidate.servingName()));
+            food.setServingWeightGrams(candidate.servingWeightGrams());
+        }
+        if (clean(food.getImageUrl()) == null) food.setImageUrl(clean(candidate.imageUrl()));
+        if (clean(food.getBrand()) == null) food.setBrand(clean(candidate.brand()));
+        if (clean(food.getSource()) == null || "LOCAL".equals(food.getSource())) {
+            food.setSource(candidate.source());
+            food.setSourceId(candidate.sourceId());
+        }
+        food.setLastSyncedAt(OffsetDateTime.now());
+        if (candidate.tags() != null) candidate.tags().stream().map(this::clean).filter(tag -> tag != null)
+                .forEach(tag -> { if (food.getTags().size() < 10) food.getTags().add(tag); });
+        return foods.save(food);
     }
 
     private Food importExternalFood(ExternalFoodCandidate candidate) {
@@ -157,6 +193,10 @@ public class NutritionService {
         food.setProteinGrams(scale(candidate.proteinGrams()));
         food.setCarbsGrams(scale(candidate.carbsGrams()));
         food.setFatGrams(scale(candidate.fatGrams()));
+        food.setPreparation(candidate.preparation());
+        food.setPreparationSource(clean(candidate.preparationSource()));
+        food.setServingName(clean(candidate.servingName()));
+        food.setServingWeightGrams(candidate.servingWeightGrams());
         food.setImageUrl(clean(candidate.imageUrl()));
         food.setSource(candidate.source());
         food.setSourceId(candidate.sourceId());
@@ -384,7 +424,7 @@ public class NutritionService {
         if (food == null) return null;
         return new FoodResponse(food.getId(), food.getName(), food.getBrand(), food.getBarcode(), food.getCategory(),
                 food.getBaseUnit(), food.getBaseQuantity(), food.getCalories(), food.getProteinGrams(), food.getCarbsGrams(),
-                food.getFatGrams(), food.getImageUrl(), food.getSource(), food.getSourceId(), food.getLastSyncedAt(),
+                food.getFatGrams(), food.getPreparation(), food.getPreparationSource(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl(), food.getSource(), food.getSourceId(), food.getLastSyncedAt(),
                 copyTags(food.getTags()));
     }
 

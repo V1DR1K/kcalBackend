@@ -11,6 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.vitalitypeak.kcal.catalog.Food;
 import com.vitalitypeak.kcal.catalog.FoodCategory;
+import com.vitalitypeak.kcal.catalog.FoodPreparation;
 import com.vitalitypeak.kcal.catalog.FoodRepository;
 import com.vitalitypeak.kcal.catalog.FoodUnit;
 import com.vitalitypeak.kcal.nutrition.FoodLog;
@@ -34,17 +35,20 @@ public class DataSeeder {
             WaterLogRepository waterLogs, NutritionPlanRepository nutritionPlans, PasswordEncoder passwordEncoder) {
         return args -> {
             ensureFood(foods, "Pechuga de Pollo", "KazaFitness Premium Select", "7790000000011", FoodCategory.PROTEIN,
-                    165, 31, 0, 3.6, Set.of("Alta en Proteina", "Keto Friendly"));
+                    165, 31, 0, 3.6, FoodPreparation.COOKED, "USDA FDC 171477", Set.of("Alta en Proteina", "Keto Friendly"));
             ensureFood(foods, "Arroz Blanco", "Generico", "7790000000028", FoodCategory.CEREAL,
-                    130, 2.7, 28, 0.3, Set.of("Carbohidrato"));
+                    130, 2.7, 28, 0.3, FoodPreparation.COOKED, "USDA FDC 168878", Set.of("Carbohidrato"));
             ensureFood(foods, "Palta (Aguacate)", "Fresco", "7790000000035", FoodCategory.FAT,
-                    160, 2, 8.5, 14.7, Set.of("Grasas Saludables"));
+                    160, 2, 8.5, 14.7, FoodPreparation.RAW, "USDA FDC 171705", Set.of("Grasas Saludables"));
             ensureFood(foods, "Yogur Griego Natural", "KazaFitness Dairy", "7790000000042", FoodCategory.DAIRY,
-                    59, 10, 3.6, 0.4, Set.of("Proteina"));
+                    59, 10, 3.6, 0.4, FoodPreparation.AS_SOLD, "USDA FDC 330137", Set.of("Proteina"));
             ensureFood(foods, "Atun en lata", "Mar Azul", "7790000000059", FoodCategory.PROTEIN,
-                    116, 26, 0, 1, Set.of("Alta Proteina", "Keto"));
+                    116, 26, 0, 1, FoodPreparation.AS_SOLD, "USDA FDC 334194", Set.of("Alta Proteina", "Keto"));
             ensureFood(foods, "Banana", "Fresco", "7790000000066", FoodCategory.FRUIT,
-                    89, 1.1, 22.8, 0.3, Set.of("Fruta"));
+                    89, 1.1, 22.8, 0.3, FoodPreparation.RAW, "USDA FDC 173944", Set.of("Fruta"));
+            setServing(foods, "7790000000028", "Taza cocida", 158);
+            setServing(foods, "7790000000035", "Palta mediana", 201);
+            setServing(foods, "7790000000066", "Banana mediana", 118);
 
             ensureAdmin(users, passwordEncoder);
 
@@ -106,15 +110,20 @@ public class DataSeeder {
     }
 
     private static void ensureFood(FoodRepository foods, String name, String brand, String barcode, FoodCategory category,
-            int calories, double protein, double carbs, double fat, Set<String> tags) {
-        if (foods.existsByBarcode(barcode)) {
+            int calories, double protein, double carbs, double fat, FoodPreparation preparation, String preparationSource, Set<String> tags) {
+        var existing = foods.findByBarcode(barcode);
+        if (existing.isPresent()) {
+            Food food = existing.get();
+            food.setPreparation(preparation);
+            food.setPreparationSource(preparationSource);
+            foods.save(food);
             return;
         }
-        foods.save(food(name, brand, barcode, category, calories, protein, carbs, fat, tags));
+        foods.save(food(name, brand, barcode, category, calories, protein, carbs, fat, preparation, preparationSource, tags));
     }
 
     private static Food food(String name, String brand, String barcode, FoodCategory category, int calories,
-            double protein, double carbs, double fat, Set<String> tags) {
+            double protein, double carbs, double fat, FoodPreparation preparation, String preparationSource, Set<String> tags) {
         Food food = new Food();
         food.setName(name);
         food.setBrand(brand);
@@ -126,8 +135,18 @@ public class DataSeeder {
         food.setProteinGrams(BigDecimal.valueOf(protein));
         food.setCarbsGrams(BigDecimal.valueOf(carbs));
         food.setFatGrams(BigDecimal.valueOf(fat));
+        food.setPreparation(preparation);
+        food.setPreparationSource(preparationSource);
         food.setTags(tags);
         return food;
+    }
+
+    private static void setServing(FoodRepository foods, String barcode, String name, double grams) {
+        foods.findByBarcode(barcode).ifPresent(food -> {
+            food.setServingName(name);
+            food.setServingWeightGrams(BigDecimal.valueOf(grams));
+            foods.save(food);
+        });
     }
 
     private static void addLog(FoodLogRepository foodLogs, AppUser user, Food food, MealType mealType, int quantity) {

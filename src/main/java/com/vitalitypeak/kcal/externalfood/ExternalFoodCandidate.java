@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.Set;
 
 import com.vitalitypeak.kcal.catalog.FoodCategory;
+import com.vitalitypeak.kcal.catalog.FoodPreparation;
 
 public record ExternalFoodCandidate(
         String name,
@@ -14,6 +15,10 @@ public record ExternalFoodCandidate(
         BigDecimal proteinGrams,
         BigDecimal carbsGrams,
         BigDecimal fatGrams,
+        FoodPreparation preparation,
+        String preparationSource,
+        String servingName,
+        BigDecimal servingWeightGrams,
         String imageUrl,
         Set<String> tags,
         String source,

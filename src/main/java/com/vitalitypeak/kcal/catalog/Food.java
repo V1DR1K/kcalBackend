@@ -50,6 +50,11 @@ public class Food {
     private BigDecimal proteinGrams;
     private BigDecimal carbsGrams;
     private BigDecimal fatGrams;
+    @Enumerated(EnumType.STRING)
+    private FoodPreparation preparation = FoodPreparation.UNSPECIFIED;
+    private String preparationSource;
+    private String servingName;
+    private BigDecimal servingWeightGrams;
     @Column(length = 500)
     private String imageUrl;
     @Column(length = 500)

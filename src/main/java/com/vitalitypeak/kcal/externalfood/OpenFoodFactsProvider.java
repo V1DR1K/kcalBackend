@@ -17,6 +17,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.vitalitypeak.kcal.catalog.FoodCategory;
+import com.vitalitypeak.kcal.catalog.FoodPreparation;
 
 @Component
 public class OpenFoodFactsProvider implements ExternalFoodProvider {
@@ -36,7 +37,7 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
             String url = UriComponentsBuilder
                     .fromUriString(properties.openFoodFacts().baseUrl())
                     .path("/api/v2/product/{barcode}.json")
-                    .queryParam("fields", "status,product_name,generic_name,brands,categories_tags,image_front_url,nutriments")
+                    .queryParam("fields", "status,product_name,generic_name,brands,categories_tags,image_front_url,nutriments,serving_size,serving_quantity")
                     .buildAndExpand(barcode)
                     .toUriString();
 
@@ -81,6 +82,8 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
             }
         }
 
+        FoodPreparation preparation = preparation(firstText(product.get("product_name"), product.get("generic_name")), tags);
+
         return Optional.of(new ExternalFoodCandidate(
                 name,
                 text(product.get("brands")),
@@ -90,10 +93,21 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
                 protein,
                 carbs,
                 fat,
+                preparation,
+                preparation == FoodPreparation.AS_SOLD ? "Open Food Facts (nutrición según envase)" : "Open Food Facts (nombre/categorías)",
+                text(product.get("serving_size")),
+                decimal(product.get("serving_quantity")),
                 text(product.get("image_front_url")),
                 tags,
                 "OPEN_FOOD_FACTS",
                 barcode));
+    }
+
+    private static FoodPreparation preparation(String description, Set<String> tags) {
+        String value = ((description == null ? "" : description) + " " + String.join(" ", tags)).toLowerCase();
+        if (value.matches(".*\\b(raw|crudo|cruda|uncooked)\\b.*")) return FoodPreparation.RAW;
+        if (value.matches(".*\\b(cooked|cocido|cocida|roasted|grilled|boiled|baked)\\b.*")) return FoodPreparation.COOKED;
+        return FoodPreparation.AS_SOLD;
     }
 
     private static String firstText(Object... values) {

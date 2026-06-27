@@ -24,6 +24,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 
 import com.vitalitypeak.kcal.catalog.FoodCategory;
+import com.vitalitypeak.kcal.catalog.FoodPreparation;
 import com.vitalitypeak.kcal.externalfood.ExternalFoodCandidate;
 import com.vitalitypeak.kcal.externalfood.ExternalFoodLookupService;
 
@@ -107,6 +108,10 @@ class KcalBackendApplicationTests {
 				BigDecimal.valueOf(5.2),
 				BigDecimal.valueOf(68.0),
 				BigDecimal.valueOf(20.0),
+				FoodPreparation.UNSPECIFIED,
+				null,
+				null,
+				null,
 				"https://images.openfoodfacts.org/front.jpg",
 				Set.of("Open Food Facts", "biscuits"),
 				"OPEN_FOOD_FACTS",
