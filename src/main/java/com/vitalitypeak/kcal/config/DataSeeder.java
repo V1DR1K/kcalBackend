@@ -48,10 +48,52 @@ public class DataSeeder {
                     116, 26, 0, 1, FoodPreparation.AS_SOLD, "USDA FDC 334194", Set.of("Alta Proteina", "Keto"));
             ensureFood(foods, "Banana", "Fresco", "7790000000066", FoodCategory.FRUIT,
                     89, 1.1, 22.8, 0.3, FoodPreparation.RAW, "USDA FDC 173944", Set.of("Fruta"));
+            ensureFood(foods, "Manzana", "Fresco", "7790000000103", FoodCategory.FRUIT,
+                    64, 0.3, 14.9, 0.4, FoodPreparation.RAW, "ARGENFOODS 138", Set.of("Fruta", "Argentina"));
+            ensureFood(foods, "Pera", "Fresco", "7790000000110", FoodCategory.FRUIT,
+                    70, 0.7, 15.8, 0.4, FoodPreparation.RAW, "ARGENFOODS 144", Set.of("Fruta", "Argentina"));
+            ensureFood(foods, "Durazno", "Fresco", "7790000000127", FoodCategory.FRUIT,
+                    51, 0.5, 12, 0.1, FoodPreparation.RAW, "ARGENFOODS 129", Set.of("Fruta", "Argentina"));
+            ensureFood(foods, "Frutilla", "Fresco", "7790000000134", FoodCategory.FRUIT,
+                    41, 0.8, 8.1, 0.6, FoodPreparation.RAW, "ARGENFOODS 132", Set.of("Fruta", "Argentina"));
+            ensureFood(foods, "Sandía", "Fresco", "7790000000141", FoodCategory.FRUIT,
+                    31, 0.5, 6.9, 0.2, FoodPreparation.RAW, "ARGENFOODS 147", Set.of("Fruta", "Argentina"));
+            ensureFood(foods, "Tomate", "Fresco", "7790000000202", FoodCategory.VEGETABLE,
+                    20, 1, 4.1, 0, FoodPreparation.RAW, "ARGENFOODS 110", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Lechuga", "Fresco", "7790000000219", FoodCategory.VEGETABLE,
+                    15, 1.4, 2.9, 0.2, FoodPreparation.RAW, "USDA FDC 169247", Set.of("Verdura"));
+            ensureFood(foods, "Papa", "Fresco", "7790000000226", FoodCategory.VEGETABLE,
+                    88, 2.7, 19.3, 0, FoodPreparation.RAW, "ARGENFOODS 87", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Cebolla", "Fresco", "7790000000233", FoodCategory.VEGETABLE,
+                    17, 0.8, 3.5, 0, FoodPreparation.RAW, "ARGENFOODS 69", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Zapallo", "Fresco", "7790000000240", FoodCategory.VEGETABLE,
+                    27, 0.5, 5.8, 0.2, FoodPreparation.RAW, "ARGENFOODS 430", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Berenjena", "Fresco", "7790000000257", FoodCategory.VEGETABLE,
+                    28, 1.1, 5.5, 0.2, FoodPreparation.RAW, "ARGENFOODS 64", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Brócoli", "Fresco", "7790000000264", FoodCategory.VEGETABLE,
+                    37, 3.3, 5.5, 0.2, FoodPreparation.RAW, "ARGENFOODS 66", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Espinaca", "Fresco", "7790000000271", FoodCategory.VEGETABLE,
+                    24, 3.9, 2, 0, FoodPreparation.RAW, "ARGENFOODS 75", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Lomo vacuno", "Carnicería", "7790000000301", FoodCategory.PROTEIN,
+                    116, 20, 0, 4, FoodPreparation.RAW, "ARGENFOODS 233", Set.of("Carne vacuna", "Argentina"));
+            ensureFood(foods, "Nalga vacuna", "Carnicería", "7790000000318", FoodCategory.PROTEIN,
+                    106, 22, 0, 1.7, FoodPreparation.RAW, "ARGENFOODS 510", Set.of("Carne vacuna", "Argentina"));
+            ensureFood(foods, "Peceto vacuno", "Carnicería", "7790000000325", FoodCategory.PROTEIN,
+                    125, 23, 0, 1.9, FoodPreparation.RAW, "ARGENFOODS 514", Set.of("Carne vacuna", "Argentina"));
+            ensureFood(foods, "Vacío vacuno", "Carnicería", "7790000000332", FoodCategory.PROTEIN,
+                    174, 20, 0, 11, FoodPreparation.RAW, "ARGENFOODS 517", Set.of("Carne vacuna", "Argentina"));
+            ensureFood(foods, "Vacío vacuno", "Carnicería", "7790000000349", FoodCategory.PROTEIN,
+                    258, 25.6, 0, 17.3, FoodPreparation.COOKED, "ARGENFOODS 240", Set.of("Carne vacuna", "Argentina"));
+            ensureFood(foods, "Bife vacuno", "Carnicería", "7790000000356", FoodCategory.PROTEIN,
+                    111, 21, 0, 3, FoodPreparation.RAW, "ARGENFOODS 229", Set.of("Carne vacuna", "Argentina"));
+            ensureFood(foods, "Bife vacuno", "Carnicería", "7790000000363", FoodCategory.PROTEIN,
+                    189, 24.6, 0, 10.1, FoodPreparation.COOKED, "ARGENFOODS 227", Set.of("Carne vacuna", "Argentina"));
             setServing(foods, "7790000000028", "Taza cocida", 158);
             setServing(foods, "7790000000035", "Palta mediana", 201);
             setServing(foods, "7790000000066", "Banana mediana", 118);
             setPreparationGroup(foods, "CHICKEN_BREAST", "7790000000011", "7790000000073");
+            setPreparationGroup(foods, "BEEF_VACIO", "7790000000332", "7790000000349");
+            setPreparationGroup(foods, "BEEF_STEAK", "7790000000356", "7790000000363");
 
             ensureAdmin(users, passwordEncoder);
 
