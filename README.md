@@ -31,9 +31,9 @@ docker compose up -d
 .\mvnw.cmd spring-boot:run
 ```
 
-API: `https://localhost:8081/api`
+API: `http://localhost:8081/api`
 
-Swagger: `https://localhost:8081/swagger-ui.html`
+Swagger: `http://localhost:8081/swagger-ui.html`
 
 PostgreSQL: `localhost:5433`, DB `kcal_db`, user `kcal_user`, password `kcal_password`
 
@@ -66,6 +66,40 @@ Los tests usan H2 en memoria y no necesitan Docker:
 ```powershell
 .\mvnw.cmd test
 ```
+
+## Producción
+
+El perfil `prod` carga el catálogo base pero desactiva usuarios/datos demo y Swagger, valida el esquema y aplica las migraciones Flyway antes de iniciar. El HTTPS debe terminarse en el proxy o balanceador de la plataforma.
+
+Variables obligatorias:
+
+```text
+SPRING_DATASOURCE_URL=jdbc:postgresql://HOST:5432/DB
+SPRING_DATASOURCE_USERNAME=...
+SPRING_DATASOURCE_PASSWORD=...
+JWT_SECRET=una-clave-aleatoria-de-al-menos-32-bytes
+CORS_ALLOWED_ORIGINS=https://app.ejemplo.com
+STORAGE_ENDPOINT=https://s3.ejemplo.com
+STORAGE_PUBLIC_BASE_URL=https://cdn.ejemplo.com
+STORAGE_ACCESS_KEY=...
+STORAGE_SECRET_KEY=...
+```
+
+Inicio:
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE="prod"
+.\mvnw.cmd spring-boot:run
+```
+
+Para generar el artefacto desplegable:
+
+```powershell
+.\mvnw.cmd clean package
+java -jar target/kcalBackend-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+```
+
+No se versionan claves TLS ni credenciales de producción. Las credenciales de `docker-compose.yml` son únicamente para desarrollo local.
 
 ## Usuario demo
 

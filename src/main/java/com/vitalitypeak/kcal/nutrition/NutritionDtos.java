@@ -26,7 +26,7 @@ public class NutritionDtos {
             String imageUrl, String source, String sourceId, OffsetDateTime lastSyncedAt, Set<String> tags) {
     }
 
-    public record PageResponse<T>(List<T> items, int page, int size, long totalElements, int totalPages) {
+    public record PageResponse<T>(List<T> items, int page, int size, long totalElements, int totalPages, boolean hasNext) {
     }
 
     public record CreateFoodRequest(
@@ -59,6 +59,10 @@ public class NutritionDtos {
 
     public record AddMealLogRequest(@NotNull MealItemType itemType, @NotNull Long itemId, @NotNull MealType mealType,
             @Positive BigDecimal quantity, @NotNull FoodUnit unit, LocalDate logDate) {
+    }
+
+    public record UpdateFoodLogRequest(@NotNull MealType mealType, @Positive BigDecimal quantity,
+            @NotNull FoodUnit unit, LocalDate logDate) {
     }
 
     public record FoodLogResponse(Long id, LocalDate logDate, MealType mealType, MealItemType itemType, FoodResponse food,

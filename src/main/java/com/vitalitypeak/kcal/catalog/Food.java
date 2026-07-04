@@ -16,11 +16,13 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import org.hibernate.annotations.BatchSize;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
+@BatchSize(size = 50)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -64,7 +66,8 @@ public class Food {
     private String sourceId;
     private OffsetDateTime lastSyncedAt;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
+    @BatchSize(size = 50)
     @CollectionTable(name = "food_tags", joinColumns = @JoinColumn(name = "food_id"))
     @Column(name = "tag")
     private Set<String> tags = new LinkedHashSet<>();

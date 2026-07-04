@@ -20,8 +20,10 @@ import jakarta.persistence.OneToMany;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.BatchSize;
 
 @Entity
+@BatchSize(size = 50)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -52,5 +54,6 @@ public class Recipe {
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
     @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     private List<RecipeIngredient> ingredients = new ArrayList<>();
 }

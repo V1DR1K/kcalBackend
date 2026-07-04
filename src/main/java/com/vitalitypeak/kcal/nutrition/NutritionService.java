@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +41,7 @@ import com.vitalitypeak.kcal.nutrition.NutritionDtos.MacroProgress;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.MealSummary;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.MealTypeResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.NutritionPreviewResponse;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.UpdateFoodLogRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.PageResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.RecipeIngredientResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.RecipeResponse;
@@ -77,9 +79,14 @@ public class NutritionService {
 
     @Transactional(readOnly = true)
     public PageResponse<FoodResponse> searchFoods(String query, FoodCategory category, int page, int size) {
-        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50));
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
+                Sort.by(Sort.Order.asc("name").ignoreCase(), Sort.Order.asc("id")));
         Page<Food> result;
         boolean hasQuery = query != null && !query.isBlank();
+        if (hasQuery) {
+            query = query.trim();
+            if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
+        }
         if (hasQuery && category != null) {
             result = foods.findByNameContainingIgnoreCaseAndCategory(query, category, pageable);
         } else if (hasQuery) {
@@ -97,6 +104,9 @@ public class NutritionService {
         String barcode = clean(request.barcode());
         if (barcode != null && foods.existsByBarcode(barcode)) {
             throw new BadRequestException("Ya existe un alimento con ese codigo de barras.");
+        }
+        if ((clean(request.servingName()) == null) != (request.servingWeightGrams() == null)) {
+            throw new BadRequestException("El nombre y el peso de la unidad deben informarse juntos.");
         }
         Food food = new Food();
         food.setName(request.name().trim());
@@ -221,7 +231,12 @@ public class NutritionService {
 
     @Transactional(readOnly = true)
     public PageResponse<RecipeResponse> searchRecipes(String query, int page, int size) {
-        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50));
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
+                Sort.by(Sort.Order.asc("name").ignoreCase(), Sort.Order.asc("id")));
+        if (query != null && !query.isBlank()) {
+            query = query.trim();
+            if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
+        }
         Page<Recipe> result = query != null && !query.isBlank()
                 ? recipes.findByNameContainingIgnoreCase(query, pageable)
                 : recipes.findAll(pageable);
@@ -313,6 +328,24 @@ public class NutritionService {
         FoodLog log = foodLogs.findByIdAndUser(logId, user)
                 .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));
         foodLogs.delete(log);
+    }
+
+    @Transactional
+    public FoodLogResponse updateFoodLog(AppUser user, Long logId, UpdateFoodLogRequest request) {
+        FoodLog log = foodLogs.findByIdAndUser(logId, user)
+                .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));
+        NutritionPreviewResponse preview = log.getItemType() == MealItemType.RECIPE
+                ? previewRecipeServing(log.getRecipe(), request.quantity())
+                : preview(log.getFood(), request.quantity());
+        log.setMealType(request.mealType());
+        log.setQuantity(request.quantity());
+        log.setUnit(request.unit());
+        log.setLogDate(request.logDate() == null ? log.getLogDate() : request.logDate());
+        log.setCalories(preview.calories());
+        log.setProteinGrams(preview.proteinGrams());
+        log.setCarbsGrams(preview.carbsGrams());
+        log.setFatGrams(preview.fatGrams());
+        return toFoodLogResponse(foodLogs.save(log));
     }
 
     @Transactional
@@ -473,7 +506,7 @@ public class NutritionService {
     }
 
     private static <T> PageResponse<T> page(Page<T> page) {
-        return new PageResponse<>(page.getContent(), page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
+        return new PageResponse<>(page.getContent(), page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages(), page.hasNext());
     }
 
     private static BigDecimal sumResponses(List<FoodLogResponse> logs, java.util.function.Function<FoodLogResponse, BigDecimal> mapper) {

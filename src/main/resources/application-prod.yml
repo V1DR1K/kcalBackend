@@ -1,0 +1,35 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+
+server:
+  ssl:
+    enabled: ${SERVER_SSL_ENABLED:false}
+
+app:
+  seed:
+    catalog-enabled: true
+    demo-users-enabled: false
+  jwt:
+    secret: ${JWT_SECRET}
+  storage:
+    endpoint: ${STORAGE_ENDPOINT}
+    public-base-url: ${STORAGE_PUBLIC_BASE_URL}
+    access-key: ${STORAGE_ACCESS_KEY}
+    secret-key: ${STORAGE_SECRET_KEY}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

@@ -47,6 +47,18 @@ class KcalBackendApplicationTests {
 	}
 
 	@Test
+	void returnsSafeClientErrorsForUnknownRoutesAndInvalidFilters() {
+		ResponseEntity<String> missing = rest.getForEntity("/v3/api-docs/does-not-exist", String.class);
+		ResponseEntity<String> invalidCategory = rest.exchange("/api/foods?category=INVALID", HttpMethod.GET,
+				new HttpEntity<>(authHeaders()), String.class);
+
+		assertThat(missing.getStatusCode().value()).isEqualTo(404);
+		assertThat(missing.getBody()).contains("\"code\":\"NOT_FOUND\"").doesNotContain("Exception");
+		assertThat(invalidCategory.getStatusCode().is4xxClientError()).isTrue();
+		assertThat(invalidCategory.getStatusCode().is5xxServerError()).isFalse();
+	}
+
+	@Test
 	void dashboardSerializesFoodTags() {
 		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard", HttpMethod.GET,
 				new HttpEntity<>(authHeaders()), String.class);
@@ -152,6 +164,36 @@ class KcalBackendApplicationTests {
 		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard?date=" + date, HttpMethod.GET,
 				new HttpEntity<>(headers), String.class);
 		assertThat(dashboard.getBody()).contains("\"waterConsumedLiters\":0");
+	}
+
+	@Test
+	void foodCatalogIsPaginatedAndExposesNextPage() {
+		ResponseEntity<String> first = rest.exchange("/api/foods?page=0&size=5", HttpMethod.GET,
+				new HttpEntity<>(authHeaders()), String.class);
+		ResponseEntity<String> filtered = rest.exchange("/api/foods?category=FRUIT&page=0&size=3", HttpMethod.GET,
+				new HttpEntity<>(authHeaders()), String.class);
+
+		assertThat(first.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(first.getBody()).contains("\"page\":0", "\"size\":5", "\"hasNext\":true");
+		assertThat(filtered.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(filtered.getBody()).contains("\"size\":3", "\"totalElements\"");
+	}
+
+	@Test
+	void userCanEditFoodLogAndNutritionIsRecalculated() {
+		HttpHeaders headers = authHeaders();
+		String date = "2031-02-10";
+		Map<String, Object> meal = Map.of("itemType", "FOOD", "itemId", 1, "mealType", "LUNCH",
+				"quantity", 100, "unit", "GRAM", "logDate", date);
+		ResponseEntity<Map> created = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(meal, headers), Map.class);
+		Object logId = created.getBody().get("id");
+		Map<String, Object> update = Map.of("mealType", "DINNER", "quantity", 200, "unit", "GRAM", "logDate", date);
+
+		ResponseEntity<String> updated = rest.exchange("/api/nutrition/food-logs/" + logId, HttpMethod.PUT,
+				new HttpEntity<>(update, headers), String.class);
+
+		assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(updated.getBody()).contains("\"mealType\":\"DINNER\"", "\"quantity\":200", "\"calories\":330");
 	}
 
 	private HttpHeaders authHeaders() {

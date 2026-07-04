@@ -8,10 +8,8 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface RecipeRepository extends JpaRepository<Recipe, Long> {
-    @EntityGraph(attributePaths = {"ingredients", "ingredients.food", "ingredients.food.tags"})
     Page<Recipe> findByNameContainingIgnoreCase(String name, Pageable pageable);
 
-    @EntityGraph(attributePaths = {"ingredients", "ingredients.food", "ingredients.food.tags"})
     Page<Recipe> findAll(Pageable pageable);
 
     @Override
