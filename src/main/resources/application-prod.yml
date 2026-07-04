@@ -14,6 +14,8 @@ server:
     enabled: ${SERVER_SSL_ENABLED:false}
 
 app:
+  auth:
+    registration-enabled: false
   seed:
     catalog-enabled: true
     demo-users-enabled: false

@@ -27,6 +27,8 @@ server:
     enabled: ${SERVER_SSL_ENABLED:false}
 
 app:
+  auth:
+    registration-enabled: ${APP_AUTH_REGISTRATION_ENABLED:true}
   seed:
     catalog-enabled: ${APP_SEED_CATALOG_ENABLED:true}
     demo-users-enabled: ${APP_SEED_DEMO_USERS_ENABLED:true}
