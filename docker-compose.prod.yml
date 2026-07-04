@@ -31,7 +31,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    networks: [internal]
+    networks:
+      internal: {}
+      edge:
+        aliases: [kcals-minio]
 
   minio-init:
     image: minio/mc:RELEASE.2025-04-16T18-13-26Z
@@ -78,7 +81,10 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-    networks: [internal, edge]
+    networks:
+      internal: {}
+      edge:
+        aliases: [kcals-app]
 
   frontend:
     build: ../kcalFrontend
@@ -91,7 +97,10 @@ services:
       interval: 20s
       timeout: 5s
       retries: 5
-    networks: [internal, edge]
+    networks:
+      internal: {}
+      edge:
+        aliases: [kcals-frontend]
 
 volumes:
   postgres_data:
