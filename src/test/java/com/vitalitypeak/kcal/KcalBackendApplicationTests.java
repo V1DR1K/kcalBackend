@@ -194,6 +194,22 @@ class KcalBackendApplicationTests {
 	}
 
 	@Test
+	void globalFoodCatalogWritesRequireAdminRole() {
+		Map<String, Object> food = Map.of("name", "Privado", "category", "OTHER", "baseUnit", "GRAM",
+				"baseQuantity", 100, "calories", 100, "proteinGrams", 1, "carbsGrams", 1, "fatGrams", 1,
+				"preparation", "UNSPECIFIED", "tags", Set.of());
+		ResponseEntity<String> response = rest.postForEntity("/api/foods", new HttpEntity<>(food, authHeaders()), String.class);
+
+		assertThat(response.getStatusCode().value()).isEqualTo(403);
+	}
+
+	@Test
+	void actuatorHealthIsPublicButMetricsRequireAuthentication() {
+		assertThat(rest.getForEntity("/actuator/health", String.class).getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(rest.getForEntity("/actuator/prometheus", String.class).getStatusCode().value()).isEqualTo(403);
+	}
+
+	@Test
 	void userCanEditFoodLogAndNutritionIsRecalculated() {
 		HttpHeaders headers = authHeaders();
 		String date = "2031-02-10";

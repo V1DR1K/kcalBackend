@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import com.vitalitypeak.kcal.user.ActivityLevel;
 import com.vitalitypeak.kcal.user.FitnessGoal;
 import com.vitalitypeak.kcal.user.Gender;
+import com.vitalitypeak.kcal.user.Role;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -32,6 +33,6 @@ public class AuthDtos {
     public record AuthResponse(String token, String tokenType, UserSummary user) {
     }
 
-    public record UserSummary(Long id, String fullName, String email, String planName) {
+    public record UserSummary(Long id, String fullName, String email, String planName, Role role) {
     }
 }

@@ -58,6 +58,6 @@ public class AuthService {
 
     private AuthResponse response(AppUser user) {
         return new AuthResponse(jwtService.generate(user), "Bearer",
-                new UserSummary(user.getId(), user.getFullName(), user.getEmail(), user.getPlanName()));
+                new UserSummary(user.getId(), user.getFullName(), user.getEmail(), user.getPlanName(), user.getRole()));
     }
 }
