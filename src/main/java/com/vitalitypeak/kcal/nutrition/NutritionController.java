@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
 
 import com.vitalitypeak.kcal.common.CurrentUser;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddFoodLogRequest;
@@ -63,8 +64,9 @@ public class NutritionController {
     }
 
     @DeleteMapping("/food-logs/{id}")
-    void deleteFoodLog(Authentication authentication, @PathVariable Long id) {
+    ResponseEntity<Void> deleteFoodLog(Authentication authentication, @PathVariable Long id) {
         nutritionService.deleteFoodLog(currentUser.from(authentication), id);
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/food-logs/{id}")
@@ -74,8 +76,9 @@ public class NutritionController {
     }
 
     @DeleteMapping("/water-logs/latest")
-    void deleteLatestWaterLog(Authentication authentication, @RequestParam(required = false) LocalDate date) {
+    ResponseEntity<Void> deleteLatestWaterLog(Authentication authentication, @RequestParam(required = false) LocalDate date) {
         nutritionService.deleteLatestWaterLog(currentUser.from(authentication), date);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/history")

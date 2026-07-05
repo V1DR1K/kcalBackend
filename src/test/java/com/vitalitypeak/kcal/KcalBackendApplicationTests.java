@@ -180,6 +180,20 @@ class KcalBackendApplicationTests {
 	}
 
 	@Test
+	void catalogPaginationIsBoundedAndRecipesUseTheSameContract() {
+		HttpHeaders headers = authHeaders();
+		ResponseEntity<String> bounded = rest.exchange("/api/foods?page=-4&size=500", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> recipes = rest.exchange("/api/recipes?page=0&size=2", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+
+		assertThat(bounded.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(bounded.getBody()).contains("\"page\":0", "\"size\":50", "\"totalElements\"", "\"totalPages\"");
+		assertThat(recipes.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(recipes.getBody()).contains("\"items\"", "\"page\":0", "\"size\":2", "\"hasNext\"");
+	}
+
+	@Test
 	void userCanEditFoodLogAndNutritionIsRecalculated() {
 		HttpHeaders headers = authHeaders();
 		String date = "2031-02-10";
