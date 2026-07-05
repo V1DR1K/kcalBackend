@@ -25,4 +25,12 @@ public class ExternalFoodLookupService {
                 .map(Optional::get)
                 .findFirst();
     }
+
+    public List<ExternalFoodCandidate> searchByText(String query, int limit) {
+        if (!properties.enabled() || query == null || query.isBlank()) return List.of();
+        return providers.stream()
+                .flatMap(provider -> provider.searchByText(query.trim(), limit).stream())
+                .limit(Math.max(1, Math.min(limit, 20)))
+                .toList();
+    }
 }

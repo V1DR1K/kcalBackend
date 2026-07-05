@@ -77,7 +77,7 @@ public class NutritionService {
         this.externalFoodLookup = externalFoodLookup;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public PageResponse<FoodResponse> searchFoods(String query, FoodCategory category, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
                 Sort.by(Sort.Order.asc("name").ignoreCase(), Sort.Order.asc("id")));
@@ -88,13 +88,19 @@ public class NutritionService {
             if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
         }
         if (hasQuery && category != null) {
-            result = foods.findByNameContainingIgnoreCaseAndCategory(query, category, pageable);
+            result = foods.search(query, category, pageable);
         } else if (hasQuery) {
-            result = foods.findByNameContainingIgnoreCase(query, pageable);
+            result = foods.search(query, pageable);
         } else if (category != null) {
             result = foods.findByCategory(category, pageable);
         } else {
             result = foods.findAll(pageable);
+        }
+        if (hasQuery && page == 0 && result.getTotalElements() < Math.min(size, 10)) {
+            externalFoodLookup.searchByText(query, 12).forEach(candidate -> {
+                if (candidate.barcode() != null && !foods.existsByBarcode(candidate.barcode())) importExternalFood(candidate);
+            });
+            result = category == null ? foods.search(query, pageable) : foods.search(query, category, pageable);
         }
         return page(result.map(this::toFoodResponse));
     }

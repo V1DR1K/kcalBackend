@@ -2,6 +2,8 @@ package com.vitalitypeak.kcal.externalfood;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashSet;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -51,6 +53,38 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
         }
     }
 
+    @Override
+    public List<ExternalFoodCandidate> searchByText(String query, int limit) {
+        try {
+            String url = UriComponentsBuilder.fromUriString(properties.openFoodFacts().baseUrl())
+                    .path("/cgi/search.pl")
+                    .queryParam("search_terms", query)
+                    .queryParam("search_simple", 1)
+                    .queryParam("action", "process")
+                    .queryParam("json", 1)
+                    .queryParam("page_size", Math.max(1, Math.min(limit, 20)))
+                    .queryParam("tagtype_0", "countries")
+                    .queryParam("tag_contains_0", "contains")
+                    .queryParam("tag_0", "argentina")
+                    .queryParam("fields", "code,product_name,generic_name,brands,categories_tags,image_front_url,nutriments,serving_size,serving_quantity")
+                    .encode().toUriString();
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.USER_AGENT, properties.openFoodFacts().userAgent());
+            Map<String, Object> body = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), MAP_TYPE).getBody();
+            if (body == null || !(body.get("products") instanceof Iterable<?> products)) return List.of();
+            List<ExternalFoodCandidate> result = new ArrayList<>();
+            for (Object value : products) {
+                if (!(value instanceof Map<?, ?> product)) continue;
+                String barcode = text(product.get("code"));
+                if (barcode == null) continue;
+                parseProduct(barcode, product).ifPresent(result::add);
+            }
+            return result;
+        } catch (RestClientException | IllegalArgumentException ex) {
+            return List.of();
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private Optional<ExternalFoodCandidate> parse(String barcode, Map<String, Object> body) {
         if (body == null || number(body.get("status")).intValue() != 1) {
@@ -61,6 +95,11 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
             return Optional.empty();
         }
 
+        return parseProduct(barcode, product);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Optional<ExternalFoodCandidate> parseProduct(String barcode, Map<?, ?> product) {
         String name = firstText(product.get("product_name"), product.get("generic_name"));
         Map<String, Object> nutriments = product.get("nutriments") instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
         Integer calories = integer(nutriments.get("energy-kcal_100g"));

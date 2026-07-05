@@ -41,7 +41,7 @@ Ceph/S3 local: `http://localhost:7480`, bucket `kcal-products`
 
 ## Fuentes externas de alimentos
 
-El endpoint `GET /api/foods/barcode/{barcode}` busca primero en PostgreSQL. Si no existe y `app.food-lookup.enabled=true`, consulta Open Food Facts, normaliza kcal/macros por 100g, guarda el alimento localmente y lo devuelve. USDA FoodData Central queda configurado para enriquecimiento generico posterior por texto.
+El endpoint `GET /api/foods/barcode/{barcode}` busca primero en PostgreSQL. Si no existe y `app.food-lookup.enabled=true`, consulta Open Food Facts, normaliza kcal/macros por 100g, guarda el alimento localmente y lo devuelve. La búsqueda `GET /api/foods?q=texto` también consulta productos comercializados en Argentina cuando los resultados locales son escasos y conserva únicamente fichas con kcal y macros completos. Las búsquedas locales incluyen nombre, marca y etiquetas/sinónimos. USDA FoodData Central queda configurado para enriquecimiento genérico.
 
 Variables utiles:
 

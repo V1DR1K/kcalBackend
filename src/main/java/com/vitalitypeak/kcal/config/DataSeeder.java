@@ -80,6 +80,22 @@ public class DataSeeder {
                     24, 3.9, 2, 0, FoodPreparation.RAW, "ARGENFOODS 75", Set.of("Verdura", "Argentina"));
             ensureFood(foods, "Lomo vacuno", "Carnicería", "7790000000301", FoodCategory.PROTEIN,
                     116, 20, 0, 4, FoodPreparation.RAW, "ARGENFOODS 233", Set.of("Carne vacuna", "Argentina"));
+            ensureFood(foods, "Carne picada magra", "Carnicería", "7790000000707", FoodCategory.PROTEIN,
+                    172, 21.4, 0, 9.5, FoodPreparation.RAW, "USDA FoodData Central 90% magra", Set.of("Carne molida", "Picada especial", "Carne vacuna", "Argentina"));
+            ensureFood(foods, "Carne picada común", "Carnicería", "7790000000714", FoodCategory.PROTEIN,
+                    254, 17.2, 0, 20, FoodPreparation.RAW, "USDA FoodData Central 80% magra", Set.of("Carne molida", "Carne vacuna", "Argentina"));
+            ensureFood(foods, "Bife de chorizo", "Carnicería", "7790000000721", FoodCategory.PROTEIN,
+                    201, 19, 0, 13.5, FoodPreparation.RAW, "USDA FoodData Central (strip steak)", Set.of("Bife angosto", "Carne vacuna", "Argentina"));
+            ensureFood(foods, "Ojo de bife", "Carnicería", "7790000000738", FoodCategory.PROTEIN,
+                    263, 19, 0, 21, FoodPreparation.RAW, "USDA FoodData Central (rib eye)", Set.of("Bife ancho", "Carne vacuna", "Argentina"));
+            ensureFood(foods, "Cuadril vacuno", "Carnicería", "7790000000745", FoodCategory.PROTEIN,
+                    152, 21, 0, 7.2, FoodPreparation.RAW, "USDA FoodData Central (top sirloin)", Set.of("Colita de cuadril", "Carne vacuna", "Argentina"));
+            ensureFood(foods, "Entraña vacuna", "Carnicería", "7790000000752", FoodCategory.PROTEIN,
+                    205, 20, 0, 13.5, FoodPreparation.RAW, "USDA FoodData Central (skirt steak)", Set.of("Carne vacuna", "Argentina", "Parrilla"));
+            ensureFood(foods, "Asado de tira", "Carnicería", "7790000000769", FoodCategory.PROTEIN,
+                    291, 17, 0, 25, FoodPreparation.RAW, "USDA FoodData Central (beef short ribs)", Set.of("Costilla", "Carne vacuna", "Argentina", "Parrilla"));
+            ensureFood(foods, "Matambre vacuno", "Carnicería", "7790000000776", FoodCategory.PROTEIN,
+                    221, 20, 0, 15.5, FoodPreparation.RAW, "Referencia de corte equivalente USDA", Set.of("Carne vacuna", "Argentina", "Parrilla"));
             ensureFood(foods, "Nalga vacuna", "Carnicería", "7790000000318", FoodCategory.PROTEIN,
                     106, 22, 0, 1.7, FoodPreparation.RAW, "ARGENFOODS 510", Set.of("Carne vacuna", "Argentina"));
             ensureFood(foods, "Peceto vacuno", "Carnicería", "7790000000325", FoodCategory.PROTEIN,
