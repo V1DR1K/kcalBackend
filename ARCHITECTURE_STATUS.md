@@ -12,3 +12,4 @@ Verification: `.\\mvnw.cmd test`.
 - Global food catalog writes restricted to `ADMIN`.
 - User role included in the authentication response for role-aware clients.
 - Pagination is bounded and indexed. Cursor/keyset pagination remains an explicit migration only when measured catalog volume makes offset latency unacceptable, preserving the current alphabetical contract meanwhile.
+- Prometheus now scrapes the private management port from the internal Docker network, retains 30 days and evaluates availability, HTTP 5xx and JVM heap alerts.

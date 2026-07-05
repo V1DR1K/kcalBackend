@@ -88,6 +88,19 @@ services:
       edge:
         aliases: [kcals-app]
 
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    networks: [internal]
+
   frontend:
     build: ../kcalFrontend
     restart: unless-stopped
@@ -107,6 +120,7 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  prometheus_data:
 
 networks:
   internal:

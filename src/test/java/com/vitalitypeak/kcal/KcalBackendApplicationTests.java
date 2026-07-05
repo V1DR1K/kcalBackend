@@ -204,9 +204,9 @@ class KcalBackendApplicationTests {
 	}
 
 	@Test
-	void actuatorHealthIsPublicButMetricsRequireAuthentication() {
+	void actuatorHealthIsPublicAndMetricsAreNotExposedInTestProfile() {
 		assertThat(rest.getForEntity("/actuator/health", String.class).getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(rest.getForEntity("/actuator/prometheus", String.class).getStatusCode().value()).isEqualTo(403);
+		assertThat(rest.getForEntity("/actuator/prometheus", String.class).getStatusCode().value()).isEqualTo(404);
 	}
 
 	@Test
