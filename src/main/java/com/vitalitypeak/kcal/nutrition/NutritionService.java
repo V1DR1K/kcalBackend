@@ -80,7 +80,7 @@ public class NutritionService {
     @Transactional
     public PageResponse<FoodResponse> searchFoods(String query, FoodCategory category, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
-                Sort.by(Sort.Order.asc("name").ignoreCase(), Sort.Order.asc("id")));
+                Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
         Page<Food> result;
         boolean hasQuery = query != null && !query.isBlank();
         if (hasQuery) {
@@ -238,7 +238,7 @@ public class NutritionService {
     @Transactional(readOnly = true)
     public PageResponse<RecipeResponse> searchRecipes(String query, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
-                Sort.by(Sort.Order.asc("name").ignoreCase(), Sort.Order.asc("id")));
+                Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
         if (query != null && !query.isBlank()) {
             query = query.trim();
             if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
