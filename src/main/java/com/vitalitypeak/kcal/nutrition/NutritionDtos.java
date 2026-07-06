@@ -18,12 +18,14 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import com.vitalitypeak.kcal.catalog.FoodPreparation;
+import com.vitalitypeak.kcal.catalog.ModerationStatus;
 
 public class NutritionDtos {
     public record FoodResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
             BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
             FoodPreparation preparation, String preparationSource, String preparationGroup, String servingName, BigDecimal servingWeightGrams,
-            String imageUrl, String source, String sourceId, OffsetDateTime lastSyncedAt, Set<String> tags) {
+            String imageUrl, String source, String sourceId, OffsetDateTime lastSyncedAt, Set<String> tags,
+            Long createdById, OffsetDateTime createdAt, ModerationStatus moderationStatus) {
     }
 
     public record PageResponse<T>(List<T> items, int page, int size, long totalElements, int totalPages, boolean hasNext) {

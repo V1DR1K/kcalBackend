@@ -194,13 +194,14 @@ class KcalBackendApplicationTests {
 	}
 
 	@Test
-	void globalFoodCatalogWritesRequireAdminRole() {
+	void authenticatedUsersCanContributePendingGlobalFoods() {
 		Map<String, Object> food = Map.of("name", "Privado", "category", "OTHER", "baseUnit", "GRAM",
 				"baseQuantity", 100, "calories", 100, "proteinGrams", 1, "carbsGrams", 1, "fatGrams", 1,
 				"preparation", "UNSPECIFIED", "tags", Set.of());
 		ResponseEntity<String> response = rest.postForEntity("/api/foods", new HttpEntity<>(food, authHeaders()), String.class);
 
-		assertThat(response.getStatusCode().value()).isEqualTo(403);
+		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(response.getBody()).contains("\"moderationStatus\":\"PENDING\"", "\"createdById\"");
 	}
 
 	@Test

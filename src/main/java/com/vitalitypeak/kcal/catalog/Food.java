@@ -20,6 +20,8 @@ import org.hibernate.annotations.BatchSize;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import com.vitalitypeak.kcal.user.AppUser;
+import jakarta.persistence.ManyToOne;
 
 @Entity
 @BatchSize(size = 50)
@@ -65,6 +67,14 @@ public class Food {
     private String source = "LOCAL";
     private String sourceId;
     private OffsetDateTime lastSyncedAt;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_id")
+    private AppUser createdBy;
+    @Column(nullable = false)
+    private OffsetDateTime createdAt = OffsetDateTime.now();
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ModerationStatus moderationStatus = ModerationStatus.APPROVED;
 
     @ElementCollection(fetch = FetchType.LAZY)
     @BatchSize(size = 50)

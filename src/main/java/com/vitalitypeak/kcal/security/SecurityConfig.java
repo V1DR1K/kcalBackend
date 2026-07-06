@@ -39,7 +39,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/health", "/api/version").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/foods", "/api/foods/*/image").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/foods", "/api/foods/*/image").authenticated()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();

@@ -106,7 +106,7 @@ public class NutritionService {
     }
 
     @Transactional
-    public FoodResponse createFood(CreateFoodRequest request) {
+    public FoodResponse createFood(CreateFoodRequest request, com.vitalitypeak.kcal.user.AppUser creator) {
         String barcode = clean(request.barcode());
         if (barcode != null && foods.existsByBarcode(barcode)) {
             throw new BadRequestException("Ya existe un alimento con ese codigo de barras.");
@@ -130,6 +130,9 @@ public class NutritionService {
         food.setServingName(clean(request.servingName()));
         food.setServingWeightGrams(request.servingWeightGrams());
         food.setImageUrl(clean(request.imageUrl()));
+        food.setCreatedBy(creator);
+        food.setCreatedAt(OffsetDateTime.now());
+        food.setModerationStatus(com.vitalitypeak.kcal.catalog.ModerationStatus.PENDING);
         food.setTags(request.tags() == null ? new LinkedHashSet<>() : request.tags().stream()
                 .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
         return toFoodResponse(foods.save(food));
@@ -472,7 +475,8 @@ public class NutritionService {
         return new FoodResponse(food.getId(), food.getName(), food.getBrand(), food.getBarcode(), food.getCategory(),
                 food.getBaseUnit(), food.getBaseQuantity(), food.getCalories(), food.getProteinGrams(), food.getCarbsGrams(),
                 food.getFatGrams(), food.getPreparation(), food.getPreparationSource(), food.getPreparationGroup(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl(), food.getSource(), food.getSourceId(), food.getLastSyncedAt(),
-                copyTags(food.getTags()));
+                copyTags(food.getTags()), food.getCreatedBy() == null ? null : food.getCreatedBy().getId(),
+                food.getCreatedAt(), food.getModerationStatus());
     }
 
     private FoodLogResponse toFoodLogResponse(FoodLog log) {

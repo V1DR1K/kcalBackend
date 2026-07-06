@@ -44,8 +44,7 @@ public class FoodController {
 
     @PostMapping
     FoodResponse create(Authentication authentication, @Valid @RequestBody CreateFoodRequest request) {
-        currentUser.from(authentication);
-        return nutritionService.createFood(request);
+        return nutritionService.createFood(request, currentUser.from(authentication));
     }
 
     @GetMapping("/{id}")
