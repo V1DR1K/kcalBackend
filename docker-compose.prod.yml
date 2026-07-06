@@ -56,7 +56,10 @@ services:
     restart: "no"
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_HASH: ${GIT_HASH:-unknown}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -107,7 +110,10 @@ services:
     networks: [internal]
 
   frontend:
-    build: ../kcalFrontend
+    build:
+      context: ../kcalFrontend
+      args:
+        GIT_HASH: ${GIT_HASH:-unknown}
     restart: unless-stopped
     depends_on:
       app:
