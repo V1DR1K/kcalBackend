@@ -62,6 +62,46 @@ public class DataSeeder {
                     41, 0.8, 8.1, 0.6, FoodPreparation.RAW, "ARGENFOODS 132", Set.of("Fruta", "Argentina"));
             ensureFood(foods, "Sandía", "Fresco", "7790000000141", FoodCategory.FRUIT,
                     31, 0.5, 6.9, 0.2, FoodPreparation.RAW, "ARGENFOODS 147", Set.of("Fruta", "Argentina"));
+            ensureFood(foods, "Naranja", "Fresco", "7790000000142", FoodCategory.FRUIT,
+                    47, 0.9, 11.8, 0.1, FoodPreparation.RAW, "USDA FDC 169097", Set.of("Fruta", "Vitamina C"));
+            ensureFood(foods, "Mandarina", "Fresco", "7790000000143", FoodCategory.FRUIT,
+                    53, 0.8, 13.3, 0.3, FoodPreparation.RAW, "USDA FDC 169103", Set.of("Fruta", "Vitamina C"));
+            ensureFood(foods, "Uva", "Fresco", "7790000000144", FoodCategory.FRUIT,
+                    69, 0.7, 18.1, 0.2, FoodPreparation.RAW, "USDA FDC 174682", Set.of("Fruta"));
+            ensureFood(foods, "Kiwi", "Fresco", "7790000000145", FoodCategory.FRUIT,
+                    61, 1.1, 14.7, 0.5, FoodPreparation.RAW, "USDA FDC 168150", Set.of("Fruta", "Vitamina C"));
+            ensureFood(foods, "Ananá", "Fresco", "7790000000146", FoodCategory.FRUIT,
+                    50, 0.5, 13.1, 0.1, FoodPreparation.RAW, "USDA FDC 169124", Set.of("Fruta"));
+            ensureFood(foods, "Melón", "Fresco", "7790000000147", FoodCategory.FRUIT,
+                    34, 0.8, 8.2, 0.2, FoodPreparation.RAW, "USDA FDC 169092", Set.of("Fruta"));
+            ensureFood(foods, "Ciruela", "Fresco", "7790000000148", FoodCategory.FRUIT,
+                    46, 0.7, 11.4, 0.3, FoodPreparation.RAW, "USDA FDC 169944", Set.of("Fruta"));
+            ensureFood(foods, "Arándanos", "Fresco", "7790000000149", FoodCategory.FRUIT,
+                    57, 0.7, 14.5, 0.3, FoodPreparation.RAW, "USDA FDC 171726", Set.of("Fruta"));
+            ensureFood(foods, "Cereza", "Fresco", "7790000000150", FoodCategory.FRUIT,
+                    50, 1, 12.2, 0.3, FoodPreparation.RAW, "USDA FDC 171719", Set.of("Fruta"));
+            ensureFood(foods, "Limón", "Fresco", "7790000000151", FoodCategory.FRUIT,
+                    29, 1.1, 9.3, 0.3, FoodPreparation.RAW, "USDA FDC 167746", Set.of("Fruta", "Vitamina C"));
+            ensureFood(foods, "Frambuesa", "Fresco", "7790000000152", FoodCategory.FRUIT,
+                    52, 1.2, 11.9, 0.7, FoodPreparation.RAW, "USDA FDC 173941", Set.of("Fruta"));
+            ensureFood(foods, "Mango", "Fresco", "7790000000153", FoodCategory.FRUIT,
+                    60, 0.8, 15, 0.4, FoodPreparation.RAW, "USDA FDC 169910", Set.of("Fruta"));
+            ensureFood(foods, "Pomelo", "Fresco", "7790000000154", FoodCategory.FRUIT,
+                    42, 0.8, 10.7, 0.1, FoodPreparation.RAW, "USDA FDC 174674", Set.of("Fruta", "Vitamina C"));
+            ensureFood(foods, "Granada", "Fresco", "7790000000155", FoodCategory.FRUIT,
+                    83, 1.7, 18.7, 1.2, FoodPreparation.RAW, "USDA FDC 169934", Set.of("Fruta"));
+            ensureFood(foods, "Damasco", "Fresco", "7790000000156", FoodCategory.FRUIT,
+                    48, 1.4, 11.1, 0.4, FoodPreparation.RAW, "USDA FDC 171697", Set.of("Fruta"));
+            ensureFood(foods, "Higo", "Fresco", "7790000000157", FoodCategory.FRUIT,
+                    74, 0.8, 19.2, 0.3, FoodPreparation.RAW, "USDA FDC 173943", Set.of("Fruta"));
+            ensureFood(foods, "Moras", "Fresco", "7790000000158", FoodCategory.FRUIT,
+                    43, 1.4, 10.2, 0.5, FoodPreparation.RAW, "USDA FDC 173946", Set.of("Fruta"));
+            ensureFood(foods, "Papaya", "Fresco", "7790000000159", FoodCategory.FRUIT,
+                    43, 0.5, 10.8, 0.3, FoodPreparation.RAW, "USDA FDC 169926", Set.of("Fruta"));
+            ensureFood(foods, "Coco rallado", "Fresco", "7790000000160", FoodCategory.FRUIT,
+                    354, 3.3, 15.2, 33.5, FoodPreparation.RAW, "USDA FDC 169958", Set.of("Fruta", "Grasas"));
+            ensureFood(foods, "Maracuyá", "Fresco", "7790000000161", FoodCategory.FRUIT,
+                    97, 2.2, 23.4, 0.7, FoodPreparation.RAW, "USDA FDC 169108", Set.of("Fruta"));
             ensureFood(foods, "Tomate", "Fresco", "7790000000202", FoodCategory.VEGETABLE,
                     20, 1, 4.1, 0, FoodPreparation.RAW, "ARGENFOODS 110", Set.of("Verdura", "Argentina"));
             ensureFood(foods, "Lechuga", "Fresco", "7790000000219", FoodCategory.VEGETABLE,
@@ -78,6 +118,40 @@ public class DataSeeder {
                     37, 3.3, 5.5, 0.2, FoodPreparation.RAW, "ARGENFOODS 66", Set.of("Verdura", "Argentina"));
             ensureFood(foods, "Espinaca", "Fresco", "7790000000271", FoodCategory.VEGETABLE,
                     24, 3.9, 2, 0, FoodPreparation.RAW, "ARGENFOODS 75", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Repollo", "Fresco", "7790000000272", FoodCategory.VEGETABLE,
+                    25, 1.3, 5.8, 0.1, FoodPreparation.RAW, "USDA FDC 169246", Set.of("Verdura"));
+            ensureFood(foods, "Zanahoria", "Fresco", "7790000000273", FoodCategory.VEGETABLE,
+                    41, 0.9, 9.6, 0.2, FoodPreparation.RAW, "ARGENFOODS 87", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Pepino", "Fresco", "7790000000274", FoodCategory.VEGETABLE,
+                    15, 0.7, 3.6, 0.1, FoodPreparation.RAW, "USDA FDC 169248", Set.of("Verdura"));
+            ensureFood(foods, "Morrón rojo", "Fresco", "7790000000275", FoodCategory.VEGETABLE,
+                    31, 1, 6, 0.3, FoodPreparation.RAW, "ARGENFOODS 88", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Morrón verde", "Fresco", "7790000000276", FoodCategory.VEGETABLE,
+                    20, 0.9, 4.6, 0.2, FoodPreparation.RAW, "ARGENFOODS 89", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Calabacín", "Fresco", "7790000000277", FoodCategory.VEGETABLE,
+                    17, 1.2, 3.1, 0.3, FoodPreparation.RAW, "USDA FDC 169250", Set.of("Verdura"));
+            ensureFood(foods, "Coliflor", "Fresco", "7790000000278", FoodCategory.VEGETABLE,
+                    25, 1.9, 5, 0.3, FoodPreparation.RAW, "USDA FDC 169245", Set.of("Verdura", "Keto Friendly"));
+            ensureFood(foods, "Chaucha", "Fresco", "7790000000279", FoodCategory.VEGETABLE,
+                    31, 1.8, 7, 0.2, FoodPreparation.RAW, "ARGENFOODS 73", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Apio", "Fresco", "7790000000280", FoodCategory.VEGETABLE,
+                    16, 0.7, 3, 0.2, FoodPreparation.RAW, "ARGENFOODS 63", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Espárrago", "Fresco", "7790000000281", FoodCategory.VEGETABLE,
+                    20, 2.2, 3.9, 0.1, FoodPreparation.RAW, "USDA FDC 168390", Set.of("Verdura"));
+            ensureFood(foods, "Remolacha", "Fresco", "7790000000282", FoodCategory.VEGETABLE,
+                    43, 1.6, 9.6, 0.2, FoodPreparation.RAW, "ARGENFOODS 68", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Batata", "Fresco", "7790000000283", FoodCategory.VEGETABLE,
+                    86, 1.6, 20.1, 0.1, FoodPreparation.RAW, "ARGENFOODS 82", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Choclo", "Fresco", "7790000000284", FoodCategory.VEGETABLE,
+                    86, 3.3, 19, 1.2, FoodPreparation.RAW, "ARGENFOODS 85", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Hongos", "Fresco", "7790000000285", FoodCategory.VEGETABLE,
+                    22, 3.1, 3.3, 0.3, FoodPreparation.RAW, "USDA FDC 169251", Set.of("Verdura"));
+            ensureFood(foods, "Rúcula", "Fresco", "7790000000286", FoodCategory.VEGETABLE,
+                    25, 2.6, 3.7, 0.7, FoodPreparation.RAW, "USDA FDC 169253", Set.of("Verdura"));
+            ensureFood(foods, "Acelga", "Fresco", "7790000000287", FoodCategory.VEGETABLE,
+                    19, 1.8, 3.7, 0.2, FoodPreparation.RAW, "ARGENFOODS 74", Set.of("Verdura", "Argentina"));
+            ensureFood(foods, "Radicheta", "Fresco", "7790000000288", FoodCategory.VEGETABLE,
+                    23, 1.4, 4.5, 0.3, FoodPreparation.RAW, "USDA FDC 169252", Set.of("Verdura"));
             ensureFood(foods, "Lomo vacuno", "Carnicería", "7790000000301", FoodCategory.PROTEIN,
                     116, 20, 0, 4, FoodPreparation.RAW, "ARGENFOODS 233", Set.of("Carne vacuna", "Argentina"));
             ensureFood(foods, "Carne picada magra", "Carnicería", "7790000000707", FoodCategory.PROTEIN,
@@ -122,6 +196,12 @@ public class DataSeeder {
                     34, 3.4, 5, 0.1, FoodPreparation.AS_SOLD, "USDA FoodData Central", Set.of("Lácteo"));
             ensureFood(foods, "Queso cremoso", "Genérico", "7790000000462", FoodCategory.DAIRY,
                     300, 18, 2, 24, FoodPreparation.AS_SOLD, "SARA 2 Argentina", Set.of("Lácteo", "Argentina"));
+            ensureFood(foods, "Queso crema", "KazaFitness Dairy", "7790000000463", FoodCategory.DAIRY,
+                    342, 8, 4, 34, FoodPreparation.AS_SOLD, "ARGENFOODS 102", Set.of("Lácteo", "Alto en Grasas"));
+            ensureFood(foods, "Queso mozzarella", "KazaFitness Dairy", "7790000000464", FoodCategory.DAIRY,
+                    280, 28, 3, 17, FoodPreparation.AS_SOLD, "ARGENFOODS 105", Set.of("Lácteo", "Alta en Proteína"));
+            ensureFood(foods, "Queso cottage", "KazaFitness Dairy", "7790000000465", FoodCategory.DAIRY,
+                    98, 11, 3.4, 4.3, FoodPreparation.AS_SOLD, "USDA FDC 171278", Set.of("Lácteo", "Alta en Proteína"));
             ensureFood(foods, "Avena arrollada", "Genérico", "7790000000479", FoodCategory.CEREAL,
                     379, 13.2, 67.7, 6.5, FoodPreparation.AS_SOLD, "USDA FoodData Central", Set.of("Cereal"));
             ensureFood(foods, "Pan francés", "Panadería", "7790000000486", FoodCategory.CEREAL,
@@ -132,6 +212,10 @@ public class DataSeeder {
                     371, 13, 75, 1.5, FoodPreparation.AS_SOLD, "USDA FoodData Central", Set.of("Pasta"));
             ensureFood(foods, "Fideos cocidos", "Genérico", "7790000000516", FoodCategory.CEREAL,
                     158, 5.8, 30.9, 0.9, FoodPreparation.COOKED, "USDA FoodData Central", Set.of("Pasta"));
+            ensureFood(foods, "Fideos integrales cocidos", "Genérico", "7790000000517", FoodCategory.CEREAL,
+                    124, 5.3, 26.5, 0.5, FoodPreparation.COOKED, "USDA FDC 169709", Set.of("Pasta", "Argentina"));
+            ensureFood(foods, "Quinoa cocida", "Genérico", "7790000000518", FoodCategory.CEREAL,
+                    120, 4.4, 21.3, 1.9, FoodPreparation.COOKED, "USDA FDC 168917", Set.of("Cereal", "Sin TACC"));
             ensureFood(foods, "Lentejas cocidas", "Genérico", "7790000000523", FoodCategory.CEREAL,
                     116, 9, 20.1, 0.4, FoodPreparation.COOKED, "USDA FoodData Central", Set.of("Legumbre"));
             ensureFood(foods, "Garbanzos cocidos", "Genérico", "7790000000530", FoodCategory.CEREAL,
@@ -146,6 +230,12 @@ public class DataSeeder {
                     587, 24.4, 21.3, 49.7, FoodPreparation.AS_SOLD, "USDA FoodData Central", Set.of("Fruto seco"));
             ensureFood(foods, "Almendras", "Genérico", "7790000000585", FoodCategory.FAT,
                     579, 21.2, 21.6, 49.9, FoodPreparation.AS_SOLD, "USDA FoodData Central", Set.of("Fruto seco"));
+            ensureFood(foods, "Nueces", "Genérico", "7790000000586", FoodCategory.FAT,
+                    654, 15.2, 13.7, 65.2, FoodPreparation.RAW, "ARGENFOODS 128", Set.of("Fruto seco", "Argentina"));
+            ensureFood(foods, "Semillas de chía", "Genérico", "7790000000587", FoodCategory.FAT,
+                    486, 16.5, 42.1, 30.7, FoodPreparation.RAW, "USDA FDC 170554", Set.of("Semilla"));
+            ensureFood(foods, "Pasta de maní", "KazaFitness Select", "7790000000588", FoodCategory.FAT,
+                    588, 25, 20, 50, FoodPreparation.AS_SOLD, "USDA FDC 174230", Set.of("Fruto seco"));
             ensureFood(foods, "Jugo de naranja", "Genérico", "7790000000592", FoodCategory.FRUIT,
                     45, 0.7, 10.4, 0.2, FoodPreparation.AS_SOLD, "USDA FoodData Central", Set.of("Bebida"));
             ensureFood(foods, "Papas fritas de paquete", "Genérico", "7790000000608", FoodCategory.OTHER,
@@ -175,9 +265,18 @@ public class DataSeeder {
             setServing(foods, "7790000000110", "Pera mediana", 178);
             setServing(foods, "7790000000127", "Durazno mediano", 150);
             setServing(foods, "7790000000134", "Frutilla mediana", 12);
+            setServing(foods, "7790000000142", "Naranja mediana", 131);
+            setServing(foods, "7790000000143", "Mandarina mediana", 100);
+            setServing(foods, "7790000000145", "Kiwi mediano", 69);
+            setServing(foods, "7790000000153", "Mango mediano", 200);
             setServing(foods, "7790000000202", "Tomate mediano", 123);
             setServing(foods, "7790000000226", "Papa mediana", 173);
             setServing(foods, "7790000000233", "Cebolla mediana", 110);
+            setServing(foods, "7790000000272", "Repollo chico", 500);
+            setServing(foods, "7790000000273", "Zanahoria mediana", 61);
+            setServing(foods, "7790000000274", "Pepino mediano", 200);
+            setServing(foods, "7790000000282", "Remolacha mediana", 136);
+            setServing(foods, "7790000000284", "Choclo", 150);
             setPreparationGroup(foods, "CHICKEN_BREAST", "7790000000011", "7790000000073");
             setPreparationGroup(foods, "BEEF_VACIO", "7790000000332", "7790000000349");
             setPreparationGroup(foods, "BEEF_STEAK", "7790000000356", "7790000000363");
