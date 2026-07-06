@@ -216,12 +216,24 @@ public class DataSeeder {
                     124, 5.3, 26.5, 0.5, FoodPreparation.COOKED, "USDA FDC 169709", Set.of("Pasta", "Argentina"));
             ensureFood(foods, "Quinoa cocida", "Genérico", "7790000000518", FoodCategory.CEREAL,
                     120, 4.4, 21.3, 1.9, FoodPreparation.COOKED, "USDA FDC 168917", Set.of("Cereal", "Sin TACC"));
-            ensureFood(foods, "Lentejas cocidas", "Genérico", "7790000000523", FoodCategory.CEREAL,
+            ensureFood(foods, "Lentejas cocidas", "Genérico", "7790000000523", FoodCategory.LEGUME,
                     116, 9, 20.1, 0.4, FoodPreparation.COOKED, "USDA FoodData Central", Set.of("Legumbre"));
-            ensureFood(foods, "Garbanzos cocidos", "Genérico", "7790000000530", FoodCategory.CEREAL,
+            ensureFood(foods, "Garbanzos cocidos", "Genérico", "7790000000530", FoodCategory.LEGUME,
                     164, 8.9, 27.4, 2.6, FoodPreparation.COOKED, "USDA FoodData Central", Set.of("Legumbre"));
-            ensureFood(foods, "Porotos negros cocidos", "Genérico", "7790000000547", FoodCategory.CEREAL,
+            ensureFood(foods, "Porotos negros cocidos", "Genérico", "7790000000547", FoodCategory.LEGUME,
                     132, 8.9, 23.7, 0.5, FoodPreparation.COOKED, "USDA FoodData Central", Set.of("Legumbre"));
+            ensureFood(foods, "Arvejas cocidas", "Genérico", "7790000000806", FoodCategory.LEGUME,
+                    84, 5.4, 15.6, 0.2, FoodPreparation.COOKED, "Promedio de tablas de composición", Set.of("Legumbre", "Argentina"));
+            ensureFood(foods, "Porotos alubia cocidos", "Genérico", "7790000000813", FoodCategory.LEGUME,
+                    127, 8.7, 22.8, 0.5, FoodPreparation.COOKED, "Promedio de tablas de composición", Set.of("Legumbre", "Porotos", "Argentina"));
+            ensureFood(foods, "Porotos colorados cocidos", "Genérico", "7790000000820", FoodCategory.LEGUME,
+                    127, 8.7, 22.8, 0.5, FoodPreparation.COOKED, "Promedio de tablas de composición", Set.of("Legumbre", "Porotos", "Argentina"));
+            ensureFood(foods, "Soja cocida", "Genérico", "7790000000837", FoodCategory.LEGUME,
+                    172, 18.2, 8.4, 9, FoodPreparation.COOKED, "USDA FoodData Central", Set.of("Legumbre", "Alta en Proteina"));
+            ensureFood(foods, "Choclo hervido", "Genérico", "7790000000844", FoodCategory.VEGETABLE,
+                    96, 3.4, 21, 1.5, FoodPreparation.COOKED, "Promedio de tablas de composición", Set.of("Choclo", "Maiz", "Argentina"));
+            ensureFood(foods, "Choclo amarillo en lata", "Genérico", "7790000000851", FoodCategory.VEGETABLE,
+                    76, 2.5, 14.7, 1.4, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Choclo", "Maiz", "Enlatado", "Argentina"));
             ensureFood(foods, "Aceite de oliva", "Genérico", "7790000000554", FoodCategory.FAT,
                     884, 0, 0, 100, FoodPreparation.AS_SOLD, "USDA FoodData Central", Set.of("Aceite"));
             ensureFood(foods, "Manteca", "Genérico", "7790000000561", FoodCategory.FAT,
@@ -242,6 +254,46 @@ public class DataSeeder {
                     536, 7, 53, 35, FoodPreparation.AS_SOLD, "USDA FoodData Central", Set.of("Snack"));
             ensureFood(foods, "Chocolate con leche", "Genérico", "7790000000615", FoodCategory.OTHER,
                     535, 7.7, 59.4, 29.7, FoodPreparation.AS_SOLD, "USDA FoodData Central", Set.of("Snack"));
+            ensureFood(foods, "Alfajor de chocolate simple", "Genérico", "7790000000868", FoodCategory.SWEET,
+                    430, 5.5, 62, 18, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Alfajor", "Golosina", "Kiosco", "Argentina"));
+            ensureFood(foods, "Alfajor de chocolate triple", "Genérico", "7790000000875", FoodCategory.SWEET,
+                    420, 5.5, 61, 17, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Alfajor", "Triple", "Golosina", "Kiosco", "Argentina"));
+            ensureFood(foods, "Alfajor de maicena", "Genérico", "7790000000882", FoodCategory.SWEET,
+                    410, 5, 65, 14.5, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Alfajor", "Maicena", "Dulce de leche", "Argentina"));
+            ensureFood(foods, "Dulce de leche", "Genérico", "7790000000899", FoodCategory.SWEET,
+                    315, 6, 57, 7, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Dulce", "Argentina"));
+            ensureFood(foods, "Galletitas de agua", "Genérico", "7790000000905", FoodCategory.BAKERY,
+                    430, 10, 72, 12, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Galletitas", "Crackers", "Argentina"));
+            ensureFood(foods, "Galletitas saladas tipo crackers", "Genérico", "7790000000912", FoodCategory.BAKERY,
+                    455, 9, 68, 16, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Galletitas", "Saladas", "Crackers", "Argentina"));
+            ensureFood(foods, "Galletitas dulces de vainilla", "Genérico", "7790000000929", FoodCategory.SWEET,
+                    440, 6, 73, 14, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Galletitas", "Dulces", "Vainilla", "Argentina"));
+            ensureFood(foods, "Galletitas de chocolate", "Genérico", "7790000000936", FoodCategory.SWEET,
+                    470, 6, 68, 20, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Galletitas", "Chocolate", "Argentina"));
+            ensureFood(foods, "Galletitas pepas con membrillo", "Genérico", "7790000000943", FoodCategory.SWEET,
+                    435, 5, 71, 15, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Galletitas", "Pepas", "Membrillo", "Argentina"));
+            ensureFood(foods, "Oblea rellena", "Genérico", "7790000000950", FoodCategory.SWEET,
+                    505, 6, 64, 25, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Oblea", "Golosina", "Kiosco", "Argentina"));
+            ensureFood(foods, "Gomitas frutales", "Genérico", "7790000000967", FoodCategory.SWEET,
+                    340, 5, 79, 0.2, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Gomitas", "Golosina", "Kiosco"));
+            ensureFood(foods, "Caramelos duros", "Genérico", "7790000000974", FoodCategory.SWEET,
+                    390, 0, 97, 0, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Caramelo", "Golosina", "Kiosco"));
+            ensureFood(foods, "Turrón de maní", "Genérico", "7790000000981", FoodCategory.SWEET,
+                    500, 12, 55, 26, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Turron", "Mani", "Golosina", "Argentina"));
+            ensureFood(foods, "Bocadito de pasta de maní", "Genérico", "7790000000998", FoodCategory.SWEET,
+                    535, 13, 50, 32, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Mantecol", "Mani", "Golosina", "Argentina"));
+            ensureFood(foods, "Barrita de cereal", "Genérico", "7790000001001", FoodCategory.CEREAL,
+                    390, 6, 70, 10, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Barrita", "Cereal", "Snack"));
+            ensureFood(foods, "Chizitos de maíz", "Genérico", "7790000001018", FoodCategory.SNACK,
+                    530, 6, 56, 31, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Chizitos", "Snack", "Maiz", "Kiosco", "Argentina"));
+            ensureFood(foods, "Palitos salados", "Genérico", "7790000001025", FoodCategory.SNACK,
+                    470, 10, 72, 16, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Palitos", "Snack", "Salado", "Argentina"));
+            ensureFood(foods, "Nachos de maíz", "Genérico", "7790000001032", FoodCategory.SNACK,
+                    500, 7, 58, 27, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Nachos", "Snack", "Maiz"));
+            ensureFood(foods, "Pochoclo salado", "Genérico", "7790000001049", FoodCategory.CEREAL,
+                    430, 9, 57, 19, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Pochoclo", "Popcorn", "Snack", "Argentina"));
+            ensureFood(foods, "Pochoclo acaramelado", "Genérico", "7790000001056", FoodCategory.OTHER,
+                    410, 4, 78, 9, FoodPreparation.AS_SOLD, "Promedio de etiquetas argentinas", Set.of("Pochoclo", "Popcorn", "Dulce", "Argentina"));
             ensureFood(foods, "Azúcar", "Genérico", "7790000000622", FoodCategory.OTHER,
                     387, 0, 100, 0, FoodPreparation.AS_SOLD, "USDA FoodData Central", Set.of("Condimento"));
             ensureFood(foods, "Mayonesa", "Genérico", "7790000000639", FoodCategory.FAT,
@@ -293,6 +345,32 @@ public class DataSeeder {
             setServing(foods, "7790000000653", "Unidad", 90);
             setServing(foods, "7790000000660", "Taza", 240);
             setServing(foods, "7790000000677", "Taza", 240);
+            setServing(foods, "7790000000806", "Media taza", 80);
+            setServing(foods, "7790000000813", "Media taza", 90);
+            setServing(foods, "7790000000820", "Media taza", 90);
+            setServing(foods, "7790000000837", "Media taza", 85);
+            setServing(foods, "7790000000844", "Choclo mediano", 150);
+            setServing(foods, "7790000000851", "Media taza", 85);
+            setServing(foods, "7790000000868", "Unidad", 55);
+            setServing(foods, "7790000000875", "Unidad", 70);
+            setServing(foods, "7790000000882", "Unidad", 60);
+            setServing(foods, "7790000000899", "Cucharada", 20);
+            setServing(foods, "7790000000905", "4 galletitas", 30);
+            setServing(foods, "7790000000912", "6 galletitas", 30);
+            setServing(foods, "7790000000929", "5 galletitas", 35);
+            setServing(foods, "7790000000936", "4 galletitas", 36);
+            setServing(foods, "7790000000943", "3 galletitas", 36);
+            setServing(foods, "7790000000950", "Unidad", 22);
+            setServing(foods, "7790000000967", "Porción", 30);
+            setServing(foods, "7790000000974", "Unidad", 6);
+            setServing(foods, "7790000000981", "Unidad", 25);
+            setServing(foods, "7790000000998", "Porción", 25);
+            setServing(foods, "7790000001001", "Unidad", 23);
+            setServing(foods, "7790000001018", "Paquete chico", 35);
+            setServing(foods, "7790000001025", "Porción", 30);
+            setServing(foods, "7790000001032", "Porción", 30);
+            setServing(foods, "7790000001049", "Taza", 12);
+            setServing(foods, "7790000001056", "Taza", 20);
             }
 
             if (!demoUsersEnabled) return;
@@ -357,15 +435,26 @@ public class DataSeeder {
 
     private static void ensureFood(FoodRepository foods, String name, String brand, String barcode, FoodCategory category,
             int calories, double protein, double carbs, double fat, FoodPreparation preparation, String preparationSource, Set<String> tags) {
+        category = seedCategory(name, category, tags);
         var existing = foods.findByBarcode(barcode);
         if (existing.isPresent()) {
             Food food = existing.get();
+            food.setCategory(category);
             food.setPreparation(preparation);
             food.setPreparationSource(preparationSource);
             foods.save(food);
             return;
         }
         foods.save(food(name, brand, barcode, category, calories, protein, carbs, fat, preparation, preparationSource, tags));
+    }
+
+    private static FoodCategory seedCategory(String name, FoodCategory category, Set<String> tags) {
+        String value = (name + " " + String.join(" ", tags)).toLowerCase();
+        if (category == FoodCategory.PROTEIN && (value.contains("carne") || value.contains("vacuno") || value.contains("pollo"))) return FoodCategory.MEAT;
+        if (category == FoodCategory.CEREAL && (value.contains("pan") || value.contains("galletita") || value.contains("cracker"))) return FoodCategory.BAKERY;
+        if (category == FoodCategory.OTHER && value.contains("chocolate")) return FoodCategory.SWEET;
+        if (category == FoodCategory.OTHER && (value.contains("snack") || value.contains("papas fritas"))) return FoodCategory.SNACK;
+        return category;
     }
 
     private static Food food(String name, String brand, String barcode, FoodCategory category, int calories,

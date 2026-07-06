@@ -51,8 +51,6 @@ import com.vitalitypeak.kcal.recipe.RecipeRepository;
 import com.vitalitypeak.kcal.profile.NutritionPlan;
 import com.vitalitypeak.kcal.profile.ProfileDtos.NutritionPlanResponse;
 import com.vitalitypeak.kcal.profile.ProfileService;
-import com.vitalitypeak.kcal.storage.ProductImageStorageService;
-import com.vitalitypeak.kcal.storage.StoredImage;
 import com.vitalitypeak.kcal.user.AppUser;
 
 @Service
@@ -62,18 +60,16 @@ public class NutritionService {
     private final FoodLogRepository foodLogs;
     private final WaterLogRepository waterLogs;
     private final ProfileService profileService;
-    private final ProductImageStorageService imageStorage;
     private final ExternalFoodLookupService externalFoodLookup;
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
-            WaterLogRepository waterLogs, ProfileService profileService, ProductImageStorageService imageStorage,
+            WaterLogRepository waterLogs, ProfileService profileService,
             ExternalFoodLookupService externalFoodLookup) {
         this.foods = foods;
         this.recipes = recipes;
         this.foodLogs = foodLogs;
         this.waterLogs = waterLogs;
         this.profileService = profileService;
-        this.imageStorage = imageStorage;
         this.externalFoodLookup = externalFoodLookup;
     }
 
@@ -129,7 +125,6 @@ public class NutritionService {
         food.setPreparationSource("Ingresado por el usuario");
         food.setServingName(clean(request.servingName()));
         food.setServingWeightGrams(request.servingWeightGrams());
-        food.setImageUrl(clean(request.imageUrl()));
         food.setCreatedBy(creator);
         food.setCreatedAt(OffsetDateTime.now());
         food.setModerationStatus(com.vitalitypeak.kcal.catalog.ModerationStatus.PENDING);
@@ -170,18 +165,6 @@ public class NutritionService {
         food.setTags(request.tags() == null ? new LinkedHashSet<>() : request.tags().stream()
                 .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
         return toFoodResponse(foods.save(food));
-    }
-
-    @Transactional
-    public FoodResponse uploadFoodImage(Long foodId, org.springframework.web.multipart.MultipartFile image) {
-        Food food = getFood(foodId);
-        StoredImage stored = imageStorage.storeFoodImage(food.getId(), image);
-        String oldKey = food.getImageObjectKey();
-        food.setImageObjectKey(stored.objectKey());
-        food.setImageUrl(stored.url());
-        Food saved = foods.save(food);
-        imageStorage.deleteQuietly(oldKey);
-        return toFoodResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -230,7 +213,6 @@ public class NutritionService {
             food.setServingName(clean(candidate.servingName()));
             food.setServingWeightGrams(candidate.servingWeightGrams());
         }
-        if (clean(food.getImageUrl()) == null) food.setImageUrl(clean(candidate.imageUrl()));
         if (clean(food.getBrand()) == null) food.setBrand(clean(candidate.brand()));
         if (clean(food.getSource()) == null || "LOCAL".equals(food.getSource())) {
             food.setSource(candidate.source());
@@ -258,7 +240,6 @@ public class NutritionService {
         food.setPreparationSource(clean(candidate.preparationSource()));
         food.setServingName(clean(candidate.servingName()));
         food.setServingWeightGrams(candidate.servingWeightGrams());
-        food.setImageUrl(clean(candidate.imageUrl()));
         food.setSource(candidate.source());
         food.setSourceId(candidate.sourceId());
         food.setLastSyncedAt(OffsetDateTime.now());

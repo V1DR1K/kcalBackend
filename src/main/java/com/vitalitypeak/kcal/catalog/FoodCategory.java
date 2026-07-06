@@ -1,5 +1,5 @@
 package com.vitalitypeak.kcal.catalog;
 
 public enum FoodCategory {
-    PROTEIN, DAIRY, FRUIT, VEGETABLE, CEREAL, FAT, OTHER
+    PROTEIN, MEAT, DAIRY, FRUIT, VEGETABLE, LEGUME, CEREAL, BAKERY, BEVERAGE, SWEET, SNACK, FAT, OTHER
 }

@@ -39,7 +39,7 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
             String url = UriComponentsBuilder
                     .fromUriString(properties.openFoodFacts().baseUrl())
                     .path("/api/v2/product/{barcode}.json")
-                    .queryParam("fields", "status,product_name,generic_name,brands,categories_tags,image_front_url,nutriments,serving_size,serving_quantity")
+                    .queryParam("fields", "status,product_name,generic_name,brands,categories_tags,nutriments,serving_size,serving_quantity")
                     .buildAndExpand(barcode)
                     .toUriString();
 
@@ -66,7 +66,7 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
                     .queryParam("tagtype_0", "countries")
                     .queryParam("tag_contains_0", "contains")
                     .queryParam("tag_0", "argentina")
-                    .queryParam("fields", "code,product_name,generic_name,brands,categories_tags,image_front_url,nutriments,serving_size,serving_quantity")
+                    .queryParam("fields", "code,product_name,generic_name,brands,categories_tags,nutriments,serving_size,serving_quantity")
                     .encode().toUriString();
             HttpHeaders headers = new HttpHeaders();
             headers.set(HttpHeaders.USER_AGENT, properties.openFoodFacts().userAgent());
@@ -78,6 +78,32 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
                 String barcode = text(product.get("code"));
                 if (barcode == null) continue;
                 parseProduct(barcode, product).ifPresent(result::add);
+            }
+            return result;
+        } catch (RestClientException | IllegalArgumentException ex) {
+            return List.of();
+        }
+    }
+
+    public List<ExternalFoodCandidate> searchBrandInArgentina(String brand, int page, int pageSize) {
+        try {
+            String url = UriComponentsBuilder.fromUriString(properties.openFoodFacts().baseUrl())
+                    .path("/cgi/search.pl")
+                    .queryParam("search_simple", 1).queryParam("action", "process").queryParam("json", 1)
+                    .queryParam("page", Math.max(1, page)).queryParam("page_size", Math.max(1, Math.min(pageSize, 100)))
+                    .queryParam("tagtype_0", "brands").queryParam("tag_contains_0", "contains").queryParam("tag_0", brand)
+                    .queryParam("tagtype_1", "countries").queryParam("tag_contains_1", "contains").queryParam("tag_1", "Argentina")
+                    .queryParam("fields", "code,product_name,generic_name,brands,categories_tags,nutriments,serving_size,serving_quantity")
+                    .encode().toUriString();
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.USER_AGENT, properties.openFoodFacts().userAgent());
+            Map<String, Object> body = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), MAP_TYPE).getBody();
+            if (body == null || !(body.get("products") instanceof Iterable<?> products)) return List.of();
+            List<ExternalFoodCandidate> result = new ArrayList<>();
+            for (Object value : products) {
+                if (!(value instanceof Map<?, ?> product)) continue;
+                String barcode = text(product.get("code"));
+                if (barcode != null) parseProduct(barcode, product).ifPresent(result::add);
             }
             return result;
         } catch (RestClientException | IllegalArgumentException ex) {
@@ -127,7 +153,7 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
                 name,
                 text(product.get("brands")),
                 barcode,
-                FoodCategory.OTHER,
+                FoodCategoryClassifier.classify(name, text(product.get("brands")), tags),
                 calories,
                 protein,
                 carbs,
@@ -136,7 +162,7 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
                 preparation == FoodPreparation.AS_SOLD ? "Open Food Facts (nutrición según envase)" : "Open Food Facts (nombre/categorías)",
                 text(product.get("serving_size")),
                 decimal(product.get("serving_quantity")),
-                text(product.get("image_front_url")),
+                null,
                 tags,
                 "OPEN_FOOD_FACTS",
                 barcode));

@@ -10,9 +10,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 import com.vitalitypeak.kcal.catalog.FoodCategory;
 import com.vitalitypeak.kcal.common.CurrentUser;
@@ -66,11 +64,6 @@ public class FoodController {
     @GetMapping("/{id}/preparations")
     List<FoodResponse> preparations(@PathVariable Long id) {
         return nutritionService.findPreparationOptions(id);
-    }
-
-    @PostMapping("/{id}/image")
-    FoodResponse uploadImage(@PathVariable Long id, @RequestPart("image") MultipartFile image) {
-        return nutritionService.uploadFoodImage(id, image);
     }
 
     @GetMapping("/barcode/{barcode}")

@@ -45,7 +45,6 @@ public class NutritionDtos {
             FoodPreparation preparation,
             @Size(max = 80) String servingName,
             @Positive BigDecimal servingWeightGrams,
-            @Size(max = 500) String imageUrl,
             @Size(max = 10) Set<@Size(max = 40) String> tags) {
     }
 

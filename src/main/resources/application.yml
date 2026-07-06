@@ -49,14 +49,6 @@ app:
   jwt:
     secret: ${JWT_SECRET:VitalityPeakDevelopmentSecretKeyForJwtTokenSigningChangeMe12345}
     expiration-minutes: ${JWT_EXPIRATION_MINUTES:0}
-  storage:
-    endpoint: ${STORAGE_ENDPOINT:http://localhost:7480}
-    public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost:7480}
-    region: ${STORAGE_REGION:us-east-1}
-    bucket: ${STORAGE_BUCKET:kcal-products}
-    access-key: ${STORAGE_ACCESS_KEY:kcal_access_key}
-    secret-key: ${STORAGE_SECRET_KEY:kcal_secret_key}
-    max-image-size-bytes: ${STORAGE_MAX_IMAGE_SIZE_BYTES:5242880}
   food-lookup:
     enabled: ${FOOD_LOOKUP_ENABLED:true}
     timeout: ${FOOD_LOOKUP_TIMEOUT:3s}
@@ -66,6 +58,12 @@ app:
     usda:
       base-url: ${USDA_FOOD_DATA_BASE_URL:https://api.nal.usda.gov/fdc}
       api-key: ${USDA_FOOD_DATA_API_KEY:}
+  catalog-import:
+    enabled: ${APP_CATALOG_IMPORT_ENABLED:false}
+    brands: ${APP_CATALOG_IMPORT_BRANDS:Coca-Cola,Mogul,Milka,Fantoche,Ciudad del Lago,Arcor,Bagley,Terrabusi,Havanna,Guaymallen,Jorgito,Bon o Bon,Cofler,Aguila,Don Satur,Pepitos,Sonrisas,Tita,Rhodesia,La Serenisima,Pepsi}
+    pages-per-brand: ${APP_CATALOG_IMPORT_PAGES_PER_BRAND:3}
+    page-size: ${APP_CATALOG_IMPORT_PAGE_SIZE:100}
+    delay-millis: ${APP_CATALOG_IMPORT_DELAY_MILLIS:6500}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:https://127.0.0.1:5173,https://localhost:5173,http://127.0.0.1:5173,http://localhost:5173}
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:https://localhost:*,https://127.0.0.1:*,https://192.168.*.*:*,http://localhost:*,http://127.0.0.1:*,http://192.168.*.*:*}
