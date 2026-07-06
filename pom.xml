@@ -152,8 +152,7 @@
 				<groupId>io.github.git-commit-id</groupId>
 				<artifactId>git-commit-id-maven-plugin</artifactId>
 				<configuration>
-					<generateGitPropertiesFile>true</generateGitPropertiesFile>
-					<generateGitPropertiesFilename>${project.build.outputDirectory}/git.properties</generateGitPropertiesFilename>
+					<generateGitPropertiesFile>false</generateGitPropertiesFile>
 					<failOnNoGitDirectory>false</failOnNoGitDirectory>
 					<includeOnlyProperties>
 						<includeOnlyProperty>^git.commit.id.abbrev$</includeOnlyProperty>

@@ -4,7 +4,8 @@ WORKDIR /workspace
 COPY pom.xml .
 RUN mvn -B dependency:go-offline
 COPY src ./src
-RUN echo "git.commit.id.abbrev=${GIT_HASH}" > src/main/resources/git.properties && mvn -B clean package -DskipTests
+RUN echo "git.commit.id.abbrev=${GIT_HASH}" > src/main/resources/git.properties && \
+    mvn -B clean package -DskipTests -Dgit.commit.id.skip=true
 
 FROM eclipse-temurin:21-jre
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
