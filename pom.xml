@@ -154,6 +154,7 @@
 				<configuration>
 					<generateGitPropertiesFile>true</generateGitPropertiesFile>
 					<generateGitPropertiesFilename>${project.build.outputDirectory}/git.properties</generateGitPropertiesFilename>
+					<failOnNoGitDirectory>false</failOnNoGitDirectory>
 					<includeOnlyProperties>
 						<includeOnlyProperty>^git.commit.id.abbrev$</includeOnlyProperty>
 					</includeOnlyProperties>
