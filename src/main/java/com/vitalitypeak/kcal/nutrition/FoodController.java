@@ -6,6 +6,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -45,6 +46,16 @@ public class FoodController {
     @PostMapping
     FoodResponse create(Authentication authentication, @Valid @RequestBody CreateFoodRequest request) {
         return nutritionService.createFood(request, currentUser.from(authentication));
+    }
+
+    @GetMapping("/mine")
+    List<FoodResponse> mine(Authentication authentication) {
+        return nutritionService.findFoodsCreatedBy(currentUser.from(authentication));
+    }
+
+    @PutMapping("/{id}")
+    FoodResponse update(Authentication authentication, @PathVariable Long id, @Valid @RequestBody CreateFoodRequest request) {
+        return nutritionService.updateOwnedFood(id, request, currentUser.from(authentication));
     }
 
     @GetMapping("/{id}")

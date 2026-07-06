@@ -138,6 +138,40 @@ public class NutritionService {
         return toFoodResponse(foods.save(food));
     }
 
+    @Transactional(readOnly = true)
+    public List<FoodResponse> findFoodsCreatedBy(com.vitalitypeak.kcal.user.AppUser creator) {
+        return foods.findByCreatedByIdOrderByCreatedAtDesc(creator.getId()).stream().map(this::toFoodResponse).toList();
+    }
+
+    @Transactional
+    public FoodResponse updateOwnedFood(Long id, CreateFoodRequest request, com.vitalitypeak.kcal.user.AppUser creator) {
+        Food food = getFood(id);
+        if (food.getCreatedBy() == null || !food.getCreatedBy().getId().equals(creator.getId())) {
+            throw new BadRequestException("Solo podés editar alimentos creados por vos.");
+        }
+        String barcode = clean(request.barcode());
+        if (barcode != null && !barcode.equals(food.getBarcode()) && foods.existsByBarcode(barcode)) {
+            throw new BadRequestException("Ya existe un alimento con ese código de barras.");
+        }
+        food.setName(request.name().trim());
+        food.setBrand(clean(request.brand()));
+        food.setBarcode(barcode);
+        food.setCategory(request.category());
+        food.setBaseUnit(request.baseUnit());
+        food.setBaseQuantity(request.baseQuantity());
+        food.setCalories(request.calories());
+        food.setProteinGrams(scale(request.proteinGrams()));
+        food.setCarbsGrams(scale(request.carbsGrams()));
+        food.setFatGrams(scale(request.fatGrams()));
+        food.setPreparation(com.vitalitypeak.kcal.catalog.FoodPreparation.UNSPECIFIED);
+        food.setPreparationSource("Ingresado por el usuario");
+        food.setServingName(null);
+        food.setServingWeightGrams(null);
+        food.setTags(request.tags() == null ? new LinkedHashSet<>() : request.tags().stream()
+                .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
+        return toFoodResponse(foods.save(food));
+    }
+
     @Transactional
     public FoodResponse uploadFoodImage(Long foodId, org.springframework.web.multipart.MultipartFile image) {
         Food food = getFood(foodId);

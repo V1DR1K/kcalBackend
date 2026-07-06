@@ -26,6 +26,8 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 
     Page<Food> findByCategory(FoodCategory category, Pageable pageable);
 
+    java.util.List<Food> findByCreatedByIdOrderByCreatedAtDesc(Long createdById);
+
     Page<Food> findByNameContainingIgnoreCaseAndCategory(String name, FoodCategory category, Pageable pageable);
 
     @Query("select distinct f from Food f left join f.tags t where " +
