@@ -48,7 +48,7 @@ app:
     demo-users-enabled: ${APP_SEED_DEMO_USERS_ENABLED:true}
   jwt:
     secret: ${JWT_SECRET:VitalityPeakDevelopmentSecretKeyForJwtTokenSigningChangeMe12345}
-    expiration-minutes: ${JWT_EXPIRATION_MINUTES:1440}
+    expiration-minutes: ${JWT_EXPIRATION_MINUTES:0}
   storage:
     endpoint: ${STORAGE_ENDPOINT:http://localhost:7480}
     public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost:7480}

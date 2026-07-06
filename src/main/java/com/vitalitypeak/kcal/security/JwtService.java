@@ -25,15 +25,16 @@ public class JwtService {
     }
 
     public String generate(AppUser user) {
-        Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(user.getEmail())
                 .claim("userId", user.getId())
                 .claim("role", user.getRole().name())
-                .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plusSeconds(expirationMinutes * 60)))
-                .signWith(secretKey)
-                .compact();
+                .issuedAt(Date.from(Instant.now()))
+                .signWith(secretKey);
+        if (expirationMinutes > 0) {
+            builder.expiration(Date.from(Instant.now().plusSeconds(expirationMinutes * 60)));
+        }
+        return builder.compact();
     }
 
     public String subject(String token) {
