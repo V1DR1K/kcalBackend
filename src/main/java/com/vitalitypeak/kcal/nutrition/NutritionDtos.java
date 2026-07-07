@@ -87,7 +87,7 @@ public class NutritionDtos {
     }
 
     public record DaySummary(LocalDate date, Integer caloriesConsumed, Integer calorieGoal, BigDecimal proteinGrams,
-            BigDecimal carbsGrams, BigDecimal fatGrams, boolean goalReached) {
+            BigDecimal carbsGrams, BigDecimal fatGrams, boolean goalReached, Long planId, String planName) {
     }
 
     public record HistoryResponse(int year, int month, List<DaySummary> days, Integer averageCalories,

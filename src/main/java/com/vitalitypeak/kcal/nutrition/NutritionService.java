@@ -423,9 +423,10 @@ public class NutritionService {
         List<DaySummary> days = ym.atDay(1).datesUntil(ym.atEndOfMonth().plusDays(1)).map(date -> {
             List<FoodLog> dayLogs = byDate.getOrDefault(date, List.of());
             int calories = dayLogs.stream().mapToInt(FoodLog::getCalories).sum();
-            return new DaySummary(date, calories, user.getDailyCalorieGoal(), sum(dayLogs, FoodLog::getProteinGrams),
+            NutritionPlan plan = profileService.resolvePlan(user, date);
+            return new DaySummary(date, calories, plan.getDailyCalories(), sum(dayLogs, FoodLog::getProteinGrams),
                     sum(dayLogs, FoodLog::getCarbsGrams), sum(dayLogs, FoodLog::getFatGrams),
-                    calories > 0 && calories <= user.getDailyCalorieGoal());
+                    calories > 0 && calories <= plan.getDailyCalories(), plan.getId(), plan.getName());
         }).toList();
         int average = days.stream().filter(day -> day.caloriesConsumed() > 0).mapToInt(DaySummary::caloriesConsumed)
                 .average().stream().mapToInt(value -> (int) Math.round(value)).findFirst().orElse(0);
