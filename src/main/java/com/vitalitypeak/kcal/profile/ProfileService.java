@@ -66,12 +66,16 @@ public class ProfileService {
     public NutritionPlanResponse createPlan(AppUser user, UpsertNutritionPlanRequest request) {
         validatePlan(request);
         LocalDate previousEnd = request.startDate().minusDays(1);
-        nutritionPlans.findActiveForUserAndDate(user, previousEnd.plusDays(1))
+        nutritionPlans.findActiveForUserAndDate(user, request.startDate())
                 .filter(plan -> plan.getEndDate() == null || !plan.getEndDate().isBefore(request.startDate()))
                 .ifPresent(plan -> {
-                    plan.setEndDate(previousEnd);
-                    plan.setUpdatedAt(OffsetDateTime.now());
+                    if (plan.getStartDate().equals(request.startDate())) nutritionPlans.delete(plan);
+                    else {
+                        plan.setEndDate(previousEnd);
+                        plan.setUpdatedAt(OffsetDateTime.now());
+                    }
                 });
+        nutritionPlans.flush();
         ensureNoOverlap(user, request.startDate(), openEnd(request.endDate()), null);
         NutritionPlan plan = new NutritionPlan();
         plan.setUser(user);
