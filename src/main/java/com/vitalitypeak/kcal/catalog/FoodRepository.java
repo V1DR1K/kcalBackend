@@ -26,6 +26,7 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 
     Page<Food> findByCategory(FoodCategory category, Pageable pageable);
 
+    @EntityGraph(attributePaths = "tags")
     java.util.List<Food> findByCreatedByIdOrderByCreatedAtDesc(Long createdById);
 
     Page<Food> findByNameContainingIgnoreCaseAndCategory(String name, FoodCategory category, Pageable pageable);

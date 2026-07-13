@@ -103,7 +103,7 @@ public class NutritionDtos {
     public record CreateRecipeRequest(
             @NotBlank @Size(min = 2, max = 120) String name,
             @Size(max = 500) String description,
-            @Positive BigDecimal totalWeightGrams,
+            BigDecimal totalWeightGrams,
             @NotEmpty @Size(max = 50) List<@NotNull RecipeIngredientRequest> ingredients) {
     }
 

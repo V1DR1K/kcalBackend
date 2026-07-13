@@ -277,7 +277,6 @@ public class NutritionService {
         Recipe recipe = new Recipe();
         recipe.setName(request.name().trim());
         recipe.setDescription(clean(request.description()));
-        recipe.setTotalWeightGrams(request.totalWeightGrams());
         recipe.setCreatedBy(user);
         for (var item : request.ingredients()) {
             RecipeIngredient ingredient = new RecipeIngredient();
@@ -287,6 +286,7 @@ public class NutritionService {
             ingredient.setUnit(item.unit());
             recipe.getIngredients().add(ingredient);
         }
+        recipe.setTotalWeightGrams(recipeTotalWeight(recipe));
         applyRecipeTotals(recipe);
         return toRecipeResponse(recipes.save(recipe));
     }
@@ -294,7 +294,6 @@ public class NutritionService {
     @Transactional(readOnly = true)
     public NutritionPreviewResponse previewRecipe(CreateRecipeRequest request) {
         Recipe recipe = new Recipe();
-        recipe.setTotalWeightGrams(request.totalWeightGrams());
         for (var item : request.ingredients()) {
             RecipeIngredient ingredient = new RecipeIngredient();
             ingredient.setRecipe(recipe);
@@ -303,6 +302,7 @@ public class NutritionService {
             ingredient.setUnit(item.unit());
             recipe.getIngredients().add(ingredient);
         }
+        recipe.setTotalWeightGrams(recipeTotalWeight(recipe));
         applyRecipeTotals(recipe);
         return new NutritionPreviewResponse(recipe.getCalories(), recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams());
     }
@@ -480,6 +480,16 @@ public class NutritionService {
         recipe.setCarbsGrams(scale(carbs));
         recipe.setFatGrams(scale(fat));
         recipe.setUpdatedAt(OffsetDateTime.now());
+    }
+
+    private BigDecimal recipeTotalWeight(Recipe recipe) {
+        BigDecimal total = recipe.getIngredients().stream()
+                .map(RecipeIngredient::getQuantity)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (total.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("El peso total de la receta debe ser mayor a cero.");
+        }
+        return scale(total);
     }
 
     private MacroProgress progress(String key, String label, BigDecimal consumed, BigDecimal goal) {
