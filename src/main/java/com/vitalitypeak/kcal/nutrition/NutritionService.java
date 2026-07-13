@@ -278,6 +278,40 @@ public class NutritionService {
         recipe.setName(request.name().trim());
         recipe.setDescription(clean(request.description()));
         recipe.setCreatedBy(user);
+        replaceRecipeIngredients(recipe, request);
+        recipe.setTotalWeightGrams(recipeTotalWeight(recipe));
+        applyRecipeTotals(recipe);
+        return toRecipeResponse(recipes.save(recipe));
+    }
+
+    @Transactional
+    public RecipeResponse updateOwnedRecipe(AppUser user, Long id, CreateRecipeRequest request) {
+        Recipe recipe = getRecipe(id);
+        if (recipe.getCreatedBy() == null || !recipe.getCreatedBy().getId().equals(user.getId())) {
+            throw new BadRequestException("Solo podes editar recetas creadas por vos.");
+        }
+        recipe.setName(request.name().trim());
+        recipe.setDescription(clean(request.description()));
+        replaceRecipeIngredients(recipe, request);
+        recipe.setTotalWeightGrams(recipeTotalWeight(recipe));
+        applyRecipeTotals(recipe);
+        return toRecipeResponse(recipes.save(recipe));
+    }
+
+    @Transactional
+    public void deleteOwnedRecipe(AppUser user, Long id) {
+        Recipe recipe = getRecipe(id);
+        if (recipe.getCreatedBy() == null || !recipe.getCreatedBy().getId().equals(user.getId())) {
+            throw new BadRequestException("Solo podes borrar recetas creadas por vos.");
+        }
+        if (foodLogs.existsByRecipeId(id)) {
+            throw new BadRequestException("No se puede borrar una receta que ya tiene registros en comidas.");
+        }
+        recipes.delete(recipe);
+    }
+
+    private void replaceRecipeIngredients(Recipe recipe, CreateRecipeRequest request) {
+        recipe.getIngredients().clear();
         for (var item : request.ingredients()) {
             RecipeIngredient ingredient = new RecipeIngredient();
             ingredient.setRecipe(recipe);
@@ -286,9 +320,6 @@ public class NutritionService {
             ingredient.setUnit(item.unit());
             recipe.getIngredients().add(ingredient);
         }
-        recipe.setTotalWeightGrams(recipeTotalWeight(recipe));
-        applyRecipeTotals(recipe);
-        return toRecipeResponse(recipes.save(recipe));
     }
 
     @Transactional(readOnly = true)
