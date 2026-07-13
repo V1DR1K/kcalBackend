@@ -1,6 +1,7 @@
 package com.vitalitypeak.kcal.externalfood;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -73,10 +74,10 @@ public class OpenFoodFactsBulkImporter implements CommandLineRunner {
         food.setCategory(candidate.category());
         food.setBaseUnit(FoodUnit.GRAM);
         food.setBaseQuantity(BigDecimal.valueOf(100));
-        food.setCalories(candidate.calories());
         food.setProteinGrams(candidate.proteinGrams());
         food.setCarbsGrams(candidate.carbsGrams());
         food.setFatGrams(candidate.fatGrams());
+        food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
         food.setPreparation(candidate.preparation());
         food.setPreparationSource(candidate.preparationSource());
         food.setServingName(candidate.servingName());
@@ -88,5 +89,17 @@ public class OpenFoodFactsBulkImporter implements CommandLineRunner {
         food.setLastSyncedAt(OffsetDateTime.now());
         food.setTags(candidate.tags() == null ? new LinkedHashSet<>() : new LinkedHashSet<>(candidate.tags()));
         foods.save(food);
+    }
+
+    private static int macroCalories(BigDecimal protein, BigDecimal carbs, BigDecimal fat) {
+        return safe(protein).multiply(BigDecimal.valueOf(4))
+                .add(safe(carbs).multiply(BigDecimal.valueOf(4)))
+                .add(safe(fat).multiply(BigDecimal.valueOf(9)))
+                .setScale(0, RoundingMode.HALF_UP)
+                .intValue();
+    }
+
+    private static BigDecimal safe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 }

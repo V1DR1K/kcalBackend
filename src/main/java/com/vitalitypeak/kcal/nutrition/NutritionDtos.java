@@ -38,7 +38,7 @@ public class NutritionDtos {
             @NotNull FoodCategory category,
             @NotNull FoodUnit baseUnit,
             @Positive BigDecimal baseQuantity,
-            @NotNull @PositiveOrZero Integer calories,
+            @PositiveOrZero Integer calories,
             @NotNull @PositiveOrZero BigDecimal proteinGrams,
             @NotNull @PositiveOrZero BigDecimal carbsGrams,
             @NotNull @PositiveOrZero BigDecimal fatGrams,

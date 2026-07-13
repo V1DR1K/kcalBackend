@@ -224,7 +224,7 @@ class KcalBackendApplicationTests {
 				new HttpEntity<>(update, headers), String.class);
 
 		assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(updated.getBody()).contains("\"mealType\":\"DINNER\"", "\"quantity\":200", "\"calories\":330");
+		assertThat(updated.getBody()).contains("\"mealType\":\"DINNER\"", "\"quantity\":200", "\"calories\":313");
 	}
 
 	private HttpHeaders authHeaders() {
