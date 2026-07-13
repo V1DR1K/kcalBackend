@@ -482,8 +482,8 @@ public class NutritionService {
                 scale(food.getFatGrams().multiply(ratio)));
     }
 
-    private NutritionPreviewResponse previewRecipeServing(Recipe recipe, BigDecimal grams) {
-        BigDecimal ratio = grams.divide(recipe.getTotalWeightGrams(), 4, RoundingMode.HALF_UP);
+    private NutritionPreviewResponse previewRecipeServing(Recipe recipe, BigDecimal portions) {
+        BigDecimal ratio = portions;
         return new NutritionPreviewResponse(
                 BigDecimal.valueOf(recipe.getCalories()).multiply(ratio).setScale(0, RoundingMode.HALF_UP).intValue(),
                 scale(recipe.getProteinGrams().multiply(ratio)),
