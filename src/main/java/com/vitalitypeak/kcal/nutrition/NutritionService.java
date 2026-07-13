@@ -538,7 +538,7 @@ public class NutritionService {
 
     private FoodLogResponse toFoodLogResponse(FoodLog log) {
         return new FoodLogResponse(log.getId(), log.getLogDate(), log.getMealType(), log.getItemType(),
-                toFoodResponse(log.getFood()), log.getRecipe() == null ? null : toRecipeSummary(log.getRecipe()),
+                toFoodResponse(log.getFood()), log.getRecipe() == null ? null : toRecipeResponse(log.getRecipe()),
                 log.getQuantity(), log.getUnit(), log.getCalories(), log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams());
     }
 
