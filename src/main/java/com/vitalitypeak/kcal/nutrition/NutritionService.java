@@ -264,7 +264,7 @@ public class NutritionService {
         Page<Recipe> result = query != null && !query.isBlank()
                 ? recipes.findByNameContainingIgnoreCase(query, pageable)
                 : recipes.findAll(pageable);
-        return page(result.map(this::toRecipeResponse));
+        return page(result.map(this::toRecipeSummary));
     }
 
     @Transactional(readOnly = true)
