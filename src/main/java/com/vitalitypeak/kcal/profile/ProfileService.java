@@ -69,11 +69,11 @@ public class ProfileService {
         nutritionPlans.findActiveForUserAndDate(user, request.startDate())
                 .filter(plan -> plan.getEndDate() == null || !plan.getEndDate().isBefore(request.startDate()))
                 .ifPresent(plan -> {
-                    if (plan.getStartDate().equals(request.startDate())) nutritionPlans.delete(plan);
-                    else {
-                        plan.setEndDate(previousEnd);
-                        plan.setUpdatedAt(OffsetDateTime.now());
+                    if (plan.getStartDate().equals(request.startDate())) {
+                        throw new BadRequestException("Ya existe un plan que empieza ese dia. Editalo o elegi otra fecha.");
                     }
+                    plan.setEndDate(previousEnd);
+                    plan.setUpdatedAt(OffsetDateTime.now());
                 });
         nutritionPlans.flush();
         ensureNoOverlap(user, request.startDate(), openEnd(request.endDate()), null);
@@ -150,7 +150,8 @@ public class ProfileService {
     }
 
     private void syncUserFallback(AppUser user, NutritionPlan plan) {
-        if (plan.getEndDate() == null || !plan.getEndDate().isBefore(LocalDate.now())) {
+        LocalDate today = LocalDate.now();
+        if (!plan.getStartDate().isAfter(today) && (plan.getEndDate() == null || !plan.getEndDate().isBefore(today))) {
             user.setNutritionStyle(plan.getName());
             user.setDailyCalorieGoal(plan.getDailyCalories());
             user.setProteinGoalGrams(plan.getProteinGoalGrams());
