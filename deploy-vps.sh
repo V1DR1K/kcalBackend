@@ -2,7 +2,10 @@
 set -euo pipefail
 
 exec 9>/tmp/kcals-deploy.lock
-flock 9
+until flock -n 9; do
+  echo "Another KCALS deploy is running; waiting for the deploy lock..."
+  sleep 10
+done
 
 cd "$(dirname "$0")"
 
