@@ -13,6 +13,6 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     Page<Recipe> findAll(Pageable pageable);
 
     @Override
-    @EntityGraph(attributePaths = {"ingredients", "ingredients.food", "ingredients.food.tags"})
+    @EntityGraph(attributePaths = {"ingredients", "ingredients.food"})
     Optional<Recipe> findById(Long id);
 }

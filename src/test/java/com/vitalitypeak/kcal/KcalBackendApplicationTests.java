@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.Map;
@@ -225,6 +226,39 @@ class KcalBackendApplicationTests {
 
 		assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(updated.getBody()).contains("\"mealType\":\"DINNER\"", "\"quantity\":200", "\"calories\":313");
+	}
+
+	@Test
+	void dashboardDoesNotDuplicateRecipeIngredientsWhenFoodsHaveTags() {
+		HttpHeaders headers = authHeaders();
+		String date = "2032-03-11";
+		Map<String, Object> recipe = Map.of(
+				"name", "Receta sin duplicados",
+				"description", "",
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM")));
+		ResponseEntity<Map> createdRecipe = rest.postForEntity("/api/recipes", new HttpEntity<>(recipe, headers), Map.class);
+		assertThat(createdRecipe.getStatusCode().is2xxSuccessful()).isTrue();
+
+		Map<String, Object> meal = Map.of("itemType", "RECIPE", "itemId", createdRecipe.getBody().get("id"),
+				"mealType", "BREAKFAST", "quantity", 1, "unit", "PORTION", "logDate", date);
+		ResponseEntity<Map> createdLog = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(meal, headers), Map.class);
+		assertThat(createdLog.getStatusCode().is2xxSuccessful()).isTrue();
+
+		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard?date=" + date, HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+
+		assertThat(dashboard.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(countOccurrences(dashboard.getBody(), "\"quantity\":100.00")).isEqualTo(1);
+	}
+
+	private static int countOccurrences(String value, String needle) {
+		int count = 0;
+		int index = 0;
+		while ((index = value.indexOf(needle, index)) >= 0) {
+			count++;
+			index += needle.length();
+		}
+		return count;
 	}
 
 	private HttpHeaders authHeaders() {
