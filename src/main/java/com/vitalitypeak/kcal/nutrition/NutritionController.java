@@ -24,6 +24,7 @@ import com.vitalitypeak.kcal.nutrition.NutritionDtos.FoodLogResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.HistoryResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.MealTypeResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.UpdateFoodLogRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.UpdateRecipeLogIngredientsRequest;
 
 import jakarta.validation.Valid;
 
@@ -73,6 +74,18 @@ public class NutritionController {
     FoodLogResponse updateFoodLog(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody UpdateFoodLogRequest request) {
         return nutritionService.updateFoodLog(currentUser.from(authentication), id, request);
+    }
+
+    @PutMapping("/food-logs/{id}/recipe-ingredients")
+    FoodLogResponse updateRecipeLogIngredients(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody UpdateRecipeLogIngredientsRequest request) {
+        return nutritionService.updateRecipeLogIngredients(currentUser.from(authentication), id, request);
+    }
+
+    @DeleteMapping("/food-logs/{id}/recipe-ingredients")
+    ResponseEntity<Void> resetRecipeLogIngredients(Authentication authentication, @PathVariable Long id) {
+        nutritionService.resetRecipeLogIngredients(currentUser.from(authentication), id);
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/water-logs/latest")

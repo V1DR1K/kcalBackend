@@ -66,9 +66,14 @@ public class NutritionDtos {
             @NotNull FoodUnit unit, LocalDate logDate) {
     }
 
+    public record UpdateRecipeLogIngredientsRequest(
+            @NotEmpty @Size(max = 50) List<@NotNull RecipeIngredientRequest> ingredients) {
+    }
+
     public record FoodLogResponse(Long id, LocalDate logDate, MealType mealType, MealItemType itemType, FoodResponse food,
             RecipeResponse recipe, BigDecimal quantity,
-            FoodUnit unit, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams) {
+            FoodUnit unit, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
+            boolean recipeAdjusted) {
     }
 
     public record AddWaterRequest(LocalDate logDate, @Positive BigDecimal liters) {

@@ -251,6 +251,41 @@ class KcalBackendApplicationTests {
 		assertThat(countOccurrences(dashboard.getBody(), "\"quantity\":100.00")).isEqualTo(1);
 	}
 
+	@Test
+	void userCanAdjustRecipeIngredientsForOneDayWithoutChangingTheBaseRecipe() {
+		HttpHeaders headers = authHeaders();
+		String date = "2032-03-12";
+		Map<String, Object> recipe = Map.of(
+				"name", "Receta diaria",
+				"description", "",
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM")));
+		ResponseEntity<Map> createdRecipe = rest.postForEntity("/api/recipes", new HttpEntity<>(recipe, headers), Map.class);
+		Object recipeId = createdRecipe.getBody().get("id");
+		Map<String, Object> meal = Map.of("itemType", "RECIPE", "itemId", recipeId,
+				"mealType", "LUNCH", "quantity", 1, "unit", "PORTION", "logDate", date);
+		ResponseEntity<Map> createdLog = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(meal, headers), Map.class);
+		Object logId = createdLog.getBody().get("id");
+		Map<String, Object> otherMeal = Map.of("itemType", "RECIPE", "itemId", recipeId,
+				"mealType", "DINNER", "quantity", 1, "unit", "PORTION", "logDate", date);
+		ResponseEntity<Map> otherLog = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(otherMeal, headers), Map.class);
+
+		Map<String, Object> adjustment = Map.of("ingredients", List.of(Map.of("foodId", 1, "quantity", 200, "unit", "GRAM")));
+		ResponseEntity<String> updated = rest.exchange("/api/nutrition/food-logs/" + logId + "/recipe-ingredients", HttpMethod.PUT,
+				new HttpEntity<>(adjustment, headers), String.class);
+		ResponseEntity<String> baseRecipe = rest.exchange("/api/recipes/" + recipeId, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard?date=" + date, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+		assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(otherLog.getBody().get("calories")).isEqualTo(156);
+		assertThat(updated.getBody()).contains("\"recipeAdjusted\":true", "\"totalWeightGrams\":200.0");
+		assertThat(baseRecipe.getBody()).contains("\"quantity\":100.00");
+		assertThat(dashboard.getBody()).contains("\"recipeAdjusted\":true", "\"recipeAdjusted\":false");
+
+		ResponseEntity<Void> reset = rest.exchange("/api/nutrition/food-logs/" + logId + "/recipe-ingredients", HttpMethod.DELETE,
+				new HttpEntity<>(headers), Void.class);
+		assertThat(reset.getStatusCode().is2xxSuccessful()).isTrue();
+	}
+
 	private static int countOccurrences(String value, String needle) {
 		int count = 0;
 		int index = 0;
