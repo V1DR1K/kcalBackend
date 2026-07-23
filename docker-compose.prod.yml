@@ -29,6 +29,8 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      TZ: America/Argentina/Cordoba
+      JAVA_TOOL_OPTIONS: -Duser.timezone=America/Argentina/Cordoba
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://kcals-postgres:5432/${POSTGRES_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
