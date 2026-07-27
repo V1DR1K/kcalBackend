@@ -13,6 +13,7 @@ import com.vitalitypeak.kcal.user.AppUser;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -63,5 +64,9 @@ public class FoodLog {
     private BigDecimal proteinGrams;
     private BigDecimal carbsGrams;
     private BigDecimal fatGrams;
+    private String aiEstimateName;
+    private Integer aiEstimateConfidence;
+    @Column(columnDefinition = "TEXT")
+    private String aiEstimateDetails;
     private OffsetDateTime createdAt = OffsetDateTime.now();
 }

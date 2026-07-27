@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.vitalitypeak.kcal.common.CurrentUser;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddFoodLogRequest;
@@ -25,6 +27,9 @@ import com.vitalitypeak.kcal.nutrition.NutritionDtos.HistoryResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.MealTypeResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.UpdateFoodLogRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.UpdateRecipeLogIngredientsRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateResponse;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateUsageResponse;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
 
 import jakarta.validation.Valid;
 
@@ -32,10 +37,12 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/nutrition")
 public class NutritionController {
     private final NutritionService nutritionService;
+    private final AiNutritionService aiNutritionService;
     private final CurrentUser currentUser;
 
-    public NutritionController(NutritionService nutritionService, CurrentUser currentUser) {
+    public NutritionController(NutritionService nutritionService, AiNutritionService aiNutritionService, CurrentUser currentUser) {
         this.nutritionService = nutritionService;
+        this.aiNutritionService = aiNutritionService;
         this.currentUser = currentUser;
     }
 
@@ -57,6 +64,21 @@ public class NutritionController {
     @PostMapping("/meal-logs")
     FoodLogResponse addMealLog(Authentication authentication, @Valid @RequestBody AddMealLogRequest request) {
         return nutritionService.addMealLog(currentUser.from(authentication), request);
+    }
+
+    @GetMapping("/ai-estimates/usage")
+    AiEstimateUsageResponse aiEstimateUsage(Authentication authentication) {
+        return aiNutritionService.usage(currentUser.from(authentication));
+    }
+
+    @PostMapping(value = "/ai-estimates", consumes = "multipart/form-data")
+    AiEstimateResponse estimateMeal(Authentication authentication, @RequestPart("image") MultipartFile image) {
+        return aiNutritionService.analyze(currentUser.from(authentication), image);
+    }
+
+    @PostMapping("/ai-estimates/confirm")
+    FoodLogResponse confirmAiEstimate(Authentication authentication, @Valid @RequestBody ConfirmAiEstimateRequest request) {
+        return nutritionService.addAiEstimate(currentUser.from(authentication), request);
     }
 
     @PostMapping("/water-logs")

@@ -229,6 +229,24 @@ class KcalBackendApplicationTests {
 	}
 
 	@Test
+	void userCanSaveConfirmedAiEstimateWithoutCreatingCatalogFood() {
+		HttpHeaders headers = authHeaders();
+		Map<String, Object> estimate = Map.of(
+				"name", "Hamburguesa con papas",
+				"confidence", 62,
+				"mealType", "DINNER",
+				"logDate", "2031-02-11",
+				"items", List.of(
+						Map.of("name", "Hamburguesa", "estimatedGrams", 220, "proteinGrams", 30, "carbsGrams", 35, "fatGrams", 28),
+						Map.of("name", "Papas fritas", "estimatedGrams", 150, "proteinGrams", 5, "carbsGrams", 55, "fatGrams", 18)));
+
+		ResponseEntity<String> response = rest.postForEntity("/api/nutrition/ai-estimates/confirm", new HttpEntity<>(estimate, headers), String.class);
+
+		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(response.getBody()).contains("\"itemType\":\"AI_ESTIMATE\"", "\"displayName\":\"Hamburguesa con papas\"", "\"calories\":914");
+	}
+
+	@Test
 	void dashboardDoesNotDuplicateRecipeIngredientsWhenFoodsHaveTags() {
 		HttpHeaders headers = authHeaders();
 		String date = "2032-03-11";

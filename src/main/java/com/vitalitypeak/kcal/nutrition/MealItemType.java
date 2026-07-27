@@ -1,5 +1,5 @@
 package com.vitalitypeak.kcal.nutrition;
 
 public enum MealItemType {
-    FOOD, RECIPE
+    FOOD, RECIPE, AI_ESTIMATE
 }

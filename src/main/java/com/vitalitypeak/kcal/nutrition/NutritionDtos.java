@@ -10,6 +10,7 @@ import com.vitalitypeak.kcal.catalog.FoodCategory;
 import com.vitalitypeak.kcal.catalog.FoodUnit;
 import com.vitalitypeak.kcal.profile.ProfileDtos.NutritionPlanResponse;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -73,7 +74,34 @@ public class NutritionDtos {
     public record FoodLogResponse(Long id, LocalDate logDate, MealType mealType, MealItemType itemType, FoodResponse food,
             RecipeResponse recipe, BigDecimal quantity,
             FoodUnit unit, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
-            boolean recipeAdjusted) {
+            boolean recipeAdjusted, String displayName, Integer aiEstimateConfidence, String aiEstimateDetails) {
+    }
+
+    public record AiEstimateItem(
+            @NotBlank @Size(min = 2, max = 120) String name,
+            @NotNull @Positive BigDecimal estimatedGrams,
+            @NotNull @PositiveOrZero BigDecimal proteinGrams,
+            @NotNull @PositiveOrZero BigDecimal carbsGrams,
+            @NotNull @PositiveOrZero BigDecimal fatGrams) {
+    }
+
+    public record AiEstimateResponse(
+            @NotBlank String name,
+            int confidence,
+            List<String> assumptions,
+            List<AiEstimateItem> items,
+            AiEstimateUsageResponse usage) {
+    }
+
+    public record AiEstimateUsageResponse(boolean available, int dailyLimit, int used, int remaining) {
+    }
+
+    public record ConfirmAiEstimateRequest(
+            @NotBlank @Size(min = 2, max = 120) String name,
+            @NotNull MealType mealType,
+            LocalDate logDate,
+            @NotNull @PositiveOrZero Integer confidence,
+            @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items) {
     }
 
     public record AddWaterRequest(LocalDate logDate, @Positive BigDecimal liters) {

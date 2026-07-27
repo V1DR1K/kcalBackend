@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +32,7 @@ import com.vitalitypeak.kcal.externalfood.ExternalFoodLookupService;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddMealLogRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddFoodLogRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddWaterRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.CreateFoodRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.CreateRecipeRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.DashboardResponse;
@@ -63,16 +66,18 @@ public class NutritionService {
     private final WaterLogRepository waterLogs;
     private final ProfileService profileService;
     private final ExternalFoodLookupService externalFoodLookup;
+    private final ObjectMapper objectMapper;
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
             WaterLogRepository waterLogs, ProfileService profileService,
-            ExternalFoodLookupService externalFoodLookup) {
+            ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper) {
         this.foods = foods;
         this.recipes = recipes;
         this.foodLogs = foodLogs;
         this.waterLogs = waterLogs;
         this.profileService = profileService;
         this.externalFoodLookup = externalFoodLookup;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -355,10 +360,12 @@ public class NutritionService {
             Food food = getFood(request.itemId());
             preview = preview(food, request.quantity());
             log.setFood(food);
-        } else {
+        } else if (request.itemType() == MealItemType.RECIPE) {
             Recipe recipe = getRecipe(request.itemId());
             preview = previewRecipeServing(recipe, request.quantity());
             log.setRecipe(recipe);
+        } else {
+            throw new BadRequestException("Este tipo de registro solo se puede crear desde una estimación confirmada.");
         }
         log.setMealType(request.mealType());
         log.setQuantity(request.quantity());
@@ -368,6 +375,40 @@ public class NutritionService {
         log.setProteinGrams(preview.proteinGrams());
         log.setCarbsGrams(preview.carbsGrams());
         log.setFatGrams(preview.fatGrams());
+        return toFoodLogResponse(foodLogs.save(log));
+    }
+
+    @Transactional
+    public FoodLogResponse addAiEstimate(AppUser user, ConfirmAiEstimateRequest request) {
+        for (var item : request.items()) {
+            if (item.estimatedGrams().compareTo(BigDecimal.valueOf(3000)) > 0
+                    || item.proteinGrams().compareTo(BigDecimal.valueOf(500)) > 0
+                    || item.carbsGrams().compareTo(BigDecimal.valueOf(1000)) > 0
+                    || item.fatGrams().compareTo(BigDecimal.valueOf(500)) > 0) {
+                throw new BadRequestException("Revisá los valores estimados antes de guardarlos.");
+            }
+        }
+        BigDecimal protein = request.items().stream().map(item -> scale(item.proteinGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal carbs = request.items().stream().map(item -> scale(item.carbsGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal fat = request.items().stream().map(item -> scale(item.fatGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        FoodLog log = new FoodLog();
+        log.setUser(user);
+        log.setItemType(MealItemType.AI_ESTIMATE);
+        log.setMealType(request.mealType());
+        log.setQuantity(BigDecimal.ONE);
+        log.setUnit(FoodUnit.PORTION);
+        log.setLogDate(request.logDate() == null ? LocalDate.now() : request.logDate());
+        log.setProteinGrams(scale(protein));
+        log.setCarbsGrams(scale(carbs));
+        log.setFatGrams(scale(fat));
+        log.setCalories(macroCalories(log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams()));
+        log.setAiEstimateName(request.name().trim());
+        log.setAiEstimateConfidence(Math.max(0, Math.min(100, request.confidence())));
+        try {
+            log.setAiEstimateDetails(objectMapper.writeValueAsString(request.items()));
+        } catch (JsonProcessingException ex) {
+            throw new BadRequestException("No se pudo guardar la estimación.");
+        }
         return toFoodLogResponse(foodLogs.save(log));
     }
 
@@ -393,7 +434,9 @@ public class NutritionService {
                 .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));
         NutritionPreviewResponse preview = log.getItemType() == MealItemType.RECIPE
                 ? previewRecipeServing(log, request.quantity())
-                : preview(log.getFood(), request.quantity());
+                : log.getItemType() == MealItemType.FOOD
+                ? preview(log.getFood(), request.quantity())
+                : new NutritionPreviewResponse(log.getCalories(), log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams());
         log.setMealType(request.mealType());
         log.setQuantity(request.quantity());
         log.setUnit(request.unit());
@@ -619,7 +662,8 @@ public class NutritionService {
         return new FoodLogResponse(log.getId(), log.getLogDate(), log.getMealType(), log.getItemType(),
                 toFoodResponse(log.getFood()), log.getRecipe() == null ? null : toRecipeResponse(log),
                 log.getQuantity(), log.getUnit(), macroCalories(log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams()), log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams(),
-                !log.getRecipeIngredients().isEmpty());
+                !log.getRecipeIngredients().isEmpty(), log.getItemType() == MealItemType.AI_ESTIMATE ? log.getAiEstimateName() : null,
+                log.getAiEstimateConfidence(), log.getAiEstimateDetails());
     }
 
     private RecipeResponse toRecipeResponse(FoodLog log) {
