@@ -74,7 +74,7 @@ public class AiNutritionService {
             usage.setBlockedUntil(null);
             usage.setProviderStatus(null);
             usages.save(usage);
-            return new AiEstimateResponse(result.name(), result.confidence(), result.assumptions(), items, usage(user));
+            return new AiEstimateResponse(result.name(), result.description(), result.confidence(), result.assumptions(), items, usage(user));
         } catch (AiQuotaExceededException ex) {
             usage.setBlockedUntil(ex.getRetryAt());
             usage.setProviderStatus("Gemini informó cuota agotada.");

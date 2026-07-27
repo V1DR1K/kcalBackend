@@ -18,6 +18,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -43,6 +44,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<ApiError> malformed(HttpMessageNotReadableException ex) {
         return ResponseEntity.badRequest().body(new ApiError("INVALID_JSON", "El contenido enviado no es válido.", null, Instant.now()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiError> uploadTooLarge(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ApiError("REQUEST_TOO_LARGE", "La foto es demasiado grande. Probá con otra imagen.", null, Instant.now()));
     }
 
     @ExceptionHandler({MethodArgumentTypeMismatchException.class, MissingServletRequestParameterException.class})

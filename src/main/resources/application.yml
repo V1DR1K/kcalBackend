@@ -1,6 +1,10 @@
 spring:
   application:
     name: kcalBackend
+  servlet:
+    multipart:
+      max-file-size: 6MB
+      max-request-size: 6MB
   mail:
     host: ${SPRING_MAIL_HOST:}
     port: ${SPRING_MAIL_PORT:587}

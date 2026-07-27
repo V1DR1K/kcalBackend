@@ -14,6 +14,8 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,12 +23,14 @@ import com.vitalitypeak.kcal.common.BadRequestException;
 
 @Component
 public class GeminiNutritionClient {
+    private static final Logger log = LoggerFactory.getLogger(GeminiNutritionClient.class);
     private static final String PROMPT = """
             Analizá esta foto de comida para registrar un cheat meal. Respondé únicamente JSON válido.
             Identificá los alimentos visibles y estimá por cada uno gramos, proteínas, carbohidratos y grasas.
             No inventes precisión: usá estimaciones conservadoras, incluí aceite, queso o salsas solo si son visibles,
             y anotá las suposiciones. confidence debe ser un entero entre 0 y 100. Máximo 12 items.
-            Esquema: {"name":"nombre breve del plato","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
+            Incluí una descripción breve de lo que se observa en la foto, sin afirmar ingredientes que no sean visibles.
+            Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
             """;
 
     private final RestClient restClient;
@@ -80,14 +84,19 @@ public class GeminiNutritionClient {
                 if (assumptions.size() == 4) break;
             }
             String name = result.path("name").asText("Comida estimada").trim();
+            String description = result.path("description").asText("").trim();
             int confidence = Math.max(0, Math.min(100, result.path("confidence").asInt(50)));
-            return new AiNutritionResult(name.isBlank() ? "Comida estimada" : name.substring(0, Math.min(name.length(), 120)), confidence, assumptions, items);
+            return new AiNutritionResult(
+                    name.isBlank() ? "Comida estimada" : name.substring(0, Math.min(name.length(), 120)),
+                    description.substring(0, Math.min(description.length(), 240)), confidence, assumptions, items);
         } catch (RestClientResponseException ex) {
             if (ex.getStatusCode().value() == 429) throw new AiQuotaExceededException(retryAt(ex));
+            log.warn("Gemini meal analysis failed with upstream status {}", ex.getStatusCode().value());
             throw new BadRequestException("Gemini no pudo analizar la foto. Intentá nuevamente en unos minutos.");
         } catch (BadRequestException ex) {
             throw ex;
         } catch (Exception ex) {
+            log.warn("Gemini meal analysis did not return a valid estimate: {}", ex.getClass().getSimpleName());
             throw new BadRequestException("No se pudo analizar la foto. Intentá nuevamente en unos minutos.");
         }
     }
@@ -119,7 +128,7 @@ public class GeminiNutritionClient {
         return value.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "").trim();
     }
 
-    public record AiNutritionResult(String name, int confidence, List<String> assumptions, List<AiNutritionItem> items) {
+    public record AiNutritionResult(String name, String description, int confidence, List<String> assumptions, List<AiNutritionItem> items) {
     }
 
     public record AiNutritionItem(String name, BigDecimal estimatedGrams, BigDecimal proteinGrams,

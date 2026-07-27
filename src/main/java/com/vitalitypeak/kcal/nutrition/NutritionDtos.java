@@ -87,6 +87,7 @@ public class NutritionDtos {
 
     public record AiEstimateResponse(
             @NotBlank String name,
+            String description,
             int confidence,
             List<String> assumptions,
             List<AiEstimateItem> items,
