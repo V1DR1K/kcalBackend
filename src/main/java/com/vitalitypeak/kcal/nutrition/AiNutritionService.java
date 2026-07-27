@@ -1,6 +1,7 @@
 package com.vitalitypeak.kcal.nutrition;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -31,10 +32,15 @@ public class AiNutritionService {
 
     @Transactional(readOnly = true)
     public AiEstimateUsageResponse usage(AppUser user) {
-        int used = usageCount(user, LocalDate.now());
-        int limit = Math.max(0, properties.getDailyLimit());
+        AiEstimateUsage usage = usages.findByUserAndUsageDate(user, LocalDate.now()).orElse(null);
+        int used = usage == null ? 0 : usage.getUsedCount();
         boolean available = properties.isEnabled() && properties.getGeminiApiKey() != null && !properties.getGeminiApiKey().isBlank();
-        return new AiEstimateUsageResponse(available, limit, used, available ? Math.max(0, limit - used) : 0);
+        OffsetDateTime blockedUntil = usage == null ? null : usage.getBlockedUntil();
+        boolean blocked = blockedUntil != null && blockedUntil.isAfter(OffsetDateTime.now());
+        String status = !available ? "La estimación por foto no está disponible." : blocked
+                ? "Gemini informó que su cuota está agotada temporalmente."
+                : "Sin límite interno. Gemini no expone un saldo gratuito exacto.";
+        return new AiEstimateUsageResponse(available, used, blocked ? blockedUntil : null, status);
     }
 
     @Transactional
@@ -54,8 +60,9 @@ public class AiNutritionService {
             next.setUsageDate(date);
             return next;
         });
-        int limit = Math.max(0, properties.getDailyLimit());
-        if (usage.getUsedCount() >= limit) throw new BadRequestException("Alcanzaste el límite gratuito de estimaciones de hoy.");
+        if (usage.getBlockedUntil() != null && usage.getBlockedUntil().isAfter(OffsetDateTime.now())) {
+            throw new BadRequestException("Gemini alcanzó su cuota disponible. Probá nuevamente más tarde.");
+        }
         usage.setUsedCount(usage.getUsedCount() + 1);
         usages.save(usage);
 
@@ -64,8 +71,15 @@ public class AiNutritionService {
             List<AiEstimateItem> items = result.items().stream()
                     .map(item -> new AiEstimateItem(item.name(), item.estimatedGrams(), item.proteinGrams(), item.carbsGrams(), item.fatGrams()))
                     .toList();
-            return new AiEstimateResponse(result.name(), result.confidence(), result.assumptions(), items,
-                    new AiEstimateUsageResponse(true, limit, usage.getUsedCount(), Math.max(0, limit - usage.getUsedCount())));
+            usage.setBlockedUntil(null);
+            usage.setProviderStatus(null);
+            usages.save(usage);
+            return new AiEstimateResponse(result.name(), result.confidence(), result.assumptions(), items, usage(user));
+        } catch (AiQuotaExceededException ex) {
+            usage.setBlockedUntil(ex.getRetryAt());
+            usage.setProviderStatus("Gemini informó cuota agotada.");
+            usages.save(usage);
+            throw new BadRequestException("Gemini alcanzó su cuota disponible. Probá nuevamente cuando se renueve.");
         } catch (Exception ex) {
             usage.setUsedCount(Math.max(0, usage.getUsedCount() - 1));
             usages.save(usage);
@@ -74,7 +88,4 @@ public class AiNutritionService {
         }
     }
 
-    private int usageCount(AppUser user, LocalDate date) {
-        return usages.findByUserAndUsageDate(user, date).map(AiEstimateUsage::getUsedCount).orElse(0);
-    }
 }

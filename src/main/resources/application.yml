@@ -62,7 +62,6 @@ app:
     enabled: ${AI_NUTRITION_ENABLED:false}
     gemini-api-key: ${GEMINI_API_KEY:}
     model: ${GEMINI_MODEL:gemini-2.5-flash}
-    daily-limit: ${AI_NUTRITION_DAILY_LIMIT:3}
     max-image-bytes: ${AI_NUTRITION_MAX_IMAGE_BYTES:5242880}
   catalog-import:
     enabled: ${APP_CATALOG_IMPORT_ENABLED:false}

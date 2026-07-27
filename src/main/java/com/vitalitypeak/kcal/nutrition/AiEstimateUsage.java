@@ -1,6 +1,7 @@
 package com.vitalitypeak.kcal.nutrition;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 import com.vitalitypeak.kcal.user.AppUser;
 
@@ -32,4 +33,6 @@ public class AiEstimateUsage {
 
     private LocalDate usageDate;
     private int usedCount;
+    private OffsetDateTime blockedUntil;
+    private String providerStatus;
 }

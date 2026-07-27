@@ -1,6 +1,10 @@
 package com.vitalitypeak.kcal.nutrition;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -9,6 +13,7 @@ import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -77,6 +82,9 @@ public class GeminiNutritionClient {
             String name = result.path("name").asText("Comida estimada").trim();
             int confidence = Math.max(0, Math.min(100, result.path("confidence").asInt(50)));
             return new AiNutritionResult(name.isBlank() ? "Comida estimada" : name.substring(0, Math.min(name.length(), 120)), confidence, assumptions, items);
+        } catch (RestClientResponseException ex) {
+            if (ex.getStatusCode().value() == 429) throw new AiQuotaExceededException(retryAt(ex));
+            throw new BadRequestException("Gemini no pudo analizar la foto. Intentá nuevamente en unos minutos.");
         } catch (BadRequestException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -91,6 +99,20 @@ public class GeminiNutritionClient {
         } catch (NumberFormatException ex) {
             return BigDecimal.ZERO;
         }
+    }
+
+    private OffsetDateTime retryAt(RestClientResponseException ex) {
+        try {
+            JsonNode details = objectMapper.readTree(ex.getResponseBodyAsString()).path("error").path("details");
+            for (JsonNode detail : details) {
+                String delay = detail.path("retryDelay").asText("");
+                if (delay.endsWith("s")) return OffsetDateTime.now().plus(Duration.ofMillis((long) (Double.parseDouble(delay.substring(0, delay.length() - 1)) * 1000)));
+            }
+        } catch (Exception ignored) {
+            // Gemini may omit RetryInfo when its daily quota is exhausted.
+        }
+        ZoneId pacificTime = ZoneId.of("America/Los_Angeles");
+        return ZonedDateTime.now(pacificTime).toLocalDate().plusDays(1).atStartOfDay(pacificTime).toOffsetDateTime();
     }
 
     private static String stripCodeFence(String value) {

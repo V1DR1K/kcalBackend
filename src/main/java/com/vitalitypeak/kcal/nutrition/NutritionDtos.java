@@ -93,7 +93,7 @@ public class NutritionDtos {
             AiEstimateUsageResponse usage) {
     }
 
-    public record AiEstimateUsageResponse(boolean available, int dailyLimit, int used, int remaining) {
+    public record AiEstimateUsageResponse(boolean available, int used, OffsetDateTime blockedUntil, String status) {
     }
 
     public record ConfirmAiEstimateRequest(
