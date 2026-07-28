@@ -20,6 +20,8 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import com.vitalitypeak.kcal.nutrition.AiProviderException;
+
 @RestControllerAdvice
 public class ApiExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
@@ -32,6 +34,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler({BadRequestException.class, BadCredentialsException.class})
     ResponseEntity<ApiError> badRequest(RuntimeException ex) {
         return ResponseEntity.badRequest().body(new ApiError("BAD_REQUEST", ex.getMessage(), null, Instant.now()));
+    }
+
+    @ExceptionHandler(AiProviderException.class)
+    ResponseEntity<ApiError> aiProvider(AiProviderException ex) {
+        return ResponseEntity.status(ex.getStatus()).body(new ApiError(ex.getCode(), ex.getMessage(), null, Instant.now()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -60,7 +61,7 @@ public class GeminiNutritionClient {
                     .retrieve()
                     .body(JsonNode.class);
             String text = response == null ? null : response.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText(null);
-            if (text == null || text.isBlank()) throw new BadRequestException("La IA no pudo reconocer alimentos en esta foto.");
+            if (text == null || text.isBlank()) throw unreadablePhoto();
             JsonNode result = objectMapper.readTree(stripCodeFence(text));
             List<AiNutritionItem> items = new ArrayList<>();
             for (JsonNode item : result.path("items")) {
@@ -75,7 +76,7 @@ public class GeminiNutritionClient {
                     items.add(new AiNutritionItem(name.substring(0, Math.min(name.length(), 120)), grams, protein, carbs, fat));
                 }
             }
-            if (items.isEmpty()) throw new BadRequestException("No pudimos estimar los alimentos. Probá con mejor luz o cargalos manualmente.");
+            if (items.isEmpty()) throw unreadablePhoto();
             if (items.size() > 12) items = items.subList(0, 12);
             List<String> assumptions = new ArrayList<>();
             for (JsonNode assumption : result.path("assumptions")) {
@@ -91,13 +92,38 @@ public class GeminiNutritionClient {
                     description.substring(0, Math.min(description.length(), 240)), confidence, assumptions, items);
         } catch (RestClientResponseException ex) {
             if (ex.getStatusCode().value() == 429) throw new AiQuotaExceededException(retryAt(ex));
-            log.warn("Gemini meal analysis failed with upstream status {}", ex.getStatusCode().value());
-            throw new BadRequestException("Gemini no pudo analizar la foto. Intentá nuevamente en unos minutos.");
+            int status = ex.getStatusCode().value();
+            log.warn("Gemini meal analysis failed with upstream status {} ({})", status, upstreamReason(ex));
+            if (status == 400) throw unreadablePhoto();
+            if (status == 401 || status == 403) {
+                throw new AiProviderException("AI_PROVIDER_CONFIGURATION", HttpStatus.SERVICE_UNAVAILABLE,
+                        "Gemini no está disponible por una configuración del servicio. Intentá nuevamente más tarde.");
+            }
+            if (status == 404) {
+                throw new AiProviderException("AI_PROVIDER_MODEL_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE,
+                        "El modelo de estimación no está disponible por el momento. Intentá nuevamente más tarde.");
+            }
+            throw new AiProviderException("AI_PROVIDER_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE,
+                    "Gemini no está disponible por el momento. Intentá nuevamente en unos minutos.");
         } catch (BadRequestException ex) {
             throw ex;
         } catch (Exception ex) {
             log.warn("Gemini meal analysis did not return a valid estimate: {}", ex.getClass().getSimpleName());
-            throw new BadRequestException("No se pudo analizar la foto. Intentá nuevamente en unos minutos.");
+            throw new AiProviderException("AI_PROVIDER_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE,
+                    "Gemini no está disponible por el momento. Intentá nuevamente en unos minutos.");
+        }
+    }
+
+    private static AiProviderException unreadablePhoto() {
+        return new AiProviderException("AI_IMAGE_UNREADABLE", HttpStatus.BAD_REQUEST,
+                "No pudimos identificar alimentos en esta foto. Elegí una imagen más clara o probá con otra.");
+    }
+
+    private String upstreamReason(RestClientResponseException ex) {
+        try {
+            return objectMapper.readTree(ex.getResponseBodyAsString()).path("error").path("status").asText("unknown");
+        } catch (Exception ignored) {
+            return "unknown";
         }
     }
 
