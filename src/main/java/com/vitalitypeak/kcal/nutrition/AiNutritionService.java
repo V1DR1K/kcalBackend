@@ -13,11 +13,13 @@ import com.vitalitypeak.kcal.nutrition.GeminiNutritionClient.AiNutritionResult;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateItem;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateUsageResponse;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiTranscriptionResponse;
 import com.vitalitypeak.kcal.user.AppUser;
 
 @Service
 public class AiNutritionService {
     private static final List<String> ACCEPTED_TYPES = List.of("image/jpeg", "image/png", "image/webp");
+    private static final List<String> ACCEPTED_AUDIO_TYPES = List.of("audio/aac", "audio/m4a", "audio/mp4", "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm");
 
     private final AiEstimateUsageRepository usages;
     private final GeminiNutritionClient gemini;
@@ -44,7 +46,7 @@ public class AiNutritionService {
     }
 
     @Transactional
-    public AiEstimateResponse analyze(AppUser user, MultipartFile image) {
+    public AiEstimateResponse analyze(AppUser user, MultipartFile image, String context) {
         if (!properties.isEnabled() || properties.getGeminiApiKey() == null || properties.getGeminiApiKey().isBlank()) {
             throw new BadRequestException("La estimación por foto no está disponible por el momento.");
         }
@@ -67,7 +69,7 @@ public class AiNutritionService {
         usages.save(usage);
 
         try {
-            AiNutritionResult result = gemini.analyze(image.getBytes(), contentType);
+            AiNutritionResult result = gemini.analyze(image.getBytes(), contentType, normalizeContext(context));
             List<AiEstimateItem> items = result.items().stream()
                     .map(item -> new AiEstimateItem(item.name(), item.estimatedGrams(), item.proteinGrams(), item.carbsGrams(), item.fatGrams()))
                     .toList();
@@ -86,6 +88,34 @@ public class AiNutritionService {
             if (ex instanceof BadRequestException badRequest) throw badRequest;
             throw new BadRequestException("No se pudo analizar la foto. Intentá nuevamente en unos minutos.");
         }
+    }
+
+    @Transactional(readOnly = true)
+    public AiTranscriptionResponse transcribe(AppUser user, MultipartFile audio) {
+        if (!properties.isEnabled() || properties.getGeminiApiKey() == null || properties.getGeminiApiKey().isBlank()) {
+            throw new BadRequestException("La estimación por foto no está disponible por el momento.");
+        }
+        if (audio == null || audio.isEmpty()) throw new BadRequestException("Grabá una descripción breve de la comida.");
+        String contentType = normalizeContentType(audio.getContentType());
+        if (!ACCEPTED_AUDIO_TYPES.contains(contentType)) throw new BadRequestException("Usá una nota de audio compatible.");
+        if (audio.getSize() > properties.getMaxAudioBytes()) throw new BadRequestException("La nota de audio es demasiado larga. Probá con una descripción más breve.");
+        try {
+            return new AiTranscriptionResponse(gemini.transcribe(audio.getBytes(), contentType));
+        } catch (Exception ex) {
+            if (ex instanceof BadRequestException badRequest) throw badRequest;
+            throw new BadRequestException("No se pudo transcribir la nota. Intentá nuevamente.");
+        }
+    }
+
+    private static String normalizeContentType(String value) {
+        return value == null ? "" : value.split(";", 2)[0].trim().toLowerCase();
+    }
+
+    private static String normalizeContext(String value) {
+        if (value == null) return "";
+        String normalized = value.replaceAll("\\s+", " ").trim();
+        if (normalized.length() > 240) throw new BadRequestException("La descripción puede tener hasta 240 caracteres.");
+        return normalized;
     }
 
 }

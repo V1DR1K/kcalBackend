@@ -65,8 +65,9 @@ app:
   ai-nutrition:
     enabled: ${AI_NUTRITION_ENABLED:false}
     gemini-api-key: ${GEMINI_API_KEY:}
-    model: ${GEMINI_MODEL:gemini-2.5-flash}
+    model: ${GEMINI_MODEL:gemini-3.5-flash}
     max-image-bytes: ${AI_NUTRITION_MAX_IMAGE_BYTES:5242880}
+    max-audio-bytes: ${AI_NUTRITION_MAX_AUDIO_BYTES:2097152}
   catalog-import:
     enabled: ${APP_CATALOG_IMPORT_ENABLED:false}
     brands: ${APP_CATALOG_IMPORT_BRANDS:Coca-Cola,Mogul,Milka,Fantoche,Ciudad del Lago,Arcor,Bagley,Terrabusi,Havanna,Guaymallen,Jorgito,Bon o Bon,Cofler,Aguila,Don Satur,Pepitos,Sonrisas,Tita,Rhodesia,La Serenisima,Pepsi}

@@ -47,8 +47,9 @@ services:
       SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD}
       AI_NUTRITION_ENABLED: ${AI_NUTRITION_ENABLED:-false}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
       AI_NUTRITION_MAX_IMAGE_BYTES: ${AI_NUTRITION_MAX_IMAGE_BYTES:-5242880}
+      AI_NUTRITION_MAX_AUDIO_BYTES: ${AI_NUTRITION_MAX_AUDIO_BYTES:-2097152}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8081/api/health"]
       interval: 20s

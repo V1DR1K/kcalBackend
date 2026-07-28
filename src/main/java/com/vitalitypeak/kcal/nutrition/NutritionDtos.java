@@ -94,11 +94,16 @@ public class NutritionDtos {
             AiEstimateUsageResponse usage) {
     }
 
+    public record AiTranscriptionResponse(@NotBlank String transcript) {
+    }
+
     public record AiEstimateUsageResponse(boolean available, int used, OffsetDateTime blockedUntil, String status) {
     }
 
     public record ConfirmAiEstimateRequest(
             @NotBlank @Size(min = 2, max = 120) String name,
+            @Size(max = 240) String description,
+            @Size(max = 240) String context,
             @NotNull MealType mealType,
             LocalDate logDate,
             @NotNull @PositiveOrZero Integer confidence,

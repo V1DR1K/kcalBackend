@@ -13,6 +13,7 @@ import lombok.Setter;
 public class AiNutritionProperties {
     private boolean enabled;
     private String geminiApiKey;
-    private String model = "gemini-2.5-flash";
+    private String model = "gemini-3.5-flash";
     private int maxImageBytes = 5_242_880;
+    private int maxAudioBytes = 2_097_152;
 }

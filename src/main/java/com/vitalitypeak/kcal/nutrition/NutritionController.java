@@ -30,6 +30,7 @@ import com.vitalitypeak.kcal.nutrition.NutritionDtos.UpdateRecipeLogIngredientsR
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateUsageResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiTranscriptionResponse;
 
 import jakarta.validation.Valid;
 
@@ -72,8 +73,14 @@ public class NutritionController {
     }
 
     @PostMapping(value = "/ai-estimates", consumes = "multipart/form-data")
-    AiEstimateResponse estimateMeal(Authentication authentication, @RequestPart("image") MultipartFile image) {
-        return aiNutritionService.analyze(currentUser.from(authentication), image);
+    AiEstimateResponse estimateMeal(Authentication authentication, @RequestPart("image") MultipartFile image,
+            @RequestPart(value = "context", required = false) String context) {
+        return aiNutritionService.analyze(currentUser.from(authentication), image, context);
+    }
+
+    @PostMapping(value = "/ai-estimates/transcriptions", consumes = "multipart/form-data")
+    AiTranscriptionResponse transcribeMealNote(Authentication authentication, @RequestPart("audio") MultipartFile audio) {
+        return aiNutritionService.transcribe(currentUser.from(authentication), audio);
     }
 
     @PostMapping("/ai-estimates/confirm")

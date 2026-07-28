@@ -7,6 +7,8 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -25,6 +27,7 @@ import com.vitalitypeak.kcal.common.BadRequestException;
 @Component
 public class GeminiNutritionClient {
     private static final Logger log = LoggerFactory.getLogger(GeminiNutritionClient.class);
+    private static final List<String> FALLBACK_MODELS = List.of("gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.0-flash");
     private static final String PROMPT = """
             Analizá esta foto de comida para registrar un cheat meal. Respondé únicamente JSON válido.
             Identificá los alimentos visibles y estimá por cada uno gramos, proteínas, carbohidratos y grasas.
@@ -32,6 +35,10 @@ public class GeminiNutritionClient {
             y anotá las suposiciones. confidence debe ser un entero entre 0 y 100. Máximo 12 items.
             Incluí una descripción breve de lo que se observa en la foto, sin afirmar ingredientes que no sean visibles.
             Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
+            """;
+    private static final String TRANSCRIPTION_PROMPT = """
+            Transcribí esta breve nota de voz en español sobre una comida. Devolvé solo la transcripción,
+            sin comentarios ni puntuación adicional. Máximo 240 caracteres.
             """;
 
     private final RestClient restClient;
@@ -45,22 +52,12 @@ public class GeminiNutritionClient {
         this.properties = properties;
     }
 
-    public AiNutritionResult analyze(byte[] image, String contentType) {
+    public AiNutritionResult analyze(byte[] image, String contentType, String context) {
         try {
-            Map<String, Object> content = Map.of("parts", List.of(
-                    Map.of("text", PROMPT),
-                    Map.of("inlineData", Map.of("mimeType", contentType, "data", Base64.getEncoder().encodeToString(image)))));
-            Map<String, Object> body = Map.of(
-                    "contents", List.of(content),
-                    "generationConfig", Map.of("temperature", 0.2, "responseMimeType", "application/json"));
-            JsonNode response = restClient.post()
-                    .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
-                            properties.getModel(), properties.getGeminiApiKey())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(JsonNode.class);
-            String text = response == null ? null : response.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText(null);
+            JsonNode response = generateContent(List.of(
+                    Map.of("text", nutritionPrompt(context)),
+                    inlineData(contentType, image)), true);
+            String text = responseText(response);
             if (text == null || text.isBlank()) throw unreadablePhoto();
             JsonNode result = objectMapper.readTree(stripCodeFence(text));
             List<AiNutritionItem> items = new ArrayList<>();
@@ -112,6 +109,70 @@ public class GeminiNutritionClient {
             throw new AiProviderException("AI_PROVIDER_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE,
                     "Gemini no está disponible por el momento. Intentá nuevamente en unos minutos.");
         }
+    }
+
+    public String transcribe(byte[] audio, String contentType) {
+        try {
+            String transcript = responseText(generateContent(List.of(
+                    Map.of("text", TRANSCRIPTION_PROMPT),
+                    inlineData(contentType, audio)), false));
+            if (transcript == null || transcript.isBlank()) {
+                throw new BadRequestException("No pudimos transcribir la nota. Intentá nuevamente.");
+            }
+            String normalized = transcript.replaceAll("\\s+", " ").trim();
+            return normalized.substring(0, Math.min(normalized.length(), 240));
+        } catch (BadRequestException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.warn("Gemini meal note transcription did not return text: {}", ex.getClass().getSimpleName());
+            throw new AiProviderException("AI_PROVIDER_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE,
+                    "Gemini no está disponible para transcribir la nota. Intentá nuevamente en unos minutos.");
+        }
+    }
+
+    private JsonNode generateContent(List<Map<String, Object>> parts, boolean jsonResponse) {
+        RestClientResponseException unavailableModel = null;
+        for (String model : candidateModels()) {
+            try {
+                Map<String, Object> generationConfig = new HashMap<>();
+                generationConfig.put("temperature", 0.2);
+                if (jsonResponse) generationConfig.put("responseMimeType", "application/json");
+                Map<String, Object> content = Map.of("parts", parts);
+                Map<String, Object> body = Map.of("contents", List.of(content), "generationConfig", generationConfig);
+                return restClient.post()
+                        .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}", model, properties.getGeminiApiKey())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(JsonNode.class);
+            } catch (RestClientResponseException ex) {
+                if (ex.getStatusCode().value() != 404) throw ex;
+                unavailableModel = ex;
+                log.warn("Gemini model {} is unavailable ({}); trying a compatible fallback", model, upstreamReason(ex));
+            }
+        }
+        throw unavailableModel == null ? new IllegalStateException("No Gemini model configured") : unavailableModel;
+    }
+
+    private List<String> candidateModels() {
+        LinkedHashSet<String> models = new LinkedHashSet<>();
+        models.add(properties.getModel());
+        models.addAll(FALLBACK_MODELS);
+        return models.stream().filter(model -> model != null && !model.isBlank()).toList();
+    }
+
+    private static Map<String, Object> inlineData(String contentType, byte[] content) {
+        return Map.of("inlineData", Map.of("mimeType", contentType, "data", Base64.getEncoder().encodeToString(content)));
+    }
+
+    private static String nutritionPrompt(String context) {
+        if (context == null || context.isBlank()) return PROMPT;
+        return PROMPT + "\nContexto opcional declarado por la persona: \"" + context
+                + "\". Usalo solo para identificar la comida; la foto sigue siendo la fuente principal.";
+    }
+
+    private static String responseText(JsonNode response) {
+        return response == null ? null : response.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText(null);
     }
 
     private static AiProviderException unreadablePhoto() {

@@ -32,6 +32,7 @@ import com.vitalitypeak.kcal.externalfood.ExternalFoodLookupService;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddMealLogRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddFoodLogRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddWaterRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateItem;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.CreateFoodRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.CreateRecipeRequest;
@@ -405,11 +406,14 @@ public class NutritionService {
         log.setAiEstimateName(request.name().trim());
         log.setAiEstimateConfidence(Math.max(0, Math.min(100, request.confidence())));
         try {
-            log.setAiEstimateDetails(objectMapper.writeValueAsString(request.items()));
+            log.setAiEstimateDetails(objectMapper.writeValueAsString(new AiEstimateDetails(request.description(), request.context(), request.items())));
         } catch (JsonProcessingException ex) {
             throw new BadRequestException("No se pudo guardar la estimación.");
         }
         return toFoodLogResponse(foodLogs.save(log));
+    }
+
+    private record AiEstimateDetails(String description, String context, List<AiEstimateItem> items) {
     }
 
     @Transactional
