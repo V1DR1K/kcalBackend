@@ -100,6 +100,19 @@ public class NutritionDtos {
     public record AiEstimateUsageResponse(boolean available, int used, OffsetDateTime blockedUntil, String status) {
     }
 
+    public record AiEstimateDraft(
+            @NotBlank @Size(min = 2, max = 120) String name,
+            @Size(max = 240) String description,
+            @NotNull @PositiveOrZero Integer confidence,
+            @Size(max = 4) List<@NotBlank @Size(max = 160) String> assumptions,
+            @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items) {
+    }
+
+    public record RefineAiEstimateRequest(
+            @NotNull @Valid AiEstimateDraft currentEstimate,
+            @NotBlank @Size(max = 240) String correction) {
+    }
+
     public record ConfirmAiEstimateRequest(
             @NotBlank @Size(min = 2, max = 120) String name,
             @Size(max = 240) String description,

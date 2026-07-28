@@ -14,6 +14,7 @@ import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateItem;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateUsageResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiTranscriptionResponse;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.RefineAiEstimateRequest;
 import com.vitalitypeak.kcal.user.AppUser;
 
 @Service
@@ -47,6 +48,18 @@ public class AiNutritionService {
 
     @Transactional
     public AiEstimateResponse analyze(AppUser user, MultipartFile image, String context) {
+        return estimate(user, image, context, gemini::analyze);
+    }
+
+    @Transactional
+    public AiEstimateResponse refine(AppUser user, MultipartFile image, String context, RefineAiEstimateRequest request) {
+        String correction = normalizeCorrection(request.correction());
+        return estimate(user, image, context,
+                (content, contentType, normalizedContext) -> gemini.refine(content, contentType, normalizedContext,
+                        request.currentEstimate(), correction));
+    }
+
+    private AiEstimateResponse estimate(AppUser user, MultipartFile image, String context, EstimateOperation operation) {
         if (!properties.isEnabled() || properties.getGeminiApiKey() == null || properties.getGeminiApiKey().isBlank()) {
             throw new BadRequestException("La estimación por foto no está disponible por el momento.");
         }
@@ -69,7 +82,7 @@ public class AiNutritionService {
         usages.save(usage);
 
         try {
-            AiNutritionResult result = gemini.analyze(image.getBytes(), contentType, normalizeContext(context));
+            AiNutritionResult result = operation.estimate(image.getBytes(), contentType, normalizeContext(context));
             List<AiEstimateItem> items = result.items().stream()
                     .map(item -> new AiEstimateItem(item.name(), item.estimatedGrams(), item.proteinGrams(), item.carbsGrams(), item.fatGrams()))
                     .toList();
@@ -116,6 +129,19 @@ public class AiNutritionService {
         String normalized = value.replaceAll("\\s+", " ").trim();
         if (normalized.length() > 240) throw new BadRequestException("La descripción puede tener hasta 240 caracteres.");
         return normalized;
+    }
+
+    private static String normalizeCorrection(String value) {
+        if (value == null) throw new BadRequestException("Escribí una corrección para la estimación.");
+        String normalized = value.replaceAll("\\s+", " ").trim();
+        if (normalized.isBlank()) throw new BadRequestException("Escribí una corrección para la estimación.");
+        if (normalized.length() > 240) throw new BadRequestException("La corrección puede tener hasta 240 caracteres.");
+        return normalized;
+    }
+
+    @FunctionalInterface
+    private interface EstimateOperation {
+        AiNutritionResult estimate(byte[] image, String contentType, String context) throws Exception;
     }
 
 }

@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vitalitypeak.kcal.common.BadRequestException;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateDraft;
 
 @Component
 public class GeminiNutritionClient {
@@ -40,6 +41,14 @@ public class GeminiNutritionClient {
             Transcribí esta breve nota de voz en español sobre una comida. Devolvé solo la transcripción,
             sin comentarios ni puntuación adicional. Máximo 240 caracteres.
             """;
+    private static final String REFINEMENT_PROMPT = """
+            Revisá una estimación nutricional de una foto de comida. Respondé únicamente JSON válido con el mismo esquema indicado.
+            La foto es la evidencia principal. El contexto original y la corrección de la persona tienen prioridad sobre el borrador;
+            el borrador actual puede incluir cambios manuales y debe usarse como base, no como una fuente nutricional definitiva.
+            Aplicá la corrección a una lista completa de alimentos: agregá, quitá o ajustá ítems según corresponda.
+            No inventes precisión: usá estimaciones conservadoras, anotá las suposiciones y devolvé como máximo 12 ítems.
+            Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
+            """;
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -53,10 +62,21 @@ public class GeminiNutritionClient {
     }
 
     public AiNutritionResult analyze(byte[] image, String contentType, String context) {
+        return nutritionResult(List.of(
+                Map.of("text", nutritionPrompt(context)),
+                inlineData(contentType, image)));
+    }
+
+    public AiNutritionResult refine(byte[] image, String contentType, String context, AiEstimateDraft currentEstimate,
+            String correction) {
+        return nutritionResult(List.of(
+                Map.of("text", refinementPrompt(context, currentEstimate, correction)),
+                inlineData(contentType, image)));
+    }
+
+    private AiNutritionResult nutritionResult(List<Map<String, Object>> parts) {
         try {
-            JsonNode response = generateContent(List.of(
-                    Map.of("text", nutritionPrompt(context)),
-                    inlineData(contentType, image)), true);
+            JsonNode response = generateContent(parts, true);
             String text = responseText(response);
             if (text == null || text.isBlank()) throw unreadablePhoto();
             JsonNode result = objectMapper.readTree(stripCodeFence(text));
@@ -170,6 +190,18 @@ public class GeminiNutritionClient {
         if (context == null || context.isBlank()) return PROMPT;
         return PROMPT + "\nContexto opcional declarado por la persona: \"" + context
                 + "\". Usalo solo para identificar la comida; la foto sigue siendo la fuente principal.";
+    }
+
+    private String refinementPrompt(String context, AiEstimateDraft currentEstimate, String correction) {
+        try {
+            String draft = objectMapper.writeValueAsString(currentEstimate);
+            String originalContext = context == null || context.isBlank() ? "(sin observación original)" : context;
+            return REFINEMENT_PROMPT + "\nObservación original: \"" + originalContext + "\""
+                    + "\nBorrador actual: " + draft
+                    + "\nCorrección solicitada: \"" + correction + "\"";
+        } catch (Exception ex) {
+            throw new IllegalStateException("No se pudo preparar la corrección de la estimación.", ex);
+        }
     }
 
     private static String responseText(JsonNode response) {

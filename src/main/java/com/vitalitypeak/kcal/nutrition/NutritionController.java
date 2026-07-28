@@ -31,6 +31,7 @@ import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateUsageResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiTranscriptionResponse;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.RefineAiEstimateRequest;
 
 import jakarta.validation.Valid;
 
@@ -76,6 +77,13 @@ public class NutritionController {
     AiEstimateResponse estimateMeal(Authentication authentication, @RequestPart("image") MultipartFile image,
             @RequestPart(value = "context", required = false) String context) {
         return aiNutritionService.analyze(currentUser.from(authentication), image, context);
+    }
+
+    @PostMapping(value = "/ai-estimates/refinements", consumes = "multipart/form-data")
+    AiEstimateResponse refineMeal(Authentication authentication, @RequestPart("image") MultipartFile image,
+            @RequestPart(value = "context", required = false) String context,
+            @Valid @RequestPart("request") RefineAiEstimateRequest request) {
+        return aiNutritionService.refine(currentUser.from(authentication), image, context, request);
     }
 
     @PostMapping(value = "/ai-estimates/transcriptions", consumes = "multipart/form-data")
