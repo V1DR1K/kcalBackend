@@ -131,7 +131,7 @@ public class GeminiNutritionClient {
     }
 
     private JsonNode generateContent(List<Map<String, Object>> parts, boolean jsonResponse) {
-        RestClientResponseException unavailableModel = null;
+        RestClientResponseException retryableFailure = null;
         for (String model : candidateModels()) {
             try {
                 Map<String, Object> generationConfig = new HashMap<>();
@@ -146,12 +146,13 @@ public class GeminiNutritionClient {
                         .retrieve()
                         .body(JsonNode.class);
             } catch (RestClientResponseException ex) {
-                if (ex.getStatusCode().value() != 404) throw ex;
-                unavailableModel = ex;
-                log.warn("Gemini model {} is unavailable ({}); trying a compatible fallback", model, upstreamReason(ex));
+                int status = ex.getStatusCode().value();
+                if (status != 404 && status != 500 && status != 503) throw ex;
+                retryableFailure = ex;
+                log.warn("Gemini model {} returned {} ({}); trying a compatible fallback", model, status, upstreamReason(ex));
             }
         }
-        throw unavailableModel == null ? new IllegalStateException("No Gemini model configured") : unavailableModel;
+        throw retryableFailure == null ? new IllegalStateException("No Gemini model configured") : retryableFailure;
     }
 
     private List<String> candidateModels() {
