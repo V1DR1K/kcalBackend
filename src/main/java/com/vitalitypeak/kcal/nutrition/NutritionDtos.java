@@ -64,7 +64,7 @@ public class NutritionDtos {
     }
 
     public record UpdateFoodLogRequest(@NotNull MealType mealType, @Positive BigDecimal quantity,
-            @NotNull FoodUnit unit, LocalDate logDate) {
+            @NotNull FoodUnit unit, LocalDate logDate, Long itemId) {
     }
 
     public record UpdateRecipeLogIngredientsRequest(

@@ -436,6 +436,10 @@ public class NutritionService {
     public FoodLogResponse updateFoodLog(AppUser user, Long logId, UpdateFoodLogRequest request) {
         FoodLog log = foodLogs.findByIdAndUser(logId, user)
                 .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));
+        if (request.itemId() != null && log.getItemType() == MealItemType.FOOD && !request.itemId().equals(log.getFood().getId())) {
+            Food newFood = getFood(request.itemId());
+            log.setFood(newFood);
+        }
         NutritionPreviewResponse preview = log.getItemType() == MealItemType.RECIPE
                 ? previewRecipeServing(log, request.quantity())
                 : log.getItemType() == MealItemType.FOOD
