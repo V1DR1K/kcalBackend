@@ -433,6 +433,11 @@ public class NutritionService {
     }
 
     @Transactional
+    public void deleteMealLogs(AppUser user, MealType mealType, LocalDate date) {
+        foodLogs.deleteAll(foodLogs.findByUserAndMealTypeAndLogDate(user, mealType, date == null ? LocalDate.now() : date));
+    }
+
+    @Transactional
     public FoodLogResponse updateFoodLog(AppUser user, Long logId, UpdateFoodLogRequest request) {
         FoodLog log = foodLogs.findByIdAndUser(logId, user)
                 .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));

@@ -168,6 +168,30 @@ class KcalBackendApplicationTests {
 	}
 
 	@Test
+	void userCanDeleteAllLogsFromOneMealWithoutAffectingOtherMeals() {
+		HttpHeaders headers = authHeaders();
+		String date = "2030-01-16";
+		Map<String, Object> lunch = Map.of("itemType", "FOOD", "itemId", 1, "mealType", "LUNCH",
+				"quantity", 100, "unit", "GRAM", "logDate", date);
+		Map<String, Object> dinner = Map.of("itemType", "FOOD", "itemId", 1, "mealType", "DINNER",
+				"quantity", 100, "unit", "GRAM", "logDate", date);
+		ResponseEntity<Map> firstLunch = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(lunch, headers), Map.class);
+		ResponseEntity<Map> secondLunch = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(lunch, headers), Map.class);
+		ResponseEntity<Map> dinnerLog = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(dinner, headers), Map.class);
+
+		ResponseEntity<Void> deleted = rest.exchange("/api/nutrition/food-logs?mealType=LUNCH&date=" + date,
+				HttpMethod.DELETE, new HttpEntity<>(headers), Void.class);
+
+		assertThat(deleted.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(rest.exchange("/api/nutrition/food-logs/" + firstLunch.getBody().get("id"), HttpMethod.DELETE,
+				new HttpEntity<>(headers), String.class).getStatusCode().value()).isEqualTo(404);
+		assertThat(rest.exchange("/api/nutrition/food-logs/" + secondLunch.getBody().get("id"), HttpMethod.DELETE,
+				new HttpEntity<>(headers), String.class).getStatusCode().value()).isEqualTo(404);
+		assertThat(rest.exchange("/api/nutrition/food-logs/" + dinnerLog.getBody().get("id"), HttpMethod.DELETE,
+				new HttpEntity<>(headers), Void.class).getStatusCode().is2xxSuccessful()).isTrue();
+	}
+
+	@Test
 	void foodCatalogIsPaginatedAndExposesNextPage() {
 		ResponseEntity<String> first = rest.exchange("/api/foods?page=0&size=5", HttpMethod.GET,
 				new HttpEntity<>(authHeaders()), String.class);

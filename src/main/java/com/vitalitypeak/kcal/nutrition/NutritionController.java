@@ -107,6 +107,13 @@ public class NutritionController {
         return ResponseEntity.noContent().build();
     }
 
+    @DeleteMapping("/food-logs")
+    ResponseEntity<Void> deleteMealLogs(Authentication authentication, @RequestParam MealType mealType,
+            @RequestParam(required = false) LocalDate date) {
+        nutritionService.deleteMealLogs(currentUser.from(authentication), mealType, date);
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/food-logs/{id}")
     FoodLogResponse updateFoodLog(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody UpdateFoodLogRequest request) {
