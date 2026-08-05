@@ -26,9 +26,15 @@ import org.springframework.http.ResponseEntity;
 
 import com.vitalitypeak.kcal.catalog.FoodCategory;
 import com.vitalitypeak.kcal.catalog.FoodPreparation;
+import com.vitalitypeak.kcal.catalog.FoodRepository;
+import com.vitalitypeak.kcal.catalog.FoodUnit;
 import com.vitalitypeak.kcal.externalfood.ExternalFoodCandidate;
 import com.vitalitypeak.kcal.externalfood.ExternalFoodLookupService;
+import com.vitalitypeak.kcal.nutrition.FoodLog;
 import com.vitalitypeak.kcal.nutrition.FoodLogRepository;
+import com.vitalitypeak.kcal.nutrition.MealItemType;
+import com.vitalitypeak.kcal.nutrition.MealType;
+import com.vitalitypeak.kcal.user.UserRepository;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class KcalBackendApplicationTests {
@@ -40,6 +46,12 @@ class KcalBackendApplicationTests {
 
 	@Autowired
 	FoodLogRepository foodLogs;
+
+	@Autowired
+	FoodRepository foods;
+
+	@Autowired
+	UserRepository users;
 
 	@BeforeEach
 	void resetMocks() {
@@ -257,44 +269,75 @@ class KcalBackendApplicationTests {
 	}
 
 	@Test
-	void userCanSaveConfirmedAiEstimateWithoutCreatingCatalogFood() {
+	void confirmsAiEstimateAsOneFoodLogPerSelectedFood() {
 		HttpHeaders headers = authHeaders();
 		Map<String, Object> estimate = Map.of(
-				"name", "Hamburguesa con papas",
-				"confidence", 62,
 				"mealType", "DINNER",
 				"logDate", "2031-02-11",
 				"items", List.of(
-						Map.of("name", "Hamburguesa", "estimatedGrams", 220, "proteinGrams", 30, "carbsGrams", 35, "fatGrams", 28),
-						Map.of("name", "Papas fritas", "estimatedGrams", 150, "proteinGrams", 5, "carbsGrams", 55, "fatGrams", 18)));
+						Map.of("foodId", 1, "servedGrams", 150),
+						Map.of("proposal", Map.of("name", "Hamburguesa de lentejas", "category", "LEGUME",
+								"preparation", "COOKED", "proteinGrams", 20, "carbsGrams", 30, "fatGrams", 10),
+								"servedGrams", 250)));
 
 		ResponseEntity<String> response = rest.postForEntity("/api/nutrition/ai-estimates/confirm", new HttpEntity<>(estimate, headers), String.class);
 
 		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(response.getBody()).contains("\"itemType\":\"AI_ESTIMATE\"", "\"displayName\":\"Hamburguesa con papas\"", "\"calories\":914");
+		assertThat(response.getBody()).startsWith("[").contains("\"itemType\":\"FOOD\"", "\"quantity\":150",
+				"\"quantity\":250", "\"unit\":\"GRAM\"", "\"proteinGrams\":50.0", "\"carbsGrams\":75.0",
+				"\"fatGrams\":25.0", "\"calories\":725", "\"source\":\"AI_ESTIMATE\"",
+				"\"sourceId\":\"food-log:", "\"moderationStatus\":\"PENDING\"");
+		assertThat(countOccurrences(response.getBody(), "\"itemType\":\"FOOD\"")).isEqualTo(2);
 	}
 
 	@Test
-	void userCanEditAiEstimateAndSaveOneItemAsPendingGlobalFood() {
+	void confirmAiEstimateValidatesReferencesAndRollsBackCatalogProposals() {
 		HttpHeaders headers = authHeaders();
-		Map<String, Object> estimate = Map.of(
-				"name", "Cena estimada", "confidence", 50, "mealType", "DINNER", "logDate", "2031-02-12",
-				"items", List.of(Map.of("name", "Pollo grillado", "estimatedGrams", 150, "proteinGrams", 30, "carbsGrams", 0, "fatGrams", 9)));
-		ResponseEntity<Map> created = rest.postForEntity("/api/nutrition/ai-estimates/confirm", new HttpEntity<>(estimate, headers), Map.class);
-		Object logId = created.getBody().get("id");
-		long id = ((Number) logId).longValue();
-		var log = foodLogs.findById(id).orElseThrow();
+		Map<String, Object> proposal = Map.of("name", "No debe persistir", "category", "OTHER",
+				"proteinGrams", 1, "carbsGrams", 2, "fatGrams", 3);
+		Map<String, Object> request = Map.of("mealType", "LUNCH", "logDate", "2031-02-12", "items", List.of(
+				Map.of("proposal", proposal, "servedGrams", 100),
+				Map.of("foodId", 999999, "servedGrams", 100)));
+
+		ResponseEntity<String> rollback = rest.postForEntity("/api/nutrition/ai-estimates/confirm", new HttpEntity<>(request, headers), String.class);
+		ResponseEntity<String> ambiguous = rest.postForEntity("/api/nutrition/ai-estimates/confirm", new HttpEntity<>(Map.of(
+				"mealType", "LUNCH", "items", List.of(Map.of("foodId", 1, "proposal", proposal, "servedGrams", 100))), headers), String.class);
+		ResponseEntity<String> oversized = rest.postForEntity("/api/nutrition/ai-estimates/confirm", new HttpEntity<>(Map.of(
+				"mealType", "LUNCH", "items", List.of(Map.of("foodId", 1, "servedGrams", 3001))), headers), String.class);
+
+		assertThat(rollback.getStatusCode().value()).isEqualTo(404);
+		assertThat(foods.findAll()).noneMatch(food -> food.getName().equals("No debe persistir"));
+		assertThat(ambiguous.getStatusCode().is4xxClientError()).isTrue();
+		assertThat(oversized.getStatusCode().is4xxClientError()).isTrue();
+	}
+
+	@Test
+	void userCanEditHistoricalAiEstimateAndSaveOneItemAsPendingGlobalFood() {
+		HttpHeaders headers = authHeaders();
+		FoodLog log = new FoodLog();
+		log.setUser(users.findByEmailIgnoreCase("alex@kazadesarrollos.com").orElseThrow());
+		log.setItemType(MealItemType.AI_ESTIMATE);
+		log.setMealType(MealType.DINNER);
+		log.setLogDate(java.time.LocalDate.parse("2031-02-12"));
+		log.setQuantity(BigDecimal.ONE);
+		log.setUnit(FoodUnit.PORTION);
+		log.setCalories(250);
+		log.setProteinGrams(BigDecimal.valueOf(30));
+		log.setCarbsGrams(BigDecimal.ZERO);
+		log.setFatGrams(BigDecimal.valueOf(9));
+		log.setAiEstimateName("Cena estimada");
+		log.setAiEstimateConfidence(50);
 		log.setAiEstimateDetails("{\"description\":\"legacy\",\"context\":\"legacy\",\"items\":[{\"name\":\"Pollo grillado\",\"estimatedGrams\":150,\"proteinGrams\":30,\"carbsGrams\":0,\"fatGrams\":9}]}");
-		foodLogs.save(log);
+		long id = foodLogs.save(log).getId();
 		Map<String, Object> update = Map.of(
 				"name", "Cena corregida", "description", "Sin salsa", "context", "casero", "confidence", 75,
 				"assumptions", List.of("Peso cocido"), "mealType", "LUNCH", "logDate", "2031-02-13",
 				"items", List.of(Map.of("name", "Pollo grillado", "estimatedGrams", 200, "proteinGrams", 40, "carbsGrams", 0, "fatGrams", 10)));
 
-		ResponseEntity<String> updated = rest.exchange("/api/nutrition/food-logs/" + logId + "/ai-estimate", HttpMethod.PUT,
+		ResponseEntity<String> updated = rest.exchange("/api/nutrition/food-logs/" + id + "/ai-estimate", HttpMethod.PUT,
 				new HttpEntity<>(update, headers), String.class);
 		String snapshot = foodLogs.findById(id).orElseThrow().getAiEstimateDetails();
-		ResponseEntity<String> cataloged = rest.postForEntity("/api/nutrition/food-logs/" + logId + "/ai-estimate/items/0/catalog",
+		ResponseEntity<String> cataloged = rest.postForEntity("/api/nutrition/food-logs/" + id + "/ai-estimate/items/0/catalog",
 				new HttpEntity<>(Map.of("category", "MEAT", "preparation", "COOKED", "tags", Set.of("casero")), headers), String.class);
 
 		assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();

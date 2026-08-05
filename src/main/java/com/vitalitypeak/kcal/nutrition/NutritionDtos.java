@@ -14,10 +14,12 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.AssertTrue;
 import com.vitalitypeak.kcal.catalog.FoodPreparation;
 import com.vitalitypeak.kcal.catalog.ModerationStatus;
 
@@ -114,13 +116,28 @@ public class NutritionDtos {
     }
 
     public record ConfirmAiEstimateRequest(
-            @NotBlank @Size(min = 2, max = 120) String name,
-            @Size(max = 240) String description,
-            @Size(max = 240) String context,
             @NotNull MealType mealType,
             LocalDate logDate,
-            @NotNull @PositiveOrZero Integer confidence,
-            @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items) {
+            @NotEmpty @Size(max = 12) List<@NotNull @Valid ConfirmAiEstimateItem> items) {
+    }
+
+    public record ConfirmAiEstimateItem(
+            @Positive Long foodId,
+            @Valid AiEstimateFoodProposal proposal,
+            @NotNull @Positive @DecimalMax("3000") BigDecimal servedGrams) {
+        @AssertTrue(message = "Debe informar exactamente uno de foodId o proposal.")
+        public boolean hasExactlyOneFoodSource() {
+            return (foodId == null) != (proposal == null);
+        }
+    }
+
+    public record AiEstimateFoodProposal(
+            @NotBlank @Size(min = 2, max = 120) String name,
+            @NotNull FoodCategory category,
+            FoodPreparation preparation,
+            @NotNull @PositiveOrZero BigDecimal proteinGrams,
+            @NotNull @PositiveOrZero BigDecimal carbsGrams,
+            @NotNull @PositiveOrZero BigDecimal fatGrams) {
     }
 
     public record UpdateAiEstimateRequest(

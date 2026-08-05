@@ -34,6 +34,8 @@ import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddFoodLogRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AddWaterRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateItem;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.ConfirmAiEstimateItem;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateFoodProposal;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.CreateFoodRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.CreateRecipeRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.DashboardResponse;
@@ -382,13 +384,50 @@ public class NutritionService {
     }
 
     @Transactional
-    public FoodLogResponse addAiEstimate(AppUser user, ConfirmAiEstimateRequest request) {
+    public List<FoodLogResponse> confirmAiEstimate(AppUser user, ConfirmAiEstimateRequest request) {
+        LocalDate logDate = request.logDate() == null ? LocalDate.now() : request.logDate();
+        return request.items().stream().map(item -> confirmAiEstimateItem(user, request.mealType(), logDate, item)).toList();
+    }
+
+    private FoodLogResponse confirmAiEstimateItem(AppUser user, MealType mealType, LocalDate logDate,
+            ConfirmAiEstimateItem item) {
+        Food food = item.foodId() == null ? createAiEstimateFood(user, item.proposal()) : getFood(item.foodId());
+        NutritionPreviewResponse preview = preview(food, item.servedGrams());
         FoodLog log = new FoodLog();
         log.setUser(user);
-        log.setItemType(MealItemType.AI_ESTIMATE);
-        applyAiEstimate(log, request.name(), request.description(), request.context(), request.confidence(), List.of(),
-                request.items(), request.mealType(), request.logDate());
-        return toFoodLogResponse(foodLogs.save(log));
+        log.setFood(food);
+        log.setItemType(MealItemType.FOOD);
+        log.setMealType(mealType);
+        log.setQuantity(item.servedGrams());
+        log.setUnit(FoodUnit.GRAM);
+        log.setLogDate(logDate);
+        applyLogNutrition(log, preview);
+        FoodLog savedLog = foodLogs.save(log);
+        if (item.proposal() != null) {
+            food.setSourceId("food-log:" + savedLog.getId());
+            foods.save(food);
+        }
+        return toFoodLogResponse(savedLog);
+    }
+
+    private Food createAiEstimateFood(AppUser user, AiEstimateFoodProposal proposal) {
+        Food food = new Food();
+        food.setName(proposal.name().trim());
+        food.setCategory(proposal.category());
+        food.setBaseUnit(FoodUnit.GRAM);
+        food.setBaseQuantity(BigDecimal.valueOf(100));
+        food.setProteinGrams(scale(proposal.proteinGrams()));
+        food.setCarbsGrams(scale(proposal.carbsGrams()));
+        food.setFatGrams(scale(proposal.fatGrams()));
+        food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
+        food.setPreparation(proposal.preparation() == null ? com.vitalitypeak.kcal.catalog.FoodPreparation.UNSPECIFIED
+                : proposal.preparation());
+        food.setPreparationSource("Estimado por IA");
+        food.setSource("AI_ESTIMATE");
+        food.setCreatedBy(user);
+        food.setCreatedAt(OffsetDateTime.now());
+        food.setModerationStatus(com.vitalitypeak.kcal.catalog.ModerationStatus.PENDING);
+        return foods.save(food);
     }
 
     @Transactional

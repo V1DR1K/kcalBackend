@@ -95,8 +95,8 @@ public class NutritionController {
     }
 
     @PostMapping("/ai-estimates/confirm")
-    FoodLogResponse confirmAiEstimate(Authentication authentication, @Valid @RequestBody ConfirmAiEstimateRequest request) {
-        return nutritionService.addAiEstimate(currentUser.from(authentication), request);
+    List<FoodLogResponse> confirmAiEstimate(Authentication authentication, @Valid @RequestBody ConfirmAiEstimateRequest request) {
+        return nutritionService.confirmAiEstimate(currentUser.from(authentication), request);
     }
 
     @PostMapping("/water-logs")
