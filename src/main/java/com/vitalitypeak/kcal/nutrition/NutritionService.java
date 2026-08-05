@@ -46,7 +46,9 @@ import com.vitalitypeak.kcal.nutrition.NutritionDtos.MealSummary;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.MealTypeResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.NutritionPreviewResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.UpdateFoodLogRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.UpdateAiEstimateRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.UpdateRecipeLogIngredientsRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.SaveAiEstimateItemRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.PageResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.RecipeIngredientResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.RecipeIngredientRequest;
@@ -381,7 +383,84 @@ public class NutritionService {
 
     @Transactional
     public FoodLogResponse addAiEstimate(AppUser user, ConfirmAiEstimateRequest request) {
-        for (var item : request.items()) {
+        FoodLog log = new FoodLog();
+        log.setUser(user);
+        log.setItemType(MealItemType.AI_ESTIMATE);
+        applyAiEstimate(log, request.name(), request.description(), request.context(), request.confidence(), List.of(),
+                request.items(), request.mealType(), request.logDate());
+        return toFoodLogResponse(foodLogs.save(log));
+    }
+
+    @Transactional
+    public FoodLogResponse updateAiEstimate(AppUser user, Long logId, UpdateAiEstimateRequest request) {
+        FoodLog log = ownedAiEstimateLog(user, logId);
+        AiEstimateDetails existing = readAiEstimateDetails(log);
+        List<String> assumptions = request.assumptions() == null
+                ? existing.assumptions() == null ? List.of() : existing.assumptions()
+                : request.assumptions();
+        applyAiEstimate(log, request.name(), request.description(), request.context(), request.confidence(), assumptions,
+                request.items(), request.mealType(), request.logDate());
+        return toFoodLogResponse(foodLogs.save(log));
+    }
+
+    @Transactional
+    public FoodResponse saveAiEstimateItemToCatalog(AppUser user, Long logId, int itemIndex,
+            SaveAiEstimateItemRequest request) {
+        FoodLog log = ownedAiEstimateLog(user, logId);
+        AiEstimateDetails details = readAiEstimateDetails(log);
+        if (itemIndex < 0 || itemIndex >= details.items().size()) {
+            throw new BadRequestException("El item de la estimación no existe.");
+        }
+        AiEstimateItem item = details.items().get(itemIndex);
+        validateAiEstimateItems(List.of(item));
+        BigDecimal ratio = BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP);
+        Food food = new Food();
+        food.setName(item.name().trim());
+        food.setCategory(request.category());
+        food.setBaseUnit(FoodUnit.GRAM);
+        food.setBaseQuantity(BigDecimal.valueOf(100));
+        food.setProteinGrams(scale(item.proteinGrams().multiply(ratio)));
+        food.setCarbsGrams(scale(item.carbsGrams().multiply(ratio)));
+        food.setFatGrams(scale(item.fatGrams().multiply(ratio)));
+        food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
+        food.setPreparation(request.preparation() == null ? com.vitalitypeak.kcal.catalog.FoodPreparation.UNSPECIFIED : request.preparation());
+        food.setPreparationSource("Estimado por IA");
+        food.setSource("AI_ESTIMATE");
+        food.setSourceId("food-log:" + log.getId() + ":item:" + itemIndex);
+        food.setCreatedBy(user);
+        food.setCreatedAt(OffsetDateTime.now());
+        food.setModerationStatus(com.vitalitypeak.kcal.catalog.ModerationStatus.PENDING);
+        food.setTags(request.tags() == null ? new LinkedHashSet<>() : request.tags().stream()
+                .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
+        return toFoodResponse(foods.save(food));
+    }
+
+    private void applyAiEstimate(FoodLog log, String name, String description, String context, int confidence,
+            List<String> assumptions, List<AiEstimateItem> items, MealType mealType, LocalDate logDate) {
+        validateAiEstimateItems(items);
+        BigDecimal protein = items.stream().map(item -> scale(item.proteinGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal carbs = items.stream().map(item -> scale(item.carbsGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal fat = items.stream().map(item -> scale(item.fatGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        log.setMealType(mealType);
+        log.setQuantity(BigDecimal.ONE);
+        log.setUnit(FoodUnit.PORTION);
+        log.setLogDate(logDate == null ? log.getLogDate() == null ? LocalDate.now() : log.getLogDate() : logDate);
+        log.setProteinGrams(scale(protein));
+        log.setCarbsGrams(scale(carbs));
+        log.setFatGrams(scale(fat));
+        log.setCalories(macroCalories(log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams()));
+        log.setAiEstimateName(name.trim());
+        log.setAiEstimateConfidence(Math.max(0, Math.min(100, confidence)));
+        try {
+            log.setAiEstimateDetails(objectMapper.writeValueAsString(new AiEstimateDetails(description, context,
+                    assumptions == null ? List.of() : assumptions, items)));
+        } catch (JsonProcessingException ex) {
+            throw new BadRequestException("No se pudo guardar la estimación.");
+        }
+    }
+
+    private void validateAiEstimateItems(List<AiEstimateItem> items) {
+        for (var item : items) {
             if (item.estimatedGrams().compareTo(BigDecimal.valueOf(3000)) > 0
                     || item.proteinGrams().compareTo(BigDecimal.valueOf(500)) > 0
                     || item.carbsGrams().compareTo(BigDecimal.valueOf(1000)) > 0
@@ -389,31 +468,26 @@ public class NutritionService {
                 throw new BadRequestException("Revisá los valores estimados antes de guardarlos.");
             }
         }
-        BigDecimal protein = request.items().stream().map(item -> scale(item.proteinGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal carbs = request.items().stream().map(item -> scale(item.carbsGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal fat = request.items().stream().map(item -> scale(item.fatGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
-        FoodLog log = new FoodLog();
-        log.setUser(user);
-        log.setItemType(MealItemType.AI_ESTIMATE);
-        log.setMealType(request.mealType());
-        log.setQuantity(BigDecimal.ONE);
-        log.setUnit(FoodUnit.PORTION);
-        log.setLogDate(request.logDate() == null ? LocalDate.now() : request.logDate());
-        log.setProteinGrams(scale(protein));
-        log.setCarbsGrams(scale(carbs));
-        log.setFatGrams(scale(fat));
-        log.setCalories(macroCalories(log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams()));
-        log.setAiEstimateName(request.name().trim());
-        log.setAiEstimateConfidence(Math.max(0, Math.min(100, request.confidence())));
-        try {
-            log.setAiEstimateDetails(objectMapper.writeValueAsString(new AiEstimateDetails(request.description(), request.context(), request.items())));
-        } catch (JsonProcessingException ex) {
-            throw new BadRequestException("No se pudo guardar la estimación.");
-        }
-        return toFoodLogResponse(foodLogs.save(log));
     }
 
-    private record AiEstimateDetails(String description, String context, List<AiEstimateItem> items) {
+    private FoodLog ownedAiEstimateLog(AppUser user, Long logId) {
+        FoodLog log = foodLogs.findByIdAndUser(logId, user)
+                .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));
+        if (log.getItemType() != MealItemType.AI_ESTIMATE) {
+            throw new BadRequestException("Este registro no corresponde a una estimación de IA.");
+        }
+        return log;
+    }
+
+    private AiEstimateDetails readAiEstimateDetails(FoodLog log) {
+        try {
+            return objectMapper.readValue(log.getAiEstimateDetails(), AiEstimateDetails.class);
+        } catch (JsonProcessingException ex) {
+            throw new BadRequestException("No se pudo leer la estimación guardada.");
+        }
+    }
+
+    private record AiEstimateDetails(String description, String context, List<String> assumptions, List<AiEstimateItem> items) {
     }
 
     @Transactional

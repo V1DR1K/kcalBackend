@@ -123,6 +123,23 @@ public class NutritionDtos {
             @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items) {
     }
 
+    public record UpdateAiEstimateRequest(
+            @NotBlank @Size(min = 2, max = 120) String name,
+            @Size(max = 240) String description,
+            @Size(max = 240) String context,
+            @NotNull MealType mealType,
+            LocalDate logDate,
+            @NotNull @PositiveOrZero Integer confidence,
+            @Size(max = 4) List<@NotBlank @Size(max = 160) String> assumptions,
+            @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items) {
+    }
+
+    public record SaveAiEstimateItemRequest(
+            @NotNull FoodCategory category,
+            FoodPreparation preparation,
+            @Size(max = 10) Set<@Size(max = 40) String> tags) {
+    }
+
     public record AddWaterRequest(LocalDate logDate, @Positive BigDecimal liters) {
     }
 

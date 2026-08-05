@@ -32,6 +32,9 @@ import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiEstimateUsageResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.AiTranscriptionResponse;
 import com.vitalitypeak.kcal.nutrition.NutritionDtos.RefineAiEstimateRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.SaveAiEstimateItemRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.UpdateAiEstimateRequest;
+import com.vitalitypeak.kcal.nutrition.NutritionDtos.FoodResponse;
 
 import jakarta.validation.Valid;
 
@@ -118,6 +121,18 @@ public class NutritionController {
     FoodLogResponse updateFoodLog(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody UpdateFoodLogRequest request) {
         return nutritionService.updateFoodLog(currentUser.from(authentication), id, request);
+    }
+
+    @PutMapping("/food-logs/{id}/ai-estimate")
+    FoodLogResponse updateAiEstimate(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody UpdateAiEstimateRequest request) {
+        return nutritionService.updateAiEstimate(currentUser.from(authentication), id, request);
+    }
+
+    @PostMapping("/food-logs/{id}/ai-estimate/items/{itemIndex}/catalog")
+    FoodResponse saveAiEstimateItemToCatalog(Authentication authentication, @PathVariable Long id,
+            @PathVariable int itemIndex, @Valid @RequestBody SaveAiEstimateItemRequest request) {
+        return nutritionService.saveAiEstimateItemToCatalog(currentUser.from(authentication), id, itemIndex, request);
     }
 
     @PutMapping("/food-logs/{id}/recipe-ingredients")
