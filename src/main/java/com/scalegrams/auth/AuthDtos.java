@@ -30,7 +30,14 @@ public class AuthDtos {
             @NotNull ActivityLevel activityLevel) {
     }
 
-    public record AuthResponse(String token, String tokenType, UserSummary user) {
+    public record AuthResponse(String token, String tokenType, String refreshToken, UserSummary user) {
+    }
+
+    public record RefreshRequest(@NotBlank String refreshToken) {
+    }
+
+    public record ChangePasswordRequest(@NotBlank String currentPassword,
+            @NotBlank @Size(min = 8, message = "La contraseña debe tener al menos 8 caracteres") String newPassword) {
     }
 
     public record UserSummary(Long id, String fullName, String email, String planName, Role role) {

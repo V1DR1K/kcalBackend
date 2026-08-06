@@ -116,6 +116,56 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void refreshTokenRotatesAndLogoutRevokes() {
+		ResponseEntity<LoginResponse> login = rest.postForEntity("/api/auth/login",
+				new LoginRequest("admin@gmail.com", "admin"), LoginResponse.class);
+		assertThat(login.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(login.getBody().refreshToken()).isNotBlank();
+
+		ResponseEntity<LoginResponse> rotated = rest.postForEntity("/api/auth/refresh",
+				new RefreshRequest(login.getBody().refreshToken()), LoginResponse.class);
+		assertThat(rotated.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(rotated.getBody().token()).isNotBlank();
+		assertThat(rotated.getBody().refreshToken()).isNotBlank();
+
+		rest.postForEntity("/api/auth/logout", new RefreshRequest(rotated.getBody().refreshToken()), Void.class);
+		ResponseEntity<String> reused = rest.postForEntity("/api/auth/refresh",
+				new RefreshRequest(rotated.getBody().refreshToken()), String.class);
+		assertThat(reused.getStatusCode().is4xxClientError()).isTrue();
+	}
+
+	@Test
+	void changePasswordRequiresCurrentPasswordAndIssuesNewSession() {
+		String email = "cambio@ejemplo.com";
+		ResponseEntity<LoginResponse> registered = rest.postForEntity("/api/auth/register",
+				new RegisterRequest("Cambio", email, "claveOriginal", 75, 175, "1995-01-01", "MALE", "MAINTAIN",
+						"MODERATELY_ACTIVE"),
+				LoginResponse.class);
+		assertThat(registered.getStatusCode().is2xxSuccessful()).isTrue();
+
+		HttpHeaders headers = new HttpHeaders();
+		headers.setBearerAuth(registered.getBody().token());
+
+		ResponseEntity<LoginResponse> changed = rest.exchange("/api/auth/change-password", HttpMethod.PUT,
+				new HttpEntity<>(new ChangePasswordRequest("claveOriginal", "nuevaClave123"), headers), LoginResponse.class);
+		assertThat(changed.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(changed.getBody().refreshToken()).isNotBlank();
+
+		ResponseEntity<LoginResponse> oldLogin = rest.postForEntity("/api/auth/login",
+				new LoginRequest(email, "claveOriginal"), LoginResponse.class);
+		assertThat(oldLogin.getStatusCode().is4xxClientError()).isTrue();
+
+		ResponseEntity<String> wrongPassword = rest.postForEntity("/api/auth/change-password",
+				new HttpEntity<>(new ChangePasswordRequest("mal", "otraClave"), headers), String.class);
+		assertThat(wrongPassword.getStatusCode().is4xxClientError()).isTrue();
+
+		ResponseEntity<LoginResponse> newLogin = rest.postForEntity("/api/auth/login",
+				new LoginRequest(email, "nuevaClave123"), LoginResponse.class);
+		assertThat(newLogin.getStatusCode().is2xxSuccessful()).isTrue();
+		rest.postForEntity("/api/auth/logout", new RefreshRequest(newLogin.getBody().refreshToken()), Void.class);
+	}
+
+	@Test
 	void barcodeLookupUsesLocalFoodBeforeExternalProviders() {
 		ResponseEntity<String> response = rest.exchange("/api/foods/barcode/7790000000059", HttpMethod.GET,
 				new HttpEntity<>(authHeaders()), String.class);
@@ -428,7 +478,17 @@ class ScaleGramsApplicationTests {
 	record LoginRequest(String email, String password) {
 	}
 
-	record LoginResponse(String token) {
+	record LoginResponse(String token, String refreshToken) {
+	}
+
+	record RefreshRequest(String refreshToken) {
+	}
+
+	record ChangePasswordRequest(String currentPassword, String newPassword) {
+	}
+
+	record RegisterRequest(String fullName, String email, String password, Integer weightKg, Integer heightCm,
+			String birthDate, String gender, String goal, String activityLevel) {
 	}
 
 	record NutritionPlanRequest(String name, Integer dailyCalories, Integer proteinPercent, Integer carbsPercent,

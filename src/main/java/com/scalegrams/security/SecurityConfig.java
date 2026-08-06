@@ -35,7 +35,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/register",
+                                "/api/auth/refresh", "/api/auth/logout",
+                                "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/health", "/api/version").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")

@@ -52,7 +52,8 @@ app:
     demo-users-enabled: ${APP_SEED_DEMO_USERS_ENABLED:true}
   jwt:
     secret: ${JWT_SECRET:ScaleGramsDevelopmentSecretKeyForJwtTokenSigningChangeMe12345}
-    expiration-minutes: ${JWT_EXPIRATION_MINUTES:0}
+    expiration-minutes: ${JWT_EXPIRATION_MINUTES:10080}
+    refresh-token-days: ${JWT_REFRESH_TOKEN_DAYS:30}
   food-lookup:
     enabled: ${FOOD_LOOKUP_ENABLED:true}
     timeout: ${FOOD_LOOKUP_TIMEOUT:3s}

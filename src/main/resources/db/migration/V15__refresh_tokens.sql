@@ -1,0 +1,10 @@
+CREATE TABLE refresh_token (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash CHARACTER VARYING(64) NOT NULL UNIQUE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_refresh_token_user ON refresh_token(user_id);
