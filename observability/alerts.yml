@@ -1,19 +1,19 @@
 groups:
-  - name: kcal-v1
+  - name: scalegrams-v1
     rules:
-      - alert: KcalBackendDown
-        expr: up{job="kcal-backend"} == 0
+      - alert: ScaleGramsBackendDown
+        expr: up{job="scalegrams-backend"} == 0
         for: 2m
         labels: { severity: critical }
         annotations:
-          summary: "KazaFitness backend no responde"
-      - alert: KcalHighServerErrorRate
+          summary: "ScaleGrams backend no responde"
+      - alert: ScaleGramsHighServerErrorRate
         expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 1) > 0.05
         for: 5m
         labels: { severity: warning }
         annotations:
           summary: "Mas de 5% de respuestas HTTP son errores 5xx"
-      - alert: KcalHighJvmHeap
+      - alert: ScaleGramsHighJvmHeap
         expr: sum(jvm_memory_used_bytes{area="heap"}) / sum(jvm_memory_max_bytes{area="heap"}) > 0.85
         for: 10m
         labels: { severity: warning }

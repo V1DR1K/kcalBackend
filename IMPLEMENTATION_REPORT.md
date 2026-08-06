@@ -1,8 +1,8 @@
-# Informe de implementacion - Vitality Peak backend
+# Informe de implementacion - ScaleGrams backend
 
 ## Escaneo del frontend
 
-El repositorio `kcalFrontend` contiene prototipos HTML estaticos generados desde Google Stitch. No habia integracion real con API (`fetch`, `axios` o storage persistente), por lo que se infirieron contratos desde campos, botones, textos y datos visibles de cada vista.
+El cliente frontend contiene prototipos HTML estaticos generados desde Google Stitch. No habia integracion real con API (`fetch`, `axios` o storage persistente), por lo que se infirieron contratos desde campos, botones, textos y datos visibles de cada vista.
 
 ## Decisiones tecnicas
 
@@ -20,7 +20,7 @@ El repositorio `kcalFrontend` contiene prototipos HTML estaticos generados desde
 Necesita email y password.
 
 - `POST /api/auth/login`
-- Request: `{ "email": "alex@vitality.com", "password": "password123" }`
+- Request: `{ "email": "alex@scalegrams.local", "password": "password123" }`
 - Response: JWT Bearer y resumen del usuario.
 
 ### Registro de usuario
@@ -94,7 +94,7 @@ Se crean alimentos usados por las pantallas en cada arranque del modo mock: pech
 
 Tambien se crea usuario demo:
 
-- Email: `alex@vitality.com`
+- Email: `alex@scalegrams.local`
 - Password: `password123`
 
 ## Pendientes recomendados

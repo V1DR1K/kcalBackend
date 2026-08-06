@@ -8,10 +8,10 @@
 		<version>3.5.0</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.vitalitypeak</groupId>
-	<artifactId>kcalBackend</artifactId>
+	<groupId>com.scalegrams</groupId>
+	<artifactId>scalegrams-backend</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>kcalBackend</name>
+	<name>ScaleGrams Backend</name>
 	<description/>
 	<url/>
 	<licenses>

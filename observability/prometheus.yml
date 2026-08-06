@@ -6,7 +6,7 @@ rule_files:
   - /etc/prometheus/alerts.yml
 
 scrape_configs:
-  - job_name: kcal-backend
+  - job_name: scalegrams-backend
     metrics_path: /actuator/prometheus
     static_configs:
       - targets: ["app:9091"]

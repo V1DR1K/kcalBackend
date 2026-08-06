@@ -10,9 +10,9 @@ RUN echo "git.commit.id.abbrev=${GIT_HASH}" > src/main/resources/git.properties 
 FROM eclipse-temurin:21-jre
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system kcals && useradd --system --gid kcals kcals
+    && groupadd --system scalegrams && useradd --system --gid scalegrams scalegrams
 WORKDIR /app
 COPY --from=build /workspace/target/*.jar app.jar
-USER kcals
+USER scalegrams
 EXPOSE 8081
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

@@ -1,6 +1,6 @@
 spring:
   application:
-    name: kcalBackend
+    name: scalegrams-backend
   servlet:
     multipart:
       max-file-size: 6MB
@@ -18,10 +18,10 @@ spring:
             enable: true
             required: true
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/kcal_db}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/scalegrams_db}
     driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.postgresql.Driver}
-    username: ${SPRING_DATASOURCE_USERNAME:kcal_user}
-    password: ${SPRING_DATASOURCE_PASSWORD:kcal_password}
+    username: ${SPRING_DATASOURCE_USERNAME:scalegrams_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:scalegrams_password}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -51,14 +51,14 @@ app:
     catalog-enabled: ${APP_SEED_CATALOG_ENABLED:true}
     demo-users-enabled: ${APP_SEED_DEMO_USERS_ENABLED:true}
   jwt:
-    secret: ${JWT_SECRET:VitalityPeakDevelopmentSecretKeyForJwtTokenSigningChangeMe12345}
+    secret: ${JWT_SECRET:ScaleGramsDevelopmentSecretKeyForJwtTokenSigningChangeMe12345}
     expiration-minutes: ${JWT_EXPIRATION_MINUTES:0}
   food-lookup:
     enabled: ${FOOD_LOOKUP_ENABLED:true}
     timeout: ${FOOD_LOOKUP_TIMEOUT:3s}
     open-food-facts:
       base-url: ${OPEN_FOOD_FACTS_BASE_URL:https://world.openfoodfacts.org}
-      user-agent: ${OPEN_FOOD_FACTS_USER_AGENT:KazaFitness/0.1 (development; contact@kazadesarrollos.com)}
+      user-agent: ${OPEN_FOOD_FACTS_USER_AGENT:ScaleGrams/0.1 (development; alex@scalegrams.local)}
     usda:
       base-url: ${USDA_FOOD_DATA_BASE_URL:https://api.nal.usda.gov/fdc}
       api-key: ${USDA_FOOD_DATA_API_KEY:}

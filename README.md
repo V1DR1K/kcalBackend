@@ -1,6 +1,6 @@
-# kcalBackend
+# ScaleGrams Backend
 
-Backend Spring Boot para KazaFitness, producto de KazaDesarrollos.
+Backend Spring Boot para ScaleGrams.
 
 Por defecto usa PostgreSQL persistente. Los productos usan arte genérico local por categoría; no se almacenan fotos ni URLs de imágenes.
 
@@ -34,7 +34,7 @@ API: `http://localhost:8081/api`
 
 Swagger: `http://localhost:8081/swagger-ui.html`
 
-PostgreSQL: `localhost:5433`, DB `kcal_db`, user `kcal_user`, password `kcal_password`
+PostgreSQL: `localhost:5433`, DB `scalegrams_db`, user `scalegrams_user`, password `scalegrams_password`
 
 ## Fuentes externas de alimentos
 
@@ -45,7 +45,7 @@ Variables utiles:
 - `FOOD_LOOKUP_ENABLED=true`
 - `FOOD_LOOKUP_TIMEOUT=3s`
 - `OPEN_FOOD_FACTS_BASE_URL=https://world.openfoodfacts.org`
-- `OPEN_FOOD_FACTS_USER_AGENT=KazaFitness/0.1 (development; contact@kazadesarrollos.com)`
+- `OPEN_FOOD_FACTS_USER_AGENT=ScaleGrams/0.1 (development; alex@scalegrams.local)`
 - `USDA_FOOD_DATA_API_KEY=`
 - `APP_CATALOG_IMPORT_ENABLED=false`
 - `APP_CATALOG_IMPORT_BRANDS=Coca-Cola,Mogul,Milka,Fantoche,Ciudad del Lago,Arcor`
@@ -95,14 +95,14 @@ Para generar el artefacto desplegable:
 
 ```powershell
 .\mvnw.cmd clean package
-java -jar target/kcalBackend-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+java -jar target/scalegrams-backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
 ```
 
 No se versionan claves TLS ni credenciales de producción. Las credenciales de `docker-compose.yml` son únicamente para desarrollo local.
 
 ## Usuario demo
 
-- Email: `alex@kazadesarrollos.com`
+- Email: `alex@scalegrams.local`
 - Password: `password123`
 
 ## Flujo base

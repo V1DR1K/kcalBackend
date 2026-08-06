@@ -1,4 +1,4 @@
-name: kcals
+name: scalegrams
 
 services:
   postgres:
@@ -17,7 +17,7 @@ services:
       retries: 10
     networks:
       internal:
-        aliases: [kcals-postgres]
+        aliases: [scalegrams-postgres]
 
   app:
     build:
@@ -32,12 +32,12 @@ services:
       TZ: America/Argentina/Cordoba
       JAVA_TOOL_OPTIONS: -Duser.timezone=America/Argentina/Cordoba
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:postgresql://kcals-postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://scalegrams-postgres:5432/${POSTGRES_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       SERVER_SSL_ENABLED: "false"
-      CORS_ALLOWED_ORIGINS: https://${KCALS_DOMAIN}
+      CORS_ALLOWED_ORIGINS: https://scalegrams.neticar.com.ar
       CORS_ALLOWED_ORIGIN_PATTERNS: ""
       APP_SEED_DEMO_USERS_ENABLED: "false"
       APP_EMAIL_FROM: ${APP_EMAIL_FROM}
@@ -59,7 +59,7 @@ services:
     networks:
       internal: {}
       edge:
-        aliases: [kcals-app]
+        aliases: [scalegrams-api]
 
   prometheus:
     image: prom/prometheus:v3.4.1
@@ -76,7 +76,7 @@ services:
 
   frontend:
     build:
-      context: ../kcalFrontend
+      context: ../frontend
       args:
         GIT_HASH: ${GIT_HASH:-unknown}
     restart: unless-stopped
@@ -91,7 +91,7 @@ services:
     networks:
       internal: {}
       edge:
-        aliases: [kcals-frontend]
+        aliases: [scalegrams-web]
 
 volumes:
   postgres_data:

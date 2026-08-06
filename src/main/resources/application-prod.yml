@@ -45,4 +45,4 @@ management:
       show-details: never
   metrics:
     tags:
-      application: kcal-backend
+      application: scalegrams-backend

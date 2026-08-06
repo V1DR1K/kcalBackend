@@ -2,7 +2,7 @@ spring:
   flyway:
     enabled: false
   datasource:
-    url: jdbc:h2:mem:kcal_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:mem:scalegrams_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver
     username: sa
     password:
@@ -19,7 +19,7 @@ app:
     endpoint: http://localhost:7480
     public-base-url: http://localhost:7480
     region: us-east-1
-    bucket: kcal-products
+    bucket: scalegrams-products
     access-key: test
     secret-key: test
     max-image-size-bytes: 5242880
@@ -28,7 +28,7 @@ app:
     timeout: 1s
     open-food-facts:
       base-url: http://localhost
-      user-agent: KazaFitnessTest/0.1
+      user-agent: ScaleGramsTest/0.1
     usda:
       base-url: http://localhost
       api-key:
