@@ -20,8 +20,13 @@ import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
 import com.scalegrams.profile.ProfileDtos.ProfileResponse;
 import com.scalegrams.profile.ProfileDtos.UpdateProfileRequest;
 import com.scalegrams.profile.ProfileDtos.UpsertNutritionPlanRequest;
+import com.scalegrams.profile.ProfileDtos.UpsertWeightEntryRequest;
+import com.scalegrams.profile.ProfileDtos.WeightEntryResponse;
 
 import jakarta.validation.Valid;
+
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
 @RestController
 @RequestMapping("/api/profile")
@@ -68,5 +73,21 @@ public class ProfileController {
     @GetMapping("/nutrition-plan-presets")
     List<NutritionPlanPresetResponse> presets() {
         return profileService.presets();
+    }
+
+    @GetMapping("/weight-entries")
+    List<WeightEntryResponse> weightEntries(Authentication authentication) {
+        return profileService.weightEntries(currentUser.from(authentication));
+    }
+
+    @PostMapping("/weight-entries")
+    WeightEntryResponse upsertWeightEntry(Authentication authentication,
+            @Valid @RequestBody UpsertWeightEntryRequest request) {
+        return profileService.upsertWeightEntry(currentUser.from(authentication), request);
+    }
+
+    @DeleteMapping("/weight-entries/{id}")
+    void deleteWeightEntry(Authentication authentication, @PathVariable Long id) {
+        profileService.deleteWeightEntry(currentUser.from(authentication), id);
     }
 }

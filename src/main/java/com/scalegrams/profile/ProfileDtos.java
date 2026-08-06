@@ -20,6 +20,13 @@ public class ProfileDtos {
             Integer carbsGoalGrams, Integer fatGoalGrams, BigDecimal waterGoalLiters) {
     }
 
+    public record WeightEntryResponse(Long id, LocalDate entryDate, BigDecimal weightKg) {
+    }
+
+    public record UpsertWeightEntryRequest(LocalDate entryDate,
+            @NotNull @Positive BigDecimal weightKg) {
+    }
+
     public record UpdateProfileRequest(String fullName, @Positive BigDecimal weightKg, @Positive BigDecimal heightCm,
             LocalDate birthDate, Gender gender, ActivityLevel activityLevel, FitnessGoal goal,
             @Positive BigDecimal targetWeightKg, String nutritionStyle, @Positive BigDecimal waterGoalLiters) {

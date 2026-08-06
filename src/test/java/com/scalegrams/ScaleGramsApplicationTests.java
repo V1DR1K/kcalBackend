@@ -166,6 +166,51 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void weightHistoryUpsertsAndDeletesAndProfileWeightCreatesTodaysEntry() {
+		String email = "peso@ejemplo.com";
+		ResponseEntity<LoginResponse> registered = rest.postForEntity("/api/auth/register",
+				new RegisterRequest("Peso", email, "claveOriginal", 82, 175, "1995-01-01", "MALE", "MAINTAIN",
+						"MODERATELY_ACTIVE"),
+				LoginResponse.class);
+		assertThat(registered.getStatusCode().is2xxSuccessful()).isTrue();
+
+		HttpHeaders headers = new HttpHeaders();
+		headers.setBearerAuth(registered.getBody().token());
+
+		ResponseEntity<List> empty = rest.exchange("/api/profile/weight-entries", HttpMethod.GET,
+				new HttpEntity<>(headers), List.class);
+		assertThat(empty.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(empty.getBody()).isEmpty();
+
+		ResponseEntity<Map> added = rest.postForEntity("/api/profile/weight-entries",
+				new HttpEntity<>(Map.of("entryDate", "2033-01-05", "weightKg", 81.5), headers), Map.class);
+		assertThat(added.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(added.getBody().get("weightKg")).hasToString("81.5");
+
+		ResponseEntity<Map> upserted = rest.postForEntity("/api/profile/weight-entries",
+				new HttpEntity<>(Map.of("entryDate", "2033-01-05", "weightKg", 81.3), headers), Map.class);
+		assertThat(upserted.getStatusCode().is2xxSuccessful()).isTrue();
+
+		ResponseEntity<List> list = rest.exchange("/api/profile/weight-entries", HttpMethod.GET,
+				new HttpEntity<>(headers), List.class);
+		assertThat(list.getBody()).hasSize(1);
+		assertThat(list.getBody().toString()).contains("81.3");
+
+		ResponseEntity<Map> patched = rest.exchange("/api/profile", HttpMethod.PATCH,
+				new HttpEntity<>(Map.of("weightKg", 80.0), headers), Map.class);
+		assertThat(patched.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(patched.getBody().get("weightKg")).hasToString("80.0");
+
+		ResponseEntity<List> afterPatch = rest.exchange("/api/profile/weight-entries", HttpMethod.GET,
+				new HttpEntity<>(headers), List.class);
+		assertThat(afterPatch.getBody()).hasSize(2);
+
+		ResponseEntity<String> deleted = rest.exchange("/api/profile/weight-entries/" + upserted.getBody().get("id"),
+				HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
+		assertThat(deleted.getStatusCode().is2xxSuccessful()).isTrue();
+	}
+
+	@Test
 	void barcodeLookupUsesLocalFoodBeforeExternalProviders() {
 		ResponseEntity<String> response = rest.exchange("/api/foods/barcode/7790000000059", HttpMethod.GET,
 				new HttpEntity<>(authHeaders()), String.class);

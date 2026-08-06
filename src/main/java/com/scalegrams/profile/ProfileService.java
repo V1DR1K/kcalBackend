@@ -18,6 +18,8 @@ import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
 import com.scalegrams.profile.ProfileDtos.ProfileResponse;
 import com.scalegrams.profile.ProfileDtos.UpdateProfileRequest;
 import com.scalegrams.profile.ProfileDtos.UpsertNutritionPlanRequest;
+import com.scalegrams.profile.ProfileDtos.UpsertWeightEntryRequest;
+import com.scalegrams.profile.ProfileDtos.WeightEntryResponse;
 import com.scalegrams.user.AppUser;
 import com.scalegrams.user.UserRepository;
 
@@ -25,10 +27,13 @@ import com.scalegrams.user.UserRepository;
 public class ProfileService {
     private final UserRepository users;
     private final NutritionPlanRepository nutritionPlans;
+    private final WeightEntryRepository weightEntries;
 
-    public ProfileService(UserRepository users, NutritionPlanRepository nutritionPlans) {
+    public ProfileService(UserRepository users, NutritionPlanRepository nutritionPlans,
+            WeightEntryRepository weightEntries) {
         this.users = users;
         this.nutritionPlans = nutritionPlans;
+        this.weightEntries = weightEntries;
     }
 
     @Transactional(readOnly = true)
@@ -39,7 +44,18 @@ public class ProfileService {
     @Transactional
     public ProfileResponse update(AppUser user, UpdateProfileRequest request) {
         if (request.fullName() != null && !request.fullName().isBlank()) user.setFullName(request.fullName());
-        if (request.weightKg() != null) user.setWeightKg(request.weightKg());
+        if (request.weightKg() != null) {
+            LocalDate today = LocalDate.now();
+            WeightEntry entry = weightEntries.findByUserAndEntryDate(user, today).orElse(null);
+            if (entry == null) {
+                entry = new WeightEntry();
+                entry.setUser(user);
+                entry.setEntryDate(today);
+            }
+            entry.setWeightKg(request.weightKg());
+            weightEntries.save(entry);
+            user.setWeightKg(request.weightKg());
+        }
         if (request.heightCm() != null) user.setHeightCm(request.heightCm());
         if (request.birthDate() != null) user.setBirthDate(request.birthDate());
         if (request.gender() != null) user.setGender(request.gender());
@@ -50,6 +66,33 @@ public class ProfileService {
         if (request.waterGoalLiters() != null) user.setWaterGoalLiters(request.waterGoalLiters());
         NutritionGoalCalculator.apply(user);
         return toResponse(users.save(user));
+    }
+
+    @Transactional(readOnly = true)
+    public List<WeightEntryResponse> weightEntries(AppUser user) {
+        return weightEntries.findByUserOrderByEntryDateAsc(user).stream().map(this::toWeightResponse).toList();
+    }
+
+    @Transactional
+    public WeightEntryResponse upsertWeightEntry(AppUser user, UpsertWeightEntryRequest request) {
+        LocalDate entryDate = request.entryDate() == null ? LocalDate.now() : request.entryDate();
+        WeightEntry entry = weightEntries.findByUserAndEntryDate(user, entryDate).orElse(null);
+        if (entry == null) {
+            entry = new WeightEntry();
+            entry.setUser(user);
+            entry.setEntryDate(entryDate);
+        }
+        entry.setWeightKg(request.weightKg());
+        user.setWeightKg(request.weightKg());
+        users.save(user);
+        return toWeightResponse(weightEntries.save(entry));
+    }
+
+    @Transactional
+    public void deleteWeightEntry(AppUser user, Long id) {
+        WeightEntry entry = weightEntries.findByIdAndUser(id, user)
+                .orElseThrow(() -> new NotFoundException("Registro de peso no encontrado."));
+        weightEntries.delete(entry);
     }
 
     @Transactional(readOnly = true)
@@ -109,6 +152,10 @@ public class ProfileService {
     public NutritionPlan resolvePlan(AppUser user, LocalDate date) {
         LocalDate targetDate = date == null ? LocalDate.now() : date;
         return nutritionPlans.findActiveForUserAndDate(user, targetDate).orElseGet(() -> fallbackPlan(user, targetDate));
+    }
+
+    private WeightEntryResponse toWeightResponse(WeightEntry entry) {
+        return new WeightEntryResponse(entry.getId(), entry.getEntryDate(), entry.getWeightKg());
     }
 
     private ProfileResponse toResponse(AppUser user) {
