@@ -12,7 +12,7 @@ import org.springframework.data.repository.query.Param;
 import com.scalegrams.user.AppUser;
 
 public interface NutritionPlanRepository extends JpaRepository<NutritionPlan, Long> {
-    List<NutritionPlan> findByUserOrderByStartDateDesc(AppUser user);
+    List<NutritionPlan> findByUserOrderByStartDateDescIdDesc(AppUser user);
 
     Optional<NutritionPlan> findByIdAndUser(Long id, AppUser user);
 
@@ -25,17 +25,7 @@ public interface NutritionPlanRepository extends JpaRepository<NutritionPlan, Lo
             where plan.user = :user
               and plan.startDate <= :date
               and (plan.endDate is null or plan.endDate >= :date)
-            order by plan.startDate desc
+            order by plan.startDate desc, plan.id desc
             """)
     List<NutritionPlan> findActiveForUserAndDate(@Param("user") AppUser user, @Param("date") LocalDate date, Pageable pageable);
-
-    @Query("""
-            select count(plan) > 0 from NutritionPlan plan
-            where plan.user = :user
-              and (:ignoreId is null or plan.id <> :ignoreId)
-              and plan.startDate <= :endDate
-              and (plan.endDate is null or plan.endDate >= :startDate)
-            """)
-    boolean existsOverlappingPlanForUser(@Param("user") AppUser user, @Param("startDate") LocalDate startDate,
-            @Param("endDate") LocalDate endDate, @Param("ignoreId") Long ignoreId);
 }

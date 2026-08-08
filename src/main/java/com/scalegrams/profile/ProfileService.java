@@ -97,7 +97,7 @@ public class ProfileService {
 
     @Transactional(readOnly = true)
     public List<NutritionPlanResponse> plans(AppUser user) {
-        return nutritionPlans.findByUserOrderByStartDateDesc(user).stream().map(this::toPlanResponse).toList();
+        return nutritionPlans.findByUserOrderByStartDateDescIdDesc(user).stream().map(this::toPlanResponse).toList();
     }
 
     @Transactional(readOnly = true)
@@ -109,19 +109,24 @@ public class ProfileService {
     public NutritionPlanResponse createPlan(AppUser user, UpsertNutritionPlanRequest request) {
         validatePlan(request);
         LocalDate previousEnd = request.startDate().minusDays(1);
-        nutritionPlans.findActiveForUserAndDate(user, request.startDate())
+        NutritionPlan sameDay = nutritionPlans.findActiveForUserAndDate(user, request.startDate()).stream()
                 .filter(plan -> plan.getEndDate() == null || !plan.getEndDate().isBefore(request.startDate()))
-                .ifPresent(plan -> {
-                    if (plan.getStartDate().equals(request.startDate())) {
-                        throw new BadRequestException("Ya existe un plan que empieza ese dia. Editalo o elegi otra fecha.");
-                    }
-                    plan.setEndDate(previousEnd);
-                    plan.setUpdatedAt(OffsetDateTime.now());
-                });
-        nutritionPlans.flush();
-        ensureNoOverlap(user, request.startDate(), openEnd(request.endDate()), null);
-        NutritionPlan plan = new NutritionPlan();
-        plan.setUser(user);
+                .filter(plan -> plan.getStartDate().equals(request.startDate()))
+                .findFirst().orElse(null);
+        NutritionPlan plan;
+        if (sameDay != null) {
+            plan = sameDay;
+        } else {
+            nutritionPlans.findActiveForUserAndDate(user, request.startDate()).stream()
+                    .filter(active -> active.getEndDate() == null || !active.getEndDate().isBefore(request.startDate()))
+                    .findFirst()
+                    .ifPresent(previous -> {
+                        previous.setEndDate(previousEnd);
+                        previous.setUpdatedAt(OffsetDateTime.now());
+                    });
+            plan = new NutritionPlan();
+            plan.setUser(user);
+        }
         applyPlan(plan, request);
         syncUserFallback(user, plan);
         users.save(user);
@@ -133,7 +138,6 @@ public class ProfileService {
         validatePlan(request);
         NutritionPlan plan = nutritionPlans.findByIdAndUser(id, user)
                 .orElseThrow(() -> new NotFoundException("Plan alimenticio no encontrado."));
-        ensureNoOverlap(user, request.startDate(), openEnd(request.endDate()), id);
         applyPlan(plan, request);
         syncUserFallback(user, plan);
         users.save(user);
@@ -173,12 +177,6 @@ public class ProfileService {
         BigDecimal sum = request.proteinPercent().add(request.carbsPercent()).add(request.fatPercent()).setScale(1, RoundingMode.HALF_UP);
         if (sum.compareTo(BigDecimal.valueOf(100).setScale(1, RoundingMode.HALF_UP)) != 0) {
             throw new BadRequestException("La suma de macros debe dar 100%.");
-        }
-    }
-
-    private void ensureNoOverlap(AppUser user, LocalDate startDate, LocalDate endDate, Long ignoreId) {
-        if (nutritionPlans.existsOverlappingPlanForUser(user, startDate, endDate, ignoreId)) {
-            throw new BadRequestException("Ya existe un plan para ese rango de fechas.");
         }
     }
 
@@ -245,9 +243,5 @@ public class ProfileService {
 
     private static BigDecimal scalePercent(BigDecimal value) {
         return value.setScale(1, RoundingMode.HALF_UP);
-    }
-
-    private static LocalDate openEnd(LocalDate endDate) {
-        return endDate == null ? LocalDate.of(9999, 12, 31) : endDate;
     }
 }
