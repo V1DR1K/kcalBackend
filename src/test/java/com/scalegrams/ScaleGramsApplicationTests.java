@@ -98,6 +98,26 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void creatingPlanOnSameDayReplacesActivePlan() {
+		HttpHeaders headers = authHeaders();
+		NutritionPlanRequest first = new NutritionPlanRequest("Plan A", 2200, 25, 50, 25, "2026-09-01", null);
+		ResponseEntity<String> firstResponse = rest.postForEntity("/api/profile/nutrition-plans",
+				new HttpEntity<>(first, headers), String.class);
+		assertThat(firstResponse.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(firstResponse.getBody()).contains("\"name\":\"Plan A\"");
+
+		NutritionPlanRequest second = new NutritionPlanRequest("Plan B", 1800, 40, 30, 30, "2026-09-01", null);
+		ResponseEntity<String> secondResponse = rest.postForEntity("/api/profile/nutrition-plans",
+				new HttpEntity<>(second, headers), String.class);
+		assertThat(secondResponse.getStatusCode().is2xxSuccessful()).isTrue();
+
+		ResponseEntity<String> list = rest.exchange("/api/profile/nutrition-plans", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		assertThat(list.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(list.getBody()).contains("\"name\":\"Plan B\"").doesNotContain("\"name\":\"Plan A\"");
+	}
+
+	@Test
 	void rejectsInvalidMacroSum() {
 		NutritionPlanRequest request = new NutritionPlanRequest("Mal sumado", 2500, 35, 40, 15, "2026-01-01", null);
 		ResponseEntity<String> response = rest.postForEntity("/api/profile/nutrition-plans",
