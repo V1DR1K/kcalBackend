@@ -390,7 +390,7 @@ public class DataSeeder {
                 user.setGoal(FitnessGoal.LOSE);
                 user.setNutritionStyle("Keto");
                 users.save(user);
-                if (nutritionPlans.findByUserOrderByStartDateDescIdDesc(user).isEmpty()) {
+                if (nutritionPlans.findByUserAndActiveTrueOrderByStartDateDescIdDesc(user).isEmpty()) {
                     NutritionPlan plan = new NutritionPlan();
                     plan.setUser(user);
                     plan.setName("Balanceado");
