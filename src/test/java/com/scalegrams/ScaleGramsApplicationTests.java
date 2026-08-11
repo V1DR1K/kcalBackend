@@ -34,6 +34,7 @@ import com.scalegrams.nutrition.FoodLog;
 import com.scalegrams.nutrition.FoodLogRepository;
 import com.scalegrams.nutrition.MealItemType;
 import com.scalegrams.nutrition.MealType;
+import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
 import com.scalegrams.user.UserRepository;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -115,6 +116,22 @@ class ScaleGramsApplicationTests {
 				new HttpEntity<>(headers), String.class);
 		assertThat(list.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(list.getBody()).contains("\"name\":\"Plan B\"").doesNotContain("\"name\":\"Plan A\"");
+	}
+
+	@Test
+	void deletingNutritionPlanDeactivatesAndHidesIt() {
+		HttpHeaders headers = authHeaders();
+		NutritionPlanRequest request = new NutritionPlanRequest("Plan para borrar", 1800, 30, 40, 30, "2026-12-01", null);
+		ResponseEntity<NutritionPlanResponse> created = rest.postForEntity("/api/profile/nutrition-plans",
+				new HttpEntity<>(request, headers), NutritionPlanResponse.class);
+
+		ResponseEntity<Void> deleted = rest.exchange("/api/profile/nutrition-plans/" + created.getBody().id(), HttpMethod.DELETE,
+				new HttpEntity<>(headers), Void.class);
+		assertThat(deleted.getStatusCode().value()).isEqualTo(200);
+
+		ResponseEntity<String> list = rest.exchange("/api/profile/nutrition-plans", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		assertThat(list.getBody()).doesNotContain("Plan para borrar");
 	}
 
 	@Test

@@ -12,9 +12,9 @@ import org.springframework.data.repository.query.Param;
 import com.scalegrams.user.AppUser;
 
 public interface NutritionPlanRepository extends JpaRepository<NutritionPlan, Long> {
-    List<NutritionPlan> findByUserOrderByStartDateDescIdDesc(AppUser user);
+    List<NutritionPlan> findByUserAndActiveTrueOrderByStartDateDescIdDesc(AppUser user);
 
-    Optional<NutritionPlan> findByIdAndUser(Long id, AppUser user);
+    Optional<NutritionPlan> findByIdAndUserAndActiveTrue(Long id, AppUser user);
 
     default Optional<NutritionPlan> findActiveForUserAndDate(AppUser user, LocalDate date) {
         return findActiveForUserAndDate(user, date, Pageable.ofSize(1)).stream().findFirst();
@@ -23,6 +23,7 @@ public interface NutritionPlanRepository extends JpaRepository<NutritionPlan, Lo
     @Query("""
             select plan from NutritionPlan plan
             where plan.user = :user
+              and plan.active = true
               and plan.startDate <= :date
               and (plan.endDate is null or plan.endDate >= :date)
             order by plan.startDate desc, plan.id desc

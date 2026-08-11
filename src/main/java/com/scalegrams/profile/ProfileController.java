@@ -26,7 +26,6 @@ import com.scalegrams.profile.ProfileDtos.WeightEntryResponse;
 import jakarta.validation.Valid;
 
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 
 @RestController
 @RequestMapping("/api/profile")
@@ -68,6 +67,11 @@ public class ProfileController {
     NutritionPlanResponse updatePlan(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody UpsertNutritionPlanRequest request) {
         return profileService.updatePlan(currentUser.from(authentication), id, request);
+    }
+
+    @DeleteMapping("/nutrition-plans/{id}")
+    void deletePlan(Authentication authentication, @PathVariable Long id) {
+        profileService.deletePlan(currentUser.from(authentication), id);
     }
 
     @GetMapping("/nutrition-plan-presets")

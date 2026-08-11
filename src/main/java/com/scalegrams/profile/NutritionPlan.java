@@ -65,6 +65,8 @@ public class NutritionPlan {
     private LocalDate startDate;
 
     private LocalDate endDate;
+    @Column(nullable = false)
+    private boolean active = true;
     private OffsetDateTime createdAt = OffsetDateTime.now();
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 }

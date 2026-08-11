@@ -97,7 +97,7 @@ public class ProfileService {
 
     @Transactional(readOnly = true)
     public List<NutritionPlanResponse> plans(AppUser user) {
-        return nutritionPlans.findByUserOrderByStartDateDescIdDesc(user).stream().map(this::toPlanResponse).toList();
+        return nutritionPlans.findByUserAndActiveTrueOrderByStartDateDescIdDesc(user).stream().map(this::toPlanResponse).toList();
     }
 
     @Transactional(readOnly = true)
@@ -136,12 +136,25 @@ public class ProfileService {
     @Transactional
     public NutritionPlanResponse updatePlan(AppUser user, Long id, UpsertNutritionPlanRequest request) {
         validatePlan(request);
-        NutritionPlan plan = nutritionPlans.findByIdAndUser(id, user)
+        NutritionPlan plan = nutritionPlans.findByIdAndUserAndActiveTrue(id, user)
                 .orElseThrow(() -> new NotFoundException("Plan alimenticio no encontrado."));
         applyPlan(plan, request);
         syncUserFallback(user, plan);
         users.save(user);
         return toPlanResponse(nutritionPlans.save(plan));
+    }
+
+    @Transactional
+    public void deletePlan(AppUser user, Long id) {
+        NutritionPlan plan = nutritionPlans.findByIdAndUserAndActiveTrue(id, user)
+                .orElseThrow(() -> new NotFoundException("Plan alimenticio no encontrado."));
+        LocalDate today = LocalDate.now();
+        if (!plan.getStartDate().isAfter(today) && (plan.getEndDate() == null || !plan.getEndDate().isBefore(today))) {
+            throw new BadRequestException("No se puede borrar el plan actual.");
+        }
+        plan.setActive(false);
+        plan.setUpdatedAt(OffsetDateTime.now());
+        nutritionPlans.save(plan);
     }
 
     public List<NutritionPlanPresetResponse> presets() {
