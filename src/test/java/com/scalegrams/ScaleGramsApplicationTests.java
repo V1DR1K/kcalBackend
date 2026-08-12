@@ -401,6 +401,18 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void rejectsNonNumericMealItemIdsAsValidationErrors() {
+		HttpHeaders headers = authHeaders();
+		Map<String, Object> meal = Map.of("itemType", "FOOD", "itemId", "DINNER:FOOD:43:10:1786537556471",
+				"mealType", "DINNER", "quantity", 10, "unit", "GRAM", "logDate", "2031-02-12");
+
+		ResponseEntity<String> response = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(meal, headers), String.class);
+
+		assertThat(response.getStatusCode().value()).isEqualTo(400);
+		assertThat(response.getBody()).contains("\"code\":\"VALIDATION_ERROR\"").doesNotContain("INVALID_JSON");
+	}
+
+	@Test
 	void confirmsAiEstimateAsOneFoodLogPerSelectedFood() {
 		HttpHeaders headers = authHeaders();
 		Map<String, Object> estimate = Map.of(

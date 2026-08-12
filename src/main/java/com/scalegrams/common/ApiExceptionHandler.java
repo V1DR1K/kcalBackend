@@ -11,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +51,9 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<ApiError> malformed(HttpMessageNotReadableException ex) {
+        if (ex.getMostSpecificCause() instanceof InvalidFormatException) {
+            return ResponseEntity.badRequest().body(new ApiError("VALIDATION_ERROR", "Revisa los tipos de datos enviados.", null, Instant.now()));
+        }
         return ResponseEntity.badRequest().body(new ApiError("INVALID_JSON", "El contenido enviado no es válido.", null, Instant.now()));
     }
 
