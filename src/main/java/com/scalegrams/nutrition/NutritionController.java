@@ -21,12 +21,15 @@ import com.scalegrams.common.CurrentUser;
 import com.scalegrams.nutrition.NutritionDtos.AddFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddWaterRequest;
+import com.scalegrams.nutrition.NutritionDtos.BatchAddMealLogsRequest;
+import com.scalegrams.nutrition.NutritionDtos.AddRecipeMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.DashboardResponse;
 import com.scalegrams.nutrition.NutritionDtos.FoodLogResponse;
 import com.scalegrams.nutrition.NutritionDtos.HistoryResponse;
 import com.scalegrams.nutrition.NutritionDtos.MealTypeResponse;
 import com.scalegrams.nutrition.NutritionDtos.UpdateFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeLogIngredientsRequest;
+import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateResponse;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateUsageResponse;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
@@ -69,6 +72,16 @@ public class NutritionController {
     @PostMapping("/meal-logs")
     FoodLogResponse addMealLog(Authentication authentication, @Valid @RequestBody AddMealLogRequest request) {
         return nutritionService.addMealLog(currentUser.from(authentication), request);
+    }
+
+    @PostMapping("/meal-logs/batch")
+    List<FoodLogResponse> addMealLogs(Authentication authentication, @Valid @RequestBody BatchAddMealLogsRequest request) {
+        return nutritionService.addMealLogs(currentUser.from(authentication), request);
+    }
+
+    @PostMapping("/meal-logs/recipe")
+    FoodLogResponse addRecipeMealLog(Authentication authentication, @Valid @RequestBody AddRecipeMealLogRequest request) {
+        return nutritionService.addRecipeMealLog(currentUser.from(authentication), request);
     }
 
     @GetMapping("/ai-estimates/usage")
@@ -141,6 +154,12 @@ public class NutritionController {
         return nutritionService.updateRecipeLogIngredients(currentUser.from(authentication), id, request);
     }
 
+    @PutMapping("/food-logs/{id}/recipe")
+    FoodLogResponse updateRecipeFoodLog(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody UpdateRecipeFoodLogRequest request) {
+        return nutritionService.updateRecipeFoodLog(currentUser.from(authentication), id, request);
+    }
+
     @DeleteMapping("/food-logs/{id}/recipe-ingredients")
     ResponseEntity<Void> resetRecipeLogIngredients(Authentication authentication, @PathVariable Long id) {
         nutritionService.resetRecipeLogIngredients(currentUser.from(authentication), id);
@@ -155,6 +174,9 @@ public class NutritionController {
 
     @GetMapping("/history")
     HistoryResponse history(Authentication authentication, @RequestParam int year, @RequestParam int month) {
+        if (month < 1 || month > 12) {
+            throw new com.scalegrams.common.BadRequestException("El mes debe estar entre 1 y 12.");
+        }
         return nutritionService.history(currentUser.from(authentication), year, month);
     }
 }

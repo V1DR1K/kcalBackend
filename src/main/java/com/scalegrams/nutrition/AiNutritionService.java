@@ -46,12 +46,10 @@ public class AiNutritionService {
         return new AiEstimateUsageResponse(available, used, blocked ? blockedUntil : null, status);
     }
 
-    @Transactional
     public AiEstimateResponse analyze(AppUser user, MultipartFile image, String context) {
         return estimate(user, image, context, gemini::analyze);
     }
 
-    @Transactional
     public AiEstimateResponse refine(AppUser user, MultipartFile image, String context, RefineAiEstimateRequest request) {
         String correction = normalizeCorrection(request.correction());
         return estimate(user, image, context,
@@ -77,6 +75,9 @@ public class AiNutritionService {
         });
         if (usage.getBlockedUntil() != null && usage.getBlockedUntil().isAfter(OffsetDateTime.now())) {
             throw new BadRequestException("Gemini alcanzó su cuota disponible. Probá nuevamente más tarde.");
+        }
+        if (properties.getDailyLimit() > 0 && usage.getUsedCount() >= properties.getDailyLimit()) {
+            throw new BadRequestException("Alcanzaste el límite diario de estimaciones. Probá nuevamente mañana.");
         }
         usage.setUsedCount(usage.getUsedCount() + 1);
         usages.save(usage);

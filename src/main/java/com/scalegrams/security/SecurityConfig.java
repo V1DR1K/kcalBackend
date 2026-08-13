@@ -27,22 +27,29 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter,
-            AuthenticationProvider authenticationProvider) throws Exception {
+            AuthenticationProvider authenticationProvider,
+            @Value("${app.security.public-prometheus:false}") boolean publicPrometheus) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .cors(cors -> {})
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider)
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/auth/register",
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers("/api/auth/login", "/api/auth/register",
                                 "/api/auth/refresh", "/api/auth/logout",
                                 "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/health", "/api/version").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
-                        .requestMatchers("/actuator/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/foods", "/api/foods/*/image").authenticated()
-                        .anyRequest().authenticated())
+                            .requestMatchers(HttpMethod.GET, "/api/health", "/api/version").permitAll()
+                            .requestMatchers("/actuator/health").permitAll();
+                    if (publicPrometheus) {
+                        auth.requestMatchers("/actuator/prometheus").permitAll();
+                    } else {
+                        auth.requestMatchers("/actuator/prometheus").hasRole("ADMIN");
+                    }
+                    auth.requestMatchers("/actuator/**").hasRole("ADMIN")
+                            .requestMatchers(HttpMethod.POST, "/api/foods", "/api/foods/*/image").authenticated()
+                            .anyRequest().authenticated();
+                })
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

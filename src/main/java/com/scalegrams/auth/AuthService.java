@@ -80,8 +80,9 @@ public class AuthService {
             throw new BadRequestException("Sesión expirada. Volvé a ingresar.");
         }
         AppUser user = token.getUser();
-        token.setRevokedAt(OffsetDateTime.now());
-        refreshTokens.save(token);
+        if (refreshTokens.revokeIfActive(token.getId(), OffsetDateTime.now()) != 1) {
+            throw new BadRequestException("Sesión inválida. Volvé a ingresar.");
+        }
         return createSession(user);
     }
 
@@ -90,18 +91,13 @@ public class AuthService {
         if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
             return;
         }
-        refreshTokens.findByTokenHash(hash(rawRefreshToken)).ifPresent(token -> {
-            token.setRevokedAt(OffsetDateTime.now());
-            refreshTokens.save(token);
-        });
+        refreshTokens.findByTokenHash(hash(rawRefreshToken)).ifPresent(token ->
+                refreshTokens.revokeIfActive(token.getId(), OffsetDateTime.now()));
     }
 
     @Transactional
     public void revokeAll(AppUser user) {
-        refreshTokens.findByUserIdAndRevokedAtIsNull(user.getId()).forEach(token -> {
-            token.setRevokedAt(OffsetDateTime.now());
-            refreshTokens.save(token);
-        });
+        refreshTokens.revokeAllActive(user.getId(), OffsetDateTime.now());
     }
 
     @Transactional

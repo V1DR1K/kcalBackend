@@ -29,4 +29,15 @@ public interface NutritionPlanRepository extends JpaRepository<NutritionPlan, Lo
             order by plan.startDate desc, plan.id desc
             """)
     List<NutritionPlan> findActiveForUserAndDate(@Param("user") AppUser user, @Param("date") LocalDate date, Pageable pageable);
+
+    @Query("""
+            select plan from NutritionPlan plan
+            where plan.user = :user
+              and plan.active = true
+              and plan.startDate <= :endDate
+              and (plan.endDate is null or plan.endDate >= :startDate)
+            order by plan.startDate desc, plan.id desc
+            """)
+    List<NutritionPlan> findActiveForUserAndDateRange(@Param("user") AppUser user,
+            @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 }

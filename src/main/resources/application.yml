@@ -34,7 +34,7 @@ spring:
       enabled: false
   flyway:
     enabled: true
-    baseline-on-migrate: true
+    baseline-on-migrate: false
 
 server:
   port: ${SERVER_PORT:8081}
@@ -43,16 +43,18 @@ server:
     enabled: ${SERVER_SSL_ENABLED:false}
 
 app:
+  security:
+    public-prometheus: ${APP_SECURITY_PUBLIC_PROMETHEUS:false}
   email:
     from: ${APP_EMAIL_FROM:}
   auth:
-    registration-enabled: ${APP_AUTH_REGISTRATION_ENABLED:true}
+    registration-enabled: ${APP_AUTH_REGISTRATION_ENABLED:false}
   seed:
-    catalog-enabled: ${APP_SEED_CATALOG_ENABLED:true}
-    demo-users-enabled: ${APP_SEED_DEMO_USERS_ENABLED:true}
+    catalog-enabled: ${APP_SEED_CATALOG_ENABLED:false}
+    demo-users-enabled: ${APP_SEED_DEMO_USERS_ENABLED:false}
   jwt:
-    secret: ${JWT_SECRET:ScaleGramsDevelopmentSecretKeyForJwtTokenSigningChangeMe12345}
-    expiration-minutes: ${JWT_EXPIRATION_MINUTES:10080}
+    secret: ${JWT_SECRET}
+    expiration-minutes: ${JWT_EXPIRATION_MINUTES:30}
     refresh-token-days: ${JWT_REFRESH_TOKEN_DAYS:30}
   food-lookup:
     enabled: ${FOOD_LOOKUP_ENABLED:true}
@@ -69,6 +71,7 @@ app:
     model: ${GEMINI_MODEL:gemini-3.5-flash}
     max-image-bytes: ${AI_NUTRITION_MAX_IMAGE_BYTES:5242880}
     max-audio-bytes: ${AI_NUTRITION_MAX_AUDIO_BYTES:2097152}
+    daily-limit: ${AI_NUTRITION_DAILY_LIMIT:10}
   catalog-import:
     enabled: ${APP_CATALOG_IMPORT_ENABLED:false}
     brands: ${APP_CATALOG_IMPORT_BRANDS:Coca-Cola,Mogul,Milka,Fantoche,Ciudad del Lago,Arcor,Bagley,Terrabusi,Havanna,Guaymallen,Jorgito,Bon o Bon,Cofler,Aguila,Don Satur,Pepitos,Sonrisas,Tita,Rhodesia,La Serenisima,Pepsi}

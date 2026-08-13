@@ -17,8 +17,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.net.http.HttpClient;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,7 +58,10 @@ public class GeminiNutritionClient {
 
     public GeminiNutritionClient(RestClient.Builder restClientBuilder, ObjectMapper objectMapper,
             AiNutritionProperties properties) {
-        this.restClient = restClientBuilder.build();
+        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(Duration.ofSeconds(45));
+        this.restClient = restClientBuilder.requestFactory(requestFactory).build();
         this.objectMapper = objectMapper;
         this.properties = properties;
     }

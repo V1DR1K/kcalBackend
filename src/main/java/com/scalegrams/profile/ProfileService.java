@@ -171,6 +171,11 @@ public class ProfileService {
         return nutritionPlans.findActiveForUserAndDate(user, targetDate).orElseGet(() -> fallbackPlan(user, targetDate));
     }
 
+    @Transactional(readOnly = true)
+    public List<NutritionPlan> plansForRange(AppUser user, LocalDate start, LocalDate end) {
+        return nutritionPlans.findActiveForUserAndDateRange(user, start, end);
+    }
+
     private WeightEntryResponse toWeightResponse(WeightEntry entry) {
         return new WeightEntryResponse(entry.getId(), entry.getEntryDate(), entry.getWeightKg());
     }

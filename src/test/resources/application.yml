@@ -12,6 +12,13 @@ spring:
       ddl-auto: create-drop
 
 app:
+  security:
+    public-prometheus: true
+  auth:
+    registration-enabled: true
+  seed:
+    catalog-enabled: true
+    demo-users-enabled: true
   jwt:
     secret: TestSecretKeyForJwtTokenSigningThatIsLongEnough123456789
     expiration-minutes: 60

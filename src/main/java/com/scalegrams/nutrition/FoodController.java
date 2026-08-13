@@ -16,6 +16,7 @@ import com.scalegrams.catalog.FoodCategory;
 import com.scalegrams.common.CurrentUser;
 import com.scalegrams.nutrition.NutritionDtos.CreateFoodRequest;
 import com.scalegrams.nutrition.NutritionDtos.FoodResponse;
+import com.scalegrams.nutrition.NutritionDtos.FoodSummaryResponse;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewRequest;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewResponse;
 import com.scalegrams.nutrition.NutritionDtos.PageResponse;
@@ -34,7 +35,7 @@ public class FoodController {
     }
 
     @GetMapping
-    PageResponse<FoodResponse> search(@RequestParam(required = false) String q,
+    PageResponse<FoodSummaryResponse> search(@RequestParam(required = false) String q,
             @RequestParam(required = false) FoodCategory category,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {

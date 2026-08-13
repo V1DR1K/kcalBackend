@@ -25,6 +25,7 @@ import com.scalegrams.catalog.Food;
 import com.scalegrams.catalog.FoodCategory;
 import com.scalegrams.catalog.FoodRepository;
 import com.scalegrams.catalog.FoodUnit;
+import com.scalegrams.catalog.ModerationStatus;
 import com.scalegrams.common.BadRequestException;
 import com.scalegrams.common.NotFoundException;
 import com.scalegrams.externalfood.ExternalFoodCandidate;
@@ -32,16 +33,19 @@ import com.scalegrams.externalfood.ExternalFoodLookupService;
 import com.scalegrams.nutrition.NutritionDtos.AddMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddWaterRequest;
+import com.scalegrams.nutrition.NutritionDtos.BatchAddMealLogsRequest;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateItem;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateItem;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateFoodProposal;
 import com.scalegrams.nutrition.NutritionDtos.CreateFoodRequest;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeRequest;
+import com.scalegrams.nutrition.NutritionDtos.AddRecipeMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.DashboardResponse;
 import com.scalegrams.nutrition.NutritionDtos.DaySummary;
 import com.scalegrams.nutrition.NutritionDtos.FoodLogResponse;
 import com.scalegrams.nutrition.NutritionDtos.FoodResponse;
+import com.scalegrams.nutrition.NutritionDtos.FoodSummaryResponse;
 import com.scalegrams.nutrition.NutritionDtos.HistoryResponse;
 import com.scalegrams.nutrition.NutritionDtos.MacroProgress;
 import com.scalegrams.nutrition.NutritionDtos.MealSummary;
@@ -50,6 +54,7 @@ import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewResponse;
 import com.scalegrams.nutrition.NutritionDtos.UpdateFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateAiEstimateRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeLogIngredientsRequest;
+import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.SaveAiEstimateItemRequest;
 import com.scalegrams.nutrition.NutritionDtos.PageResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientResponse;
@@ -86,7 +91,7 @@ public class NutritionService {
     }
 
     @Transactional
-    public PageResponse<FoodResponse> searchFoods(String query, FoodCategory category, int page, int size) {
+    public PageResponse<FoodSummaryResponse> searchFoods(String query, FoodCategory category, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
                 Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
         Page<Food> result;
@@ -96,21 +101,22 @@ public class NutritionService {
             if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
         }
         if (hasQuery && category != null) {
-            result = foods.search(query, category, pageable);
+            result = foods.search(query, category, ModerationStatus.APPROVED, pageable);
         } else if (hasQuery) {
-            result = foods.search(query, pageable);
+            result = foods.search(query, ModerationStatus.APPROVED, pageable);
         } else if (category != null) {
-            result = foods.findByCategory(category, pageable);
+            result = foods.findByModerationStatusAndCategory(ModerationStatus.APPROVED, category, pageable);
         } else {
-            result = foods.findAll(pageable);
+            result = foods.findByModerationStatus(ModerationStatus.APPROVED, pageable);
         }
         if (hasQuery && page == 0 && result.getTotalElements() < Math.min(size, 10)) {
             externalFoodLookup.searchByText(query, 12).forEach(candidate -> {
                 if (candidate.barcode() != null && !foods.existsByBarcode(candidate.barcode())) importExternalFood(candidate);
             });
-            result = category == null ? foods.search(query, pageable) : foods.search(query, category, pageable);
+            result = category == null ? foods.search(query, ModerationStatus.APPROVED, pageable)
+                    : foods.search(query, category, ModerationStatus.APPROVED, pageable);
         }
-        return page(result.map(this::toFoodResponse));
+        return page(result.map(this::toFoodSummaryResponse));
     }
 
     @Transactional
@@ -140,8 +146,10 @@ public class NutritionService {
         food.setCreatedBy(creator);
         food.setCreatedAt(OffsetDateTime.now());
         food.setModerationStatus(com.scalegrams.catalog.ModerationStatus.PENDING);
-        food.setTags(request.tags() == null ? new LinkedHashSet<>() : request.tags().stream()
-                .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
+        if (request.tags() != null) {
+            food.setTags(request.tags().stream()
+                    .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
+        }
         return toFoodResponse(foods.save(food));
     }
 
@@ -170,12 +178,18 @@ public class NutritionService {
         food.setCarbsGrams(scale(request.carbsGrams()));
         food.setFatGrams(scale(request.fatGrams()));
         food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
-        food.setPreparation(com.scalegrams.catalog.FoodPreparation.UNSPECIFIED);
-        food.setPreparationSource("Ingresado por el usuario");
-        food.setServingName(null);
-        food.setServingWeightGrams(null);
-        food.setTags(request.tags() == null ? new LinkedHashSet<>() : request.tags().stream()
-                .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
+        if (request.preparation() != null) {
+            food.setPreparation(request.preparation());
+            food.setPreparationSource("Ingresado por el usuario");
+        }
+        if (request.servingName() != null || request.servingWeightGrams() != null) {
+            food.setServingName(clean(request.servingName()));
+            food.setServingWeightGrams(request.servingWeightGrams());
+        }
+        if (request.tags() != null) {
+            food.setTags(request.tags().stream()
+                    .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
+        }
         return toFoodResponse(foods.save(food));
     }
 
@@ -262,7 +276,7 @@ public class NutritionService {
 
     @Transactional(readOnly = true)
     public NutritionPreviewResponse preview(Long foodId, BigDecimal quantity, FoodUnit unit) {
-        return preview(getFood(foodId), quantity);
+        return preview(getFood(foodId), quantity, unit);
     }
 
     @Transactional(readOnly = true)
@@ -363,7 +377,7 @@ public class NutritionService {
         log.setItemType(request.itemType());
         if (request.itemType() == MealItemType.FOOD) {
             Food food = getFood(request.itemId());
-            preview = preview(food, request.quantity());
+            preview = preview(food, request.quantity(), request.unit());
             log.setFood(food);
         } else if (request.itemType() == MealItemType.RECIPE) {
             Recipe recipe = getRecipe(request.itemId());
@@ -384,6 +398,27 @@ public class NutritionService {
     }
 
     @Transactional
+    public List<FoodLogResponse> addMealLogs(AppUser user, BatchAddMealLogsRequest request) {
+        return request.logs().stream().map(item -> addMealLog(user, item)).toList();
+    }
+
+    @Transactional
+    public FoodLogResponse addRecipeMealLog(AppUser user, AddRecipeMealLogRequest request) {
+        Recipe recipe = getRecipe(request.recipeId());
+        FoodLog log = new FoodLog();
+        log.setUser(user);
+        log.setItemType(MealItemType.RECIPE);
+        log.setRecipe(recipe);
+        log.setMealType(request.mealType());
+        log.setQuantity(request.quantity());
+        log.setUnit(FoodUnit.PORTION);
+        log.setLogDate(request.logDate() == null ? LocalDate.now() : request.logDate());
+        replaceRecipeLogIngredients(log, recipe, request.ingredients());
+        applyLogNutrition(log, previewRecipeServing(log, request.quantity()));
+        return toFoodLogResponse(foodLogs.save(log));
+    }
+
+    @Transactional
     public List<FoodLogResponse> confirmAiEstimate(AppUser user, ConfirmAiEstimateRequest request) {
         LocalDate logDate = request.logDate() == null ? LocalDate.now() : request.logDate();
         return request.items().stream().map(item -> confirmAiEstimateItem(user, request.mealType(), logDate, item)).toList();
@@ -392,7 +427,7 @@ public class NutritionService {
     private FoodLogResponse confirmAiEstimateItem(AppUser user, MealType mealType, LocalDate logDate,
             ConfirmAiEstimateItem item) {
         Food food = item.foodId() == null ? createAiEstimateFood(user, item.proposal()) : getFood(item.foodId());
-        NutritionPreviewResponse preview = preview(food, item.servedGrams());
+        NutritionPreviewResponse preview = preview(food, item.servedGrams(), FoodUnit.GRAM);
         FoodLog log = new FoodLog();
         log.setUser(user);
         log.setFood(food);
@@ -469,8 +504,10 @@ public class NutritionService {
         food.setCreatedBy(user);
         food.setCreatedAt(OffsetDateTime.now());
         food.setModerationStatus(com.scalegrams.catalog.ModerationStatus.PENDING);
-        food.setTags(request.tags() == null ? new LinkedHashSet<>() : request.tags().stream()
-                .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
+        if (request.tags() != null) {
+            food.setTags(request.tags().stream()
+                    .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
+        }
         return toFoodResponse(foods.save(food));
     }
 
@@ -561,7 +598,7 @@ public class NutritionService {
         NutritionPreviewResponse preview = log.getItemType() == MealItemType.RECIPE
                 ? previewRecipeServing(log, request.quantity())
                 : log.getItemType() == MealItemType.FOOD
-                ? preview(log.getFood(), request.quantity())
+                ? preview(log.getFood(), request.quantity(), request.unit())
                 : new NutritionPreviewResponse(log.getCalories(), log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams());
         log.setMealType(request.mealType());
         log.setQuantity(request.quantity());
@@ -577,28 +614,39 @@ public class NutritionService {
     @Transactional
     public FoodLogResponse updateRecipeLogIngredients(AppUser user, Long logId, UpdateRecipeLogIngredientsRequest request) {
         FoodLog log = ownedRecipeLog(user, logId);
-        Set<Long> baseFoodIds = log.getRecipe().getIngredients().stream()
-                .map(item -> item.getFood().getId())
-                .collect(Collectors.toSet());
-        Set<Long> requestedFoodIds = request.ingredients().stream()
-                .map(RecipeIngredientRequest::foodId)
-                .collect(Collectors.toSet());
-        if (requestedFoodIds.size() != request.ingredients().size() || !requestedFoodIds.equals(baseFoodIds)) {
-            throw new BadRequestException("Solo podes ajustar los ingredientes originales de la receta.");
-        }
-
-        log.getRecipeIngredients().clear();
-        for (RecipeIngredientRequest requestIngredient : request.ingredients()) {
-            FoodLogRecipeIngredient ingredient = new FoodLogRecipeIngredient();
-            ingredient.setFoodLog(log);
-            ingredient.setFood(getFood(requestIngredient.foodId()));
-            ingredient.setQuantity(requestIngredient.quantity());
-            ingredient.setUnit(requestIngredient.unit());
-            log.getRecipeIngredients().add(ingredient);
-        }
+        replaceRecipeLogIngredients(log, log.getRecipe(), request.ingredients());
         NutritionPreviewResponse preview = previewRecipeServing(log, log.getQuantity());
         applyLogNutrition(log, preview);
         return toFoodLogResponse(foodLogs.save(log));
+    }
+
+    @Transactional
+    public FoodLogResponse updateRecipeFoodLog(AppUser user, Long logId, UpdateRecipeFoodLogRequest request) {
+        FoodLog log = ownedRecipeLog(user, logId);
+        replaceRecipeLogIngredients(log, log.getRecipe(), request.recipeIngredients());
+        log.setMealType(request.mealType());
+        log.setQuantity(request.quantity());
+        log.setUnit(FoodUnit.PORTION);
+        if (request.logDate() != null) log.setLogDate(request.logDate());
+        applyLogNutrition(log, previewRecipeServing(log, request.quantity()));
+        return toFoodLogResponse(foodLogs.save(log));
+    }
+
+    private void replaceRecipeLogIngredients(FoodLog log, Recipe recipe, List<RecipeIngredientRequest> requests) {
+        Set<Long> baseFoodIds = recipe.getIngredients().stream().map(item -> item.getFood().getId()).collect(Collectors.toSet());
+        Set<Long> requestedFoodIds = requests.stream().map(RecipeIngredientRequest::foodId).collect(Collectors.toSet());
+        if (requestedFoodIds.size() != requests.size() || !requestedFoodIds.equals(baseFoodIds)) {
+            throw new BadRequestException("Solo podes ajustar los ingredientes originales de la receta.");
+        }
+        log.getRecipeIngredients().clear();
+        for (RecipeIngredientRequest request : requests) {
+            FoodLogRecipeIngredient ingredient = new FoodLogRecipeIngredient();
+            ingredient.setFoodLog(log);
+            ingredient.setFood(getFood(request.foodId()));
+            ingredient.setQuantity(request.quantity());
+            ingredient.setUnit(request.unit());
+            log.getRecipeIngredients().add(ingredient);
+        }
     }
 
     @Transactional
@@ -626,8 +674,7 @@ public class NutritionService {
         BigDecimal carbs = sum(logs, FoodLog::getCarbsGrams);
         BigDecimal fat = sum(logs, FoodLog::getFatGrams);
         int calories = macroCalories(protein, carbs, fat);
-        BigDecimal water = waterLogs.findByUserAndLogDate(user, targetDate).stream()
-                .map(WaterLog::getLiters).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal water = waterLogs.sumLitersByUserAndLogDate(user, targetDate);
         Map<MealType, List<FoodLog>> byMeal = logs.stream().collect(Collectors.groupingBy(FoodLog::getMealType));
         List<MealSummary> meals = Arrays.stream(MealType.values()).map(meal -> {
             List<FoodLogResponse> items = byMeal.getOrDefault(meal, List.of()).stream().map(this::toFoodLogResponse).toList();
@@ -657,15 +704,21 @@ public class NutritionService {
     @Transactional(readOnly = true)
     public HistoryResponse history(AppUser user, int year, int month) {
         YearMonth ym = YearMonth.of(year, month);
-        List<FoodLog> logs = foodLogs.findByUserAndLogDateBetween(user, ym.atDay(1), ym.atEndOfMonth());
-        Map<LocalDate, List<FoodLog>> byDate = logs.stream().collect(Collectors.groupingBy(FoodLog::getLogDate));
+        List<FoodLogRepository.DayNutritionProjection> summaries = foodLogs.summarizeByDate(user, ym.atDay(1), ym.atEndOfMonth());
+        Map<LocalDate, FoodLogRepository.DayNutritionProjection> byDate = summaries.stream()
+                .collect(Collectors.toMap(FoodLogRepository.DayNutritionProjection::getDate, item -> item));
+        List<NutritionPlan> plans = profileService.plansForRange(user, ym.atDay(1), ym.atEndOfMonth());
         List<DaySummary> days = ym.atDay(1).datesUntil(ym.atEndOfMonth().plusDays(1)).map(date -> {
-            List<FoodLog> dayLogs = byDate.getOrDefault(date, List.of());
-            BigDecimal protein = sum(dayLogs, FoodLog::getProteinGrams);
-            BigDecimal carbs = sum(dayLogs, FoodLog::getCarbsGrams);
-            BigDecimal fat = sum(dayLogs, FoodLog::getFatGrams);
+            FoodLogRepository.DayNutritionProjection summary = byDate.get(date);
+            BigDecimal protein = summary == null ? BigDecimal.ZERO : scale(summary.getProteinGrams());
+            BigDecimal carbs = summary == null ? BigDecimal.ZERO : scale(summary.getCarbsGrams());
+            BigDecimal fat = summary == null ? BigDecimal.ZERO : scale(summary.getFatGrams());
             int calories = macroCalories(protein, carbs, fat);
-            NutritionPlan plan = profileService.resolvePlan(user, date);
+            NutritionPlan plan = plans.stream()
+                    .filter(candidate -> !candidate.getStartDate().isAfter(date)
+                            && (candidate.getEndDate() == null || !candidate.getEndDate().isBefore(date)))
+                    .findFirst()
+                    .orElseGet(() -> profileService.resolvePlan(user, date));
             return new DaySummary(date, calories, plan.getDailyCalories(), protein,
                     carbs, fat,
                     calories > 0 && calories <= plan.getDailyCalories(), plan.getId(), plan.getName());
@@ -693,8 +746,9 @@ public class NutritionService {
         return log;
     }
 
-    private NutritionPreviewResponse preview(Food food, BigDecimal quantity) {
-        BigDecimal ratio = quantity.divide(food.getBaseQuantity(), 4, RoundingMode.HALF_UP);
+    private NutritionPreviewResponse preview(Food food, BigDecimal quantity, FoodUnit unit) {
+        BigDecimal normalizedQuantity = normalizeQuantity(food, quantity, unit);
+        BigDecimal ratio = normalizedQuantity.divide(food.getBaseQuantity(), 4, RoundingMode.HALF_UP);
         BigDecimal protein = scale(food.getProteinGrams().multiply(ratio));
         BigDecimal carbs = scale(food.getCarbsGrams().multiply(ratio));
         BigDecimal fat = scale(food.getFatGrams().multiply(ratio));
@@ -723,7 +777,7 @@ public class NutritionService {
         BigDecimal carbs = BigDecimal.ZERO;
         BigDecimal fat = BigDecimal.ZERO;
         for (FoodLogRecipeIngredient ingredient : log.getRecipeIngredients()) {
-            NutritionPreviewResponse ingredientPreview = preview(ingredient.getFood(), ingredient.getQuantity());
+            NutritionPreviewResponse ingredientPreview = preview(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit());
             protein = protein.add(ingredientPreview.proteinGrams());
             carbs = carbs.add(ingredientPreview.carbsGrams());
             fat = fat.add(ingredientPreview.fatGrams());
@@ -749,7 +803,7 @@ public class NutritionService {
         BigDecimal carbs = BigDecimal.ZERO;
         BigDecimal fat = BigDecimal.ZERO;
         for (RecipeIngredient ingredient : recipe.getIngredients()) {
-            NutritionPreviewResponse preview = preview(ingredient.getFood(), ingredient.getQuantity());
+            NutritionPreviewResponse preview = preview(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit());
             protein = protein.add(preview.proteinGrams());
             carbs = carbs.add(preview.carbsGrams());
             fat = fat.add(preview.fatGrams());
@@ -763,12 +817,23 @@ public class NutritionService {
 
     private BigDecimal recipeTotalWeight(Recipe recipe) {
         BigDecimal total = recipe.getIngredients().stream()
-                .map(RecipeIngredient::getQuantity)
+                .map(ingredient -> normalizeQuantity(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (total.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("El peso total de la receta debe ser mayor a cero.");
         }
         return scale(total);
+    }
+
+    private BigDecimal normalizeQuantity(Food food, BigDecimal quantity, FoodUnit unit) {
+        if (unit == food.getBaseUnit()) return quantity;
+        if (unit == FoodUnit.UNIT || unit == FoodUnit.PORTION) {
+            if (food.getServingWeightGrams() == null) {
+                throw new BadRequestException("Este alimento no tiene un peso definido para esa unidad.");
+            }
+            return quantity.multiply(food.getServingWeightGrams());
+        }
+        throw new BadRequestException("No se puede convertir " + unit + " a la unidad base de este alimento.");
     }
 
     private MacroProgress progress(String key, String label, BigDecimal consumed, BigDecimal goal) {
@@ -782,6 +847,13 @@ public class NutritionService {
                 food.getFatGrams(), food.getPreparation(), food.getPreparationSource(), food.getPreparationGroup(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl(), food.getSource(), food.getSourceId(), food.getLastSyncedAt(),
                 copyTags(food.getTags()), food.getCreatedBy() == null ? null : food.getCreatedBy().getId(),
                 food.getCreatedAt(), food.getModerationStatus());
+    }
+
+    private FoodSummaryResponse toFoodSummaryResponse(Food food) {
+        return new FoodSummaryResponse(food.getId(), food.getName(), food.getBrand(), food.getBarcode(), food.getCategory(), food.getBaseUnit(),
+                food.getBaseQuantity(), macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()),
+                food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams(), food.getPreparation(),
+                food.getPreparationGroup(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl());
     }
 
     private FoodLogResponse toFoodLogResponse(FoodLog log) {
@@ -802,11 +874,11 @@ public class NutritionService {
             return new RecipeIngredientResponse(toFoodResponse(item.getFood()), item.getQuantity(), item.getUnit());
         }).toList();
         for (FoodLogRecipeIngredient ingredient : log.getRecipeIngredients()) {
-            NutritionPreviewResponse preview = preview(ingredient.getFood(), ingredient.getQuantity());
+            NutritionPreviewResponse preview = preview(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit());
             protein = protein.add(preview.proteinGrams());
             carbs = carbs.add(preview.carbsGrams());
             fat = fat.add(preview.fatGrams());
-            totalWeight = totalWeight.add(ingredient.getQuantity());
+            totalWeight = totalWeight.add(normalizeQuantity(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit()));
         }
         return new RecipeResponse(log.getRecipe().getId(), log.getRecipe().getName(), log.getRecipe().getDescription(), scale(totalWeight),
                 macroCalories(protein, carbs, fat), scale(protein), scale(carbs), scale(fat), ingredients);

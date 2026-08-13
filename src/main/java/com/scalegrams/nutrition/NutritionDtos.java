@@ -31,6 +31,12 @@ public class NutritionDtos {
             Long createdById, OffsetDateTime createdAt, ModerationStatus moderationStatus) {
     }
 
+    public record FoodSummaryResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
+            BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams,
+            BigDecimal fatGrams, FoodPreparation preparation, String preparationGroup, String servingName,
+            BigDecimal servingWeightGrams, String imageUrl) {
+    }
+
     public record PageResponse<T>(List<T> items, int page, int size, long totalElements, int totalPages, boolean hasNext) {
     }
 
@@ -65,8 +71,21 @@ public class NutritionDtos {
             @Positive BigDecimal quantity, @NotNull FoodUnit unit, LocalDate logDate) {
     }
 
+    public record BatchAddMealLogsRequest(
+            @NotEmpty @Size(max = 50) List<@NotNull @Valid AddMealLogRequest> logs) {
+    }
+
+    public record AddRecipeMealLogRequest(@NotNull Long recipeId, @NotNull MealType mealType,
+            @Positive BigDecimal quantity, LocalDate logDate,
+            @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> ingredients) {
+    }
+
     public record UpdateFoodLogRequest(@NotNull MealType mealType, @Positive BigDecimal quantity,
             @NotNull FoodUnit unit, LocalDate logDate, Long itemId) {
+    }
+
+    public record UpdateRecipeFoodLogRequest(@NotNull MealType mealType, @Positive BigDecimal quantity,
+            LocalDate logDate, @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> recipeIngredients) {
     }
 
     public record UpdateRecipeLogIngredientsRequest(

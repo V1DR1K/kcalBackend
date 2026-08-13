@@ -24,24 +24,26 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 
     Page<Food> findByNameContainingIgnoreCase(String name, Pageable pageable);
 
-    Page<Food> findByCategory(FoodCategory category, Pageable pageable);
+    Page<Food> findByModerationStatus(ModerationStatus status, Pageable pageable);
 
-    @EntityGraph(attributePaths = "tags")
+    Page<Food> findByModerationStatusAndCategory(ModerationStatus status, FoodCategory category, Pageable pageable);
+
     java.util.List<Food> findByCreatedByIdOrderByCreatedAtDesc(Long createdById);
 
     Page<Food> findByNameContainingIgnoreCaseAndCategory(String name, FoodCategory category, Pageable pageable);
 
-    @Query("select distinct f from Food f left join f.tags t where " +
+    @Query("select distinct f from Food f left join f.tags t where f.moderationStatus = :status and (" +
             "lower(f.name) like lower(concat('%', :q, '%')) or " +
             "lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) or " +
-            "lower(t) like lower(concat('%', :q, '%'))")
-    Page<Food> search(@Param("q") String query, Pageable pageable);
+            "lower(t) like lower(concat('%', :q, '%'))) ")
+    Page<Food> search(@Param("q") String query, @Param("status") ModerationStatus status, Pageable pageable);
 
-    @Query("select distinct f from Food f left join f.tags t where f.category = :category and (" +
+    @Query("select distinct f from Food f left join f.tags t where f.moderationStatus = :status and f.category = :category and (" +
             "lower(f.name) like lower(concat('%', :q, '%')) or " +
             "lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) or " +
             "lower(t) like lower(concat('%', :q, '%')))")
-    Page<Food> search(@Param("q") String query, @Param("category") FoodCategory category, Pageable pageable);
+    Page<Food> search(@Param("q") String query, @Param("category") FoodCategory category,
+            @Param("status") ModerationStatus status, Pageable pageable);
 
     @Override
     Page<Food> findAll(Pageable pageable);
