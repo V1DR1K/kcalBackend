@@ -145,7 +145,7 @@ public class NutritionService {
         food.setServingWeightGrams(request.servingWeightGrams());
         food.setCreatedBy(creator);
         food.setCreatedAt(OffsetDateTime.now());
-        food.setModerationStatus(com.scalegrams.catalog.ModerationStatus.PENDING);
+        food.setModerationStatus(com.scalegrams.catalog.ModerationStatus.APPROVED);
         if (request.tags() != null) {
             food.setTags(request.tags().stream()
                     .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
@@ -461,7 +461,7 @@ public class NutritionService {
         food.setSource("AI_ESTIMATE");
         food.setCreatedBy(user);
         food.setCreatedAt(OffsetDateTime.now());
-        food.setModerationStatus(com.scalegrams.catalog.ModerationStatus.PENDING);
+        food.setModerationStatus(com.scalegrams.catalog.ModerationStatus.APPROVED);
         return foods.save(food);
     }
 
@@ -503,7 +503,7 @@ public class NutritionService {
         food.setSourceId("food-log:" + log.getId() + ":item:" + itemIndex);
         food.setCreatedBy(user);
         food.setCreatedAt(OffsetDateTime.now());
-        food.setModerationStatus(com.scalegrams.catalog.ModerationStatus.PENDING);
+        food.setModerationStatus(com.scalegrams.catalog.ModerationStatus.APPROVED);
         if (request.tags() != null) {
             food.setTags(request.tags().stream()
                     .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));

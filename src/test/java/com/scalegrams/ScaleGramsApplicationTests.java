@@ -367,14 +367,14 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
-	void authenticatedUsersCanContributePendingGlobalFoods() {
+	void authenticatedUsersCanContributeApprovedGlobalFoods() {
 		Map<String, Object> food = Map.of("name", "Privado", "category", "OTHER", "baseUnit", "GRAM",
 				"baseQuantity", 100, "calories", 100, "proteinGrams", 1, "carbsGrams", 1, "fatGrams", 1,
 				"preparation", "UNSPECIFIED", "tags", Set.of());
 		ResponseEntity<String> response = rest.postForEntity("/api/foods", new HttpEntity<>(food, authHeaders()), String.class);
 
 		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(response.getBody()).contains("\"moderationStatus\":\"PENDING\"", "\"createdById\"");
+		assertThat(response.getBody()).contains("\"moderationStatus\":\"APPROVED\"", "\"createdById\"");
 	}
 
 	@Test
@@ -430,7 +430,7 @@ class ScaleGramsApplicationTests {
 		assertThat(response.getBody()).startsWith("[").contains("\"itemType\":\"FOOD\"", "\"quantity\":150",
 				"\"quantity\":250", "\"unit\":\"GRAM\"", "\"proteinGrams\":50.0", "\"carbsGrams\":75.0",
 				"\"fatGrams\":25.0", "\"calories\":725", "\"source\":\"AI_ESTIMATE\"",
-				"\"sourceId\":\"food-log:", "\"moderationStatus\":\"PENDING\"");
+				"\"sourceId\":\"food-log:", "\"moderationStatus\":\"APPROVED\"");
 		assertThat(countOccurrences(response.getBody(), "\"itemType\":\"FOOD\"")).isEqualTo(2);
 	}
 
@@ -456,7 +456,7 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
-	void userCanEditHistoricalAiEstimateAndSaveOneItemAsPendingGlobalFood() {
+	void userCanEditHistoricalAiEstimateAndSaveOneItemAsApprovedGlobalFood() {
 		HttpHeaders headers = authHeaders();
 		FoodLog log = new FoodLog();
 		log.setUser(users.findByEmailIgnoreCase("alex@scalegrams.local").orElseThrow());
@@ -488,7 +488,7 @@ class ScaleGramsApplicationTests {
 		assertThat(updated.getBody()).contains("\"mealType\":\"LUNCH\"", "\"calories\":250", "\\\"assumptions\\\":[\\\"Peso cocido\\\"]");
 		assertThat(cataloged.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(cataloged.getBody()).contains("\"baseQuantity\":100", "\"proteinGrams\":20.0", "\"fatGrams\":5.0",
-				"\"source\":\"AI_ESTIMATE\"", "\"moderationStatus\":\"PENDING\"");
+				"\"source\":\"AI_ESTIMATE\"", "\"moderationStatus\":\"APPROVED\"");
 		assertThat(foodLogs.findById(id).orElseThrow().getAiEstimateDetails()).isEqualTo(snapshot);
 	}
 
