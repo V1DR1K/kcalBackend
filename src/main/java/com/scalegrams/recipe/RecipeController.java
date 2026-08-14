@@ -16,6 +16,7 @@ import com.scalegrams.common.CurrentUser;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeRequest;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewResponse;
 import com.scalegrams.nutrition.NutritionDtos.PageResponse;
+import com.scalegrams.nutrition.NutritionDtos.RecipeOwnerResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeResponse;
 import com.scalegrams.nutrition.NutritionService;
 
@@ -44,9 +45,31 @@ public class RecipeController {
         return nutritionService.findRecipe(id);
     }
 
+    @GetMapping("/mine")
+    PageResponse<RecipeResponse> mine(Authentication authentication, @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return nutritionService.searchOwnedRecipes(currentUser.from(authentication), q, page, size);
+    }
+
+    @GetMapping("/explore/users")
+    java.util.List<RecipeOwnerResponse> authors(Authentication authentication) {
+        return nutritionService.recipeAuthors(currentUser.from(authentication));
+    }
+
+    @GetMapping("/explore/users/{ownerId}")
+    PageResponse<RecipeResponse> byAuthor(@PathVariable Long ownerId, @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return nutritionService.searchRecipesByOwner(ownerId, q, page, size);
+    }
+
     @PostMapping
     RecipeResponse create(Authentication authentication, @Valid @RequestBody CreateRecipeRequest request) {
         return nutritionService.createRecipe(currentUser.from(authentication), request);
+    }
+
+    @PostMapping("/{id}/copy")
+    RecipeResponse copy(Authentication authentication, @PathVariable Long id) {
+        return nutritionService.copyRecipe(currentUser.from(authentication), id);
     }
 
     @PutMapping("/{id}")

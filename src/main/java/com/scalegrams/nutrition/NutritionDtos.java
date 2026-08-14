@@ -219,4 +219,7 @@ public class NutritionDtos {
             BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
             List<RecipeIngredientResponse> ingredients) {
     }
+
+    public record RecipeOwnerResponse(Long id, String fullName, long recipeCount) {
+    }
 }

@@ -367,6 +367,52 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void usersCanExploreAndCopyRecipesWithoutTakingOwnershipOfTheOriginal() {
+		HttpHeaders alexHeaders = authHeaders();
+		Map<String, Object> registration = Map.of(
+				"fullName", "Recetas Compartidas",
+				"email", "recipes-share@example.com",
+				"password", "password123",
+				"weightKg", 70,
+				"heightCm", 170,
+				"birthDate", "1995-05-10",
+				"gender", "FEMALE",
+				"goal", "MAINTAIN",
+				"activityLevel", "MODERATELY_ACTIVE");
+		ResponseEntity<LoginResponse> registered = rest.postForEntity("/api/auth/register", new HttpEntity<>(registration), LoginResponse.class);
+		assertThat(registered.getStatusCode().is2xxSuccessful()).isTrue();
+		HttpHeaders ownerHeaders = new HttpHeaders();
+		ownerHeaders.setBearerAuth(registered.getBody().token());
+
+		Map<String, Object> recipe = Map.of(
+				"name", "Receta para compartir",
+				"description", "Una receta comunitaria",
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM")));
+		ResponseEntity<Map> created = rest.postForEntity("/api/recipes", new HttpEntity<>(recipe, ownerHeaders), Map.class);
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+		Object sharedId = created.getBody().get("id");
+
+		ResponseEntity<String> authors = rest.exchange("/api/recipes/explore/users", HttpMethod.GET,
+				new HttpEntity<>(alexHeaders), String.class);
+		ResponseEntity<String> sharedRecipes = rest.exchange("/api/recipes/explore/users/" + registered.getBody().user().id() + "?size=5",
+				HttpMethod.GET, new HttpEntity<>(alexHeaders), String.class);
+		ResponseEntity<Map> copied = rest.exchange("/api/recipes/" + sharedId + "/copy", HttpMethod.POST,
+				new HttpEntity<>(alexHeaders), Map.class);
+
+		assertThat(authors.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(authors.getBody()).contains("Recetas Compartidas");
+		assertThat(sharedRecipes.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(sharedRecipes.getBody()).contains("Receta para compartir");
+		assertThat(copied.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(copied.getBody().get("name")).isEqualTo("Receta para compartir");
+
+		Object copiedId = copied.getBody().get("id");
+		ResponseEntity<String> forbiddenDelete = rest.exchange("/api/recipes/" + copiedId, HttpMethod.DELETE,
+				new HttpEntity<>(ownerHeaders), String.class);
+		assertThat(forbiddenDelete.getStatusCode().value()).isEqualTo(400);
+	}
+
+	@Test
 	void authenticatedUsersCanContributeApprovedGlobalFoods() {
 		Map<String, Object> food = Map.of("name", "Privado", "category", "OTHER", "baseUnit", "GRAM",
 				"baseQuantity", 100, "calories", 100, "proteinGrams", 1, "carbsGrams", 1, "fatGrams", 1,
@@ -572,7 +618,10 @@ class ScaleGramsApplicationTests {
 	record LoginRequest(String email, String password) {
 	}
 
-	record LoginResponse(String token, String refreshToken) {
+	record LoginResponse(String token, String refreshToken, UserSummary user) {
+	}
+
+	record UserSummary(Long id) {
 	}
 
 	record RefreshRequest(String refreshToken) {

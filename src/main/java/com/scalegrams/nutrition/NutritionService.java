@@ -60,6 +60,7 @@ import com.scalegrams.nutrition.NutritionDtos.PageResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientRequest;
 import com.scalegrams.nutrition.NutritionDtos.RecipeResponse;
+import com.scalegrams.nutrition.NutritionDtos.RecipeOwnerResponse;
 import com.scalegrams.recipe.Recipe;
 import com.scalegrams.recipe.RecipeIngredient;
 import com.scalegrams.recipe.RecipeRepository;
@@ -294,6 +295,33 @@ public class NutritionService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<RecipeResponse> searchOwnedRecipes(AppUser user, String query, int page, int size) {
+        Pageable pageable = recipePageable(page, size);
+        Page<Recipe> result = hasRecipeQuery(query)
+                ? recipes.findByCreatedByIdAndNameContainingIgnoreCase(user.getId(), query.trim(), pageable)
+                : recipes.findByCreatedById(user.getId(), pageable);
+        return page(result.map(this::toRecipeSummary));
+    }
+
+    @Transactional(readOnly = true)
+    public List<RecipeOwnerResponse> recipeAuthors(AppUser user) {
+        Set<Long> seen = new java.util.HashSet<>();
+        return recipes.findAuthorsExcluding(user.getId()).stream()
+                .filter(author -> seen.add(author.getId()))
+                .map(author -> new RecipeOwnerResponse(author.getId(), author.getFullName(), recipes.countByCreatedById(author.getId())))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<RecipeResponse> searchRecipesByOwner(Long ownerId, String query, int page, int size) {
+        Pageable pageable = recipePageable(page, size);
+        Page<Recipe> result = hasRecipeQuery(query)
+                ? recipes.findByCreatedByIdAndNameContainingIgnoreCase(ownerId, query.trim(), pageable)
+                : recipes.findByCreatedById(ownerId, pageable);
+        return page(result.map(this::toRecipeSummary));
+    }
+
+    @Transactional(readOnly = true)
     public RecipeResponse findRecipe(Long id) {
         return toRecipeResponse(getRecipe(id));
     }
@@ -308,6 +336,29 @@ public class NutritionService {
         recipe.setTotalWeightGrams(recipeTotalWeight(recipe));
         applyRecipeTotals(recipe);
         return toRecipeResponse(recipes.save(recipe));
+    }
+
+    @Transactional
+    public RecipeResponse copyRecipe(AppUser user, Long id) {
+        Recipe source = getRecipe(id);
+        Recipe copy = new Recipe();
+        copy.setName(source.getName());
+        copy.setDescription(source.getDescription());
+        copy.setCreatedBy(user);
+        copy.setTotalWeightGrams(source.getTotalWeightGrams());
+        copy.setCalories(source.getCalories());
+        copy.setProteinGrams(source.getProteinGrams());
+        copy.setCarbsGrams(source.getCarbsGrams());
+        copy.setFatGrams(source.getFatGrams());
+        for (RecipeIngredient sourceIngredient : source.getIngredients()) {
+            RecipeIngredient ingredient = new RecipeIngredient();
+            ingredient.setRecipe(copy);
+            ingredient.setFood(sourceIngredient.getFood());
+            ingredient.setQuantity(sourceIngredient.getQuantity());
+            ingredient.setUnit(sourceIngredient.getUnit());
+            copy.getIngredients().add(ingredient);
+        }
+        return toRecipeResponse(recipes.save(copy));
     }
 
     @Transactional
@@ -346,6 +397,17 @@ public class NutritionService {
             ingredient.setUnit(item.unit());
             recipe.getIngredients().add(ingredient);
         }
+    }
+
+    private Pageable recipePageable(int page, int size) {
+        return PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
+                Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
+    }
+
+    private boolean hasRecipeQuery(String query) {
+        if (query == null || query.isBlank()) return false;
+        if (query.trim().length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
+        return true;
     }
 
     @Transactional(readOnly = true)
