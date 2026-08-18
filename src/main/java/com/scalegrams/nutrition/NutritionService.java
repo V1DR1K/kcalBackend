@@ -80,9 +80,12 @@ import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
 import com.scalegrams.profile.ProfileService;
 import com.scalegrams.user.AppUser;
 import com.scalegrams.user.Role;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class NutritionService {
+    private static final Logger log = LoggerFactory.getLogger(NutritionService.class);
     public record EnrichmentReport(int examined, int updated, int skipped, int noMatch,
             int matchedOff, int matchedUsda, int aiEstimated) {}
     private final FoodRepository foods;
@@ -294,7 +297,13 @@ public class NutritionService {
                 else noMatch++;
                 continue;
             }
-            Optional<ExternalFoodCandidate> candidate = smartCandidate(food, translations);
+            Optional<ExternalFoodCandidate> candidate;
+            try {
+                candidate = smartCandidate(food, translations);
+            } catch (AiQuotaExceededException ex) {
+                log.warn("Enrichment aborted at food #{} ({}) due to Gemini quota: {}", food.getId(), food.getName(), ex.getMessage());
+                break;
+            }
             if (candidate.isPresent()) {
                 enrichExistingFood(food, candidate.get());
                 updated++;
@@ -302,13 +311,18 @@ public class NutritionService {
                 else if ("USDA".equals(candidate.get().source())) matchedUsda++;
                 else noMatch++;
             } else {
-                Optional<GeminiNutritionClient.AiNutritionItem> estimate = gemini.estimateByName(food.getName(),
-                        food.getCategory() == null ? null : food.getCategory().name());
-                if (estimate.isPresent()) {
-                    applyAiEstimateToFood(food, estimate.get());
-                    updated++;
-                    aiEstimated++;
-                } else noMatch++;
+                try {
+                    Optional<GeminiNutritionClient.AiNutritionItem> estimate = gemini.estimateByName(food.getName(),
+                            food.getCategory() == null ? null : food.getCategory().name());
+                    if (estimate.isPresent()) {
+                        applyAiEstimateToFood(food, estimate.get());
+                        updated++;
+                        aiEstimated++;
+                    } else noMatch++;
+                } catch (AiQuotaExceededException ex) {
+                    log.warn("Enrichment aborted at food #{} ({}) due to Gemini quota: {}", food.getId(), food.getName(), ex.getMessage());
+                    break;
+                }
             }
             try { Thread.sleep(2000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         }
