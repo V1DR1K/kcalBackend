@@ -301,8 +301,8 @@ public class NutritionService {
             try {
                 candidate = smartCandidate(food, translations);
             } catch (AiQuotaExceededException ex) {
-                log.warn("Enrichment aborted at food #{} ({}) due to Gemini quota: {}", food.getId(), food.getName(), ex.getMessage());
-                break;
+                if (!awaitGeminiQuota(ex)) break;
+                candidate = smartCandidate(food, translations);
             }
             if (candidate.isPresent()) {
                 enrichExistingFood(food, candidate.get());
@@ -320,13 +320,33 @@ public class NutritionService {
                         aiEstimated++;
                     } else noMatch++;
                 } catch (AiQuotaExceededException ex) {
-                    log.warn("Enrichment aborted at food #{} ({}) due to Gemini quota: {}", food.getId(), food.getName(), ex.getMessage());
-                    break;
+                    if (!awaitGeminiQuota(ex)) break;
+                    try {
+                        Optional<GeminiNutritionClient.AiNutritionItem> estimate = gemini.estimateByName(food.getName(),
+                                food.getCategory() == null ? null : food.getCategory().name());
+                        if (estimate.isPresent()) {
+                            applyAiEstimateToFood(food, estimate.get());
+                            updated++;
+                            aiEstimated++;
+                        } else noMatch++;
+                    } catch (AiQuotaExceededException second) { break; }
                 }
             }
             try { Thread.sleep(2000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         }
         return new EnrichmentReport(examined, updated, skipped, noMatch, matchedOff, matchedUsda, aiEstimated);
+    }
+
+    private boolean awaitGeminiQuota(AiQuotaExceededException ex) {
+        OffsetDateTime retryAt = ex.getRetryAt();
+        Duration wait = Duration.between(OffsetDateTime.now(), retryAt).plusSeconds(5);
+        if (wait.isNegative() || wait.toMinutes() > 10) {
+            log.warn("Gemini quota exhausted until {}; enrichment aborted.", retryAt);
+            return false;
+        }
+        log.warn("Gemini quota exhausted; waiting {}s before continuing.", wait.getSeconds());
+        try { Thread.sleep(wait.toMillis()); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        return true;
     }
 
     private Optional<ExternalFoodCandidate> smartCandidate(Food food, Map<String, String> translations) {
