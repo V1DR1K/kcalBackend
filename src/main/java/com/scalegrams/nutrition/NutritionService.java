@@ -290,52 +290,49 @@ public class NutritionService {
         for (Food food : foods.findAll(PageRequest.of(0, Math.min(Math.max(limit, 1), 100), Sort.by(Sort.Direction.ASC, "id")))) {
             examined++;
             if (hasDetailedNutrients(food)) { skipped++; continue; }
-            String barcode = food.getBarcode();
-            boolean hasRealBarcode = barcode != null && !barcode.matches("^7790000000\\d+");
-            if (hasRealBarcode) {
-                Optional<ExternalFoodCandidate> candidate = externalFoodLookup.lookupByBarcode(barcode);
-                if (candidate.isPresent()) { enrichExistingFood(food, candidate.get()); updated++; matchedOff++; }
-                else noMatch++;
-                continue;
-            }
-            Optional<ExternalFoodCandidate> candidate;
-            try {
-                candidate = smartCandidate(food, translations);
-            } catch (AiQuotaExceededException ex) {
-                if (!awaitGeminiQuota(ex)) break;
-                candidate = smartCandidate(food, translations);
-            }
-            if (candidate.isPresent()) {
-                enrichExistingFood(food, candidate.get());
-                updated++;
-                if ("OPEN_FOOD_FACTS".equals(candidate.get().source())) matchedOff++;
-                else if ("USDA".equals(candidate.get().source())) matchedUsda++;
-                else noMatch++;
-            } else {
+            boolean aborted = false;
+            for (int attempt = 0; attempt < 5 && !aborted; attempt++) {
                 try {
-                    Optional<GeminiNutritionClient.AiNutritionItem> estimate = gemini.estimateByName(food.getName(),
-                            food.getCategory() == null ? null : food.getCategory().name());
-                    if (estimate.isPresent()) {
-                        applyAiEstimateToFood(food, estimate.get());
-                        updated++;
-                        aiEstimated++;
-                    } else noMatch++;
+                    EnrichOutcome outcome = enrichOne(food, translations);
+                    switch (outcome) {
+                        case MATCHED_OFF -> { updated++; matchedOff++; }
+                        case MATCHED_USDA -> { updated++; matchedUsda++; }
+                        case AI_ESTIMATED -> { updated++; aiEstimated++; }
+                        default -> noMatch++;
+                    }
+                    try { Thread.sleep(2000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+                    break;
                 } catch (AiQuotaExceededException ex) {
-                    if (!awaitGeminiQuota(ex)) break;
-                    try {
-                        Optional<GeminiNutritionClient.AiNutritionItem> estimate = gemini.estimateByName(food.getName(),
-                                food.getCategory() == null ? null : food.getCategory().name());
-                        if (estimate.isPresent()) {
-                            applyAiEstimateToFood(food, estimate.get());
-                            updated++;
-                            aiEstimated++;
-                        } else noMatch++;
-                    } catch (AiQuotaExceededException second) { break; }
+                    if (!awaitGeminiQuota(ex)) aborted = true;
                 }
             }
-            try { Thread.sleep(2000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         }
         return new EnrichmentReport(examined, updated, skipped, noMatch, matchedOff, matchedUsda, aiEstimated);
+    }
+
+    private enum EnrichOutcome { MATCHED_OFF, MATCHED_USDA, AI_ESTIMATED, NO_MATCH }
+
+    private EnrichOutcome enrichOne(Food food, Map<String, String> translations) {
+        String barcode = food.getBarcode();
+        boolean hasRealBarcode = barcode != null && !barcode.matches("^7790000000\\d+");
+        if (hasRealBarcode) {
+            Optional<ExternalFoodCandidate> byBarcode = externalFoodLookup.lookupByBarcode(barcode);
+            if (byBarcode.isEmpty()) return EnrichOutcome.NO_MATCH;
+            enrichExistingFood(food, byBarcode.get());
+            return EnrichOutcome.MATCHED_OFF;
+        }
+        Optional<ExternalFoodCandidate> candidate = smartCandidate(food, translations);
+        if (candidate.isPresent()) {
+            enrichExistingFood(food, candidate.get());
+            return "OPEN_FOOD_FACTS".equals(candidate.get().source()) ? EnrichOutcome.MATCHED_OFF : EnrichOutcome.MATCHED_USDA;
+        }
+        Optional<GeminiNutritionClient.AiNutritionItem> estimate = gemini.estimateByName(food.getName(),
+                food.getCategory() == null ? null : food.getCategory().name());
+        if (estimate.isPresent()) {
+            applyAiEstimateToFood(food, estimate.get());
+            return EnrichOutcome.AI_ESTIMATED;
+        }
+        return EnrichOutcome.NO_MATCH;
     }
 
     private boolean awaitGeminiQuota(AiQuotaExceededException ex) {
