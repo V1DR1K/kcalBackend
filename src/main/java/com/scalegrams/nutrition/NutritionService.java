@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.scalegrams.catalog.Food;
 import com.scalegrams.catalog.FoodCategory;
+import com.scalegrams.catalog.FoodPreparation;
 import com.scalegrams.catalog.FoodRepository;
 import com.scalegrams.catalog.FoodUnit;
 import com.scalegrams.catalog.ModerationStatus;
@@ -618,10 +619,11 @@ public class NutritionService {
 
     private void applyAiEstimate(FoodLog log, String name, String description, String context, int confidence,
             List<String> assumptions, List<AiEstimateItem> items, MealType mealType, LocalDate logDate) {
-        validateAiEstimateItems(items);
-        BigDecimal protein = items.stream().map(item -> scale(item.proteinGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal carbs = items.stream().map(item -> scale(item.carbsGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal fat = items.stream().map(item -> scale(item.fatGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<AiEstimateItem> normalizedItems = normalizeAiEstimateItems(items);
+        validateAiEstimateItems(normalizedItems);
+        BigDecimal protein = normalizedItems.stream().map(item -> scale(item.proteinGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal carbs = normalizedItems.stream().map(item -> scale(item.carbsGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal fat = normalizedItems.stream().map(item -> scale(item.fatGrams())).reduce(BigDecimal.ZERO, BigDecimal::add);
         log.setMealType(mealType);
         log.setQuantity(BigDecimal.ONE);
         log.setUnit(FoodUnit.PORTION);
@@ -634,10 +636,17 @@ public class NutritionService {
         log.setAiEstimateConfidence(Math.max(0, Math.min(100, confidence)));
         try {
             log.setAiEstimateDetails(objectMapper.writeValueAsString(new AiEstimateDetails(description, context,
-                    assumptions == null ? List.of() : assumptions, items)));
+                    assumptions == null ? List.of() : assumptions, normalizedItems)));
         } catch (JsonProcessingException ex) {
             throw new BadRequestException("No se pudo guardar la estimación.");
         }
+    }
+
+    private List<AiEstimateItem> normalizeAiEstimateItems(List<AiEstimateItem> items) {
+        return items.stream().map(item -> new AiEstimateItem(item.name(), item.estimatedGrams(),
+                item.category() == null ? FoodCategory.OTHER : item.category(),
+                item.preparation() == null ? FoodPreparation.UNSPECIFIED : item.preparation(),
+                item.proteinGrams(), item.carbsGrams(), item.fatGrams())).toList();
     }
 
     private void validateAiEstimateItems(List<AiEstimateItem> items) {

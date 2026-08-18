@@ -10,6 +10,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.http.MediaType;
@@ -24,6 +25,8 @@ import java.net.http.HttpClient;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.scalegrams.catalog.FoodCategory;
+import com.scalegrams.catalog.FoodPreparation;
 import com.scalegrams.common.BadRequestException;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateDraft;
 
@@ -34,10 +37,11 @@ public class GeminiNutritionClient {
     private static final String PROMPT = """
             Analizá esta foto de comida para registrar un cheat meal. Respondé únicamente JSON válido.
             Identificá los alimentos visibles y estimá por cada uno gramos, proteínas, carbohidratos y grasas.
+            Clasificá cada alimento con una categoría y preparación de esta lista exacta: categorías PROTEIN, MEAT, DAIRY, FRUIT, VEGETABLE, LEGUME, CEREAL, BAKERY, BEVERAGE, SWEET, SNACK, FAT, OTHER; preparaciones RAW, COOKED, AS_SOLD, UNSPECIFIED.
             No inventes precisión: usá estimaciones conservadoras, incluí aceite, queso o salsas solo si son visibles,
             y anotá las suposiciones. confidence debe ser un entero entre 0 y 100. Máximo 12 items.
             Incluí una descripción breve de lo que se observa en la foto, sin afirmar ingredientes que no sean visibles.
-            Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
+            Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"category":"OTHER","preparation":"UNSPECIFIED","proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
             """;
     private static final String TRANSCRIPTION_PROMPT = """
             Transcribí esta breve nota de voz en español sobre una comida. Devolvé solo la transcripción,
@@ -49,7 +53,7 @@ public class GeminiNutritionClient {
             el borrador actual puede incluir cambios manuales y debe usarse como base, no como una fuente nutricional definitiva.
             Aplicá la corrección a una lista completa de alimentos: agregá, quitá o ajustá ítems según corresponda.
             No inventes precisión: usá estimaciones conservadoras, anotá las suposiciones y devolvé como máximo 12 ítems.
-            Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
+            Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"category":"OTHER","preparation":"UNSPECIFIED","proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
             """;
 
     private final RestClient restClient;
@@ -89,13 +93,15 @@ public class GeminiNutritionClient {
             for (JsonNode item : result.path("items")) {
                 String name = item.path("name").asText("").trim();
                 BigDecimal grams = decimal(item, "estimatedGrams");
+                FoodCategory category = enumValue(item.path("category").asText(null), FoodCategory.class, FoodCategory.OTHER);
+                FoodPreparation preparation = enumValue(item.path("preparation").asText(null), FoodPreparation.class, FoodPreparation.UNSPECIFIED);
                 BigDecimal protein = decimal(item, "proteinGrams");
                 BigDecimal carbs = decimal(item, "carbsGrams");
                 BigDecimal fat = decimal(item, "fatGrams");
                 if (name.length() >= 2 && grams.signum() > 0 && grams.compareTo(BigDecimal.valueOf(3000)) <= 0
                         && protein.compareTo(BigDecimal.valueOf(500)) <= 0 && carbs.compareTo(BigDecimal.valueOf(1000)) <= 0
                         && fat.compareTo(BigDecimal.valueOf(500)) <= 0) {
-                    items.add(new AiNutritionItem(name.substring(0, Math.min(name.length(), 120)), grams, protein, carbs, fat));
+                    items.add(new AiNutritionItem(name.substring(0, Math.min(name.length(), 120)), grams, category, preparation, protein, carbs, fat));
                 }
             }
             if (items.isEmpty()) throw unreadablePhoto();
@@ -235,6 +241,15 @@ public class GeminiNutritionClient {
         }
     }
 
+    private static <E extends Enum<E>> E enumValue(String value, Class<E> type, E fallback) {
+        if (value == null || value.isBlank()) return fallback;
+        try {
+            return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            return fallback;
+        }
+    }
+
     private OffsetDateTime retryAt(RestClientResponseException ex) {
         try {
             JsonNode details = objectMapper.readTree(ex.getResponseBodyAsString()).path("error").path("details");
@@ -256,7 +271,7 @@ public class GeminiNutritionClient {
     public record AiNutritionResult(String name, String description, int confidence, List<String> assumptions, List<AiNutritionItem> items) {
     }
 
-    public record AiNutritionItem(String name, BigDecimal estimatedGrams, BigDecimal proteinGrams,
-            BigDecimal carbsGrams, BigDecimal fatGrams) {
+    public record AiNutritionItem(String name, BigDecimal estimatedGrams, FoodCategory category,
+            FoodPreparation preparation, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams) {
     }
 }

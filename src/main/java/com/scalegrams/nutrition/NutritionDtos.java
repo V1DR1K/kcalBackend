@@ -8,6 +8,7 @@ import java.util.Set;
 
 import com.scalegrams.catalog.FoodCategory;
 import com.scalegrams.catalog.FoodUnit;
+import com.scalegrams.catalog.FoodPreparation;
 import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
 
 import jakarta.validation.Valid;
@@ -20,7 +21,6 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.AssertTrue;
-import com.scalegrams.catalog.FoodPreparation;
 import com.scalegrams.catalog.ModerationStatus;
 
 public class NutritionDtos {
@@ -101,6 +101,8 @@ public class NutritionDtos {
     public record AiEstimateItem(
             @NotBlank @Size(min = 2, max = 120) String name,
             @NotNull @Positive BigDecimal estimatedGrams,
+            FoodCategory category,
+            FoodPreparation preparation,
             @NotNull @PositiveOrZero BigDecimal proteinGrams,
             @NotNull @PositiveOrZero BigDecimal carbsGrams,
             @NotNull @PositiveOrZero BigDecimal fatGrams) {
