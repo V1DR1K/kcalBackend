@@ -390,6 +390,22 @@ public class NutritionService {
             nutrient.setExternalReference(candidate.sourceId());
             nutrient.setUpdatedAt(OffsetDateTime.now());
         }));
+        syncMacrosFromNutrients(food);
+    }
+
+    private void syncMacrosFromNutrients(Food food) {
+        food.getNutrients().stream().filter(item -> item.getValue() != null).forEach(item -> {
+            switch (item.getDefinition().getCode()) {
+                case "PROTEIN" -> food.setProteinGrams(scale(item.getValue()));
+                case "CARBOHYDRATE" -> food.setCarbsGrams(scale(item.getValue()));
+                case "FAT" -> food.setFatGrams(scale(item.getValue()));
+                case "CALORIES" -> food.setCalories(item.getValue().setScale(0, RoundingMode.HALF_UP).intValue());
+                default -> { }
+            }
+        });
+        if (food.getCalories() == null) {
+            food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
+        }
     }
 
     private void addAiNutrients(Food food, Map<String, BigDecimal> values, BigDecimal ratio) {
