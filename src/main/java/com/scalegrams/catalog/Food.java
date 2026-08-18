@@ -22,6 +22,10 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import com.scalegrams.user.AppUser;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.CascadeType;
+import com.scalegrams.nutrition.FoodNutrient;
+import java.util.ArrayList;
 
 @Entity
 @BatchSize(size = 50)
@@ -75,6 +79,10 @@ public class Food {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ModerationStatus moderationStatus = ModerationStatus.APPROVED;
+
+    @OneToMany(mappedBy = "food", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
+    private java.util.List<FoodNutrient> nutrients = new ArrayList<>();
 
     @ElementCollection(fetch = FetchType.LAZY)
     @BatchSize(size = 50)

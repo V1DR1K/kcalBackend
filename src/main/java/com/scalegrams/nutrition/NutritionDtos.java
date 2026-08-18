@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
 
 import com.scalegrams.catalog.FoodCategory;
 import com.scalegrams.catalog.FoodUnit;
@@ -24,17 +25,36 @@ import jakarta.validation.constraints.AssertTrue;
 import com.scalegrams.catalog.ModerationStatus;
 
 public class NutritionDtos {
+    public record NutrientValueResponse(String code, String name, String group, String unit, BigDecimal value,
+            String source, String status) { }
+
     public record FoodResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
             BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
             FoodPreparation preparation, String preparationSource, String preparationGroup, String servingName, BigDecimal servingWeightGrams,
             String imageUrl, String source, String sourceId, OffsetDateTime lastSyncedAt, Set<String> tags,
-            Long createdById, OffsetDateTime createdAt, ModerationStatus moderationStatus) {
+            Long createdById, OffsetDateTime createdAt, ModerationStatus moderationStatus, List<NutrientValueResponse> nutrients) {
+        public FoodResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
+                BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
+                FoodPreparation preparation, String preparationSource, String preparationGroup, String servingName, BigDecimal servingWeightGrams,
+                String imageUrl, String source, String sourceId, OffsetDateTime lastSyncedAt, Set<String> tags,
+                Long createdById, OffsetDateTime createdAt, ModerationStatus moderationStatus) {
+            this(id, name, brand, barcode, category, baseUnit, baseQuantity, calories, proteinGrams, carbsGrams, fatGrams,
+                    preparation, preparationSource, preparationGroup, servingName, servingWeightGrams, imageUrl, source, sourceId,
+                    lastSyncedAt, tags, createdById, createdAt, moderationStatus, List.of());
+        }
     }
 
     public record FoodSummaryResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
             BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams,
             BigDecimal fatGrams, FoodPreparation preparation, String preparationGroup, String servingName,
-            BigDecimal servingWeightGrams, String imageUrl) {
+            BigDecimal servingWeightGrams, String imageUrl, List<NutrientValueResponse> nutrients) {
+        public FoodSummaryResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
+                BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams,
+                BigDecimal fatGrams, FoodPreparation preparation, String preparationGroup, String servingName,
+                BigDecimal servingWeightGrams, String imageUrl) {
+            this(id, name, brand, barcode, category, baseUnit, baseQuantity, calories, proteinGrams, carbsGrams, fatGrams,
+                    preparation, preparationGroup, servingName, servingWeightGrams, imageUrl, List.of());
+        }
     }
 
     public record PageResponse<T>(List<T> items, int page, int size, long totalElements, int totalPages, boolean hasNext) {
@@ -60,7 +80,11 @@ public class NutritionDtos {
     public record NutritionPreviewRequest(@NotNull Long foodId, @Positive BigDecimal quantity, @NotNull FoodUnit unit) {
     }
 
-    public record NutritionPreviewResponse(Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams) {
+    public record NutritionPreviewResponse(Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
+            List<NutrientValueResponse> nutrients) {
+        public NutritionPreviewResponse(Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams) {
+            this(calories, proteinGrams, carbsGrams, fatGrams, List.of());
+        }
     }
 
     public record AddFoodLogRequest(@NotNull Long foodId, @NotNull MealType mealType, @Positive BigDecimal quantity,
@@ -95,7 +119,15 @@ public class NutritionDtos {
     public record FoodLogResponse(Long id, LocalDate logDate, MealType mealType, MealItemType itemType, FoodResponse food,
             RecipeResponse recipe, BigDecimal quantity,
             FoodUnit unit, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
-            boolean recipeAdjusted, String displayName, Integer aiEstimateConfidence, String aiEstimateDetails) {
+            boolean recipeAdjusted, String displayName, Integer aiEstimateConfidence, String aiEstimateDetails,
+            List<NutrientValueResponse> nutrients) {
+        public FoodLogResponse(Long id, LocalDate logDate, MealType mealType, MealItemType itemType, FoodResponse food,
+                RecipeResponse recipe, BigDecimal quantity, FoodUnit unit, Integer calories, BigDecimal proteinGrams,
+                BigDecimal carbsGrams, BigDecimal fatGrams, boolean recipeAdjusted, String displayName,
+                Integer aiEstimateConfidence, String aiEstimateDetails) {
+            this(id, logDate, mealType, itemType, food, recipe, quantity, unit, calories, proteinGrams, carbsGrams, fatGrams,
+                    recipeAdjusted, displayName, aiEstimateConfidence, aiEstimateDetails, List.of());
+        }
     }
 
     public record AiEstimateItem(
@@ -105,7 +137,12 @@ public class NutritionDtos {
             FoodPreparation preparation,
             @NotNull @PositiveOrZero BigDecimal proteinGrams,
             @NotNull @PositiveOrZero BigDecimal carbsGrams,
-            @NotNull @PositiveOrZero BigDecimal fatGrams) {
+            @NotNull @PositiveOrZero BigDecimal fatGrams,
+            Map<String, BigDecimal> nutrients) {
+        public AiEstimateItem(String name, BigDecimal estimatedGrams, FoodCategory category, FoodPreparation preparation,
+                BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams) {
+            this(name, estimatedGrams, category, preparation, proteinGrams, carbsGrams, fatGrams, Map.of());
+        }
     }
 
     public record AiEstimateResponse(
@@ -158,7 +195,12 @@ public class NutritionDtos {
             FoodPreparation preparation,
             @NotNull @PositiveOrZero BigDecimal proteinGrams,
             @NotNull @PositiveOrZero BigDecimal carbsGrams,
-            @NotNull @PositiveOrZero BigDecimal fatGrams) {
+            @NotNull @PositiveOrZero BigDecimal fatGrams,
+            Map<String, BigDecimal> nutrients) {
+        public AiEstimateFoodProposal(String name, FoodCategory category, FoodPreparation preparation,
+                BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams) {
+            this(name, category, preparation, proteinGrams, carbsGrams, fatGrams, Map.of());
+        }
     }
 
     public record UpdateAiEstimateRequest(

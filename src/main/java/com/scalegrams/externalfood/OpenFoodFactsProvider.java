@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.LinkedHashMap;
 import java.util.Set;
 
 import org.springframework.core.ParameterizedTypeReference;
@@ -148,6 +149,18 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
         }
 
         FoodPreparation preparation = preparation(firstText(product.get("product_name"), product.get("generic_name")), tags);
+        Map<String, BigDecimal> details = new LinkedHashMap<>();
+        nutrient(details, nutriments, "FIBER", "fiber_100g");
+        nutrient(details, nutriments, "SUGARS_TOTAL", "sugars_100g");
+        nutrient(details, nutriments, "SATURATED_FAT", "saturated-fat_100g");
+        nutrient(details, nutriments, "TRANS_FAT", "trans-fat_100g");
+        nutrient(details, nutriments, "SODIUM", "sodium_100g");
+        nutrient(details, nutriments, "CHOLESTEROL", "cholesterol_100g");
+        nutrient(details, nutriments, "POTASSIUM", "potassium_100g");
+        nutrient(details, nutriments, "CALCIUM", "calcium_100g");
+        nutrient(details, nutriments, "IRON", "iron_100g");
+        nutrient(details, nutriments, "VITAMIN_C", "vitamin-c_100g");
+        nutrient(details, nutriments, "VITAMIN_D", "vitamin-d_100g");
 
         return Optional.of(new ExternalFoodCandidate(
                 name,
@@ -165,7 +178,13 @@ public class OpenFoodFactsProvider implements ExternalFoodProvider {
                 null,
                 tags,
                 "OPEN_FOOD_FACTS",
-                barcode));
+                barcode,
+                details));
+    }
+
+    private static void nutrient(Map<String, BigDecimal> target, Map<String, Object> source, String code, String key) {
+        BigDecimal value = decimal(source.get(key));
+        if (value != null) target.put(code, value);
     }
 
     private static FoodPreparation preparation(String description, Set<String> tags) {

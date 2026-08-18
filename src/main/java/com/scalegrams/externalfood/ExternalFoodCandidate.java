@@ -2,6 +2,7 @@ package com.scalegrams.externalfood;
 
 import java.math.BigDecimal;
 import java.util.Set;
+import java.util.Map;
 
 import com.scalegrams.catalog.FoodCategory;
 import com.scalegrams.catalog.FoodPreparation;
@@ -22,5 +23,13 @@ public record ExternalFoodCandidate(
         String imageUrl,
         Set<String> tags,
         String source,
-        String sourceId) {
+        String sourceId,
+        Map<String, BigDecimal> nutrients) {
+    public ExternalFoodCandidate(String name, String brand, String barcode, FoodCategory category, Integer calories,
+            BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams, FoodPreparation preparation,
+            String preparationSource, String servingName, BigDecimal servingWeightGrams, String imageUrl,
+            Set<String> tags, String source, String sourceId) {
+        this(name, brand, barcode, category, calories, proteinGrams, carbsGrams, fatGrams, preparation,
+                preparationSource, servingName, servingWeightGrams, imageUrl, tags, source, sourceId, Map.of());
+    }
 }

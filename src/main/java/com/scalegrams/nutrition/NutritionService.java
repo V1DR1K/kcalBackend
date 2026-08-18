@@ -66,6 +66,7 @@ import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientRequest;
 import com.scalegrams.nutrition.NutritionDtos.RecipeResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeOwnerResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecentMealResponse;
+import com.scalegrams.nutrition.NutritionDtos.NutrientValueResponse;
 import com.scalegrams.recipe.Recipe;
 import com.scalegrams.recipe.RecipeIngredient;
 import com.scalegrams.recipe.RecipeRepository;
@@ -83,10 +84,12 @@ public class NutritionService {
     private final ProfileService profileService;
     private final ExternalFoodLookupService externalFoodLookup;
     private final ObjectMapper objectMapper;
+    private final NutrientDefinitionRepository nutrientDefinitions;
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
             WaterLogRepository waterLogs, ProfileService profileService,
-            ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper) {
+            ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper,
+            NutrientDefinitionRepository nutrientDefinitions) {
         this.foods = foods;
         this.recipes = recipes;
         this.foodLogs = foodLogs;
@@ -94,6 +97,7 @@ public class NutritionService {
         this.profileService = profileService;
         this.externalFoodLookup = externalFoodLookup;
         this.objectMapper = objectMapper;
+        this.nutrientDefinitions = nutrientDefinitions;
     }
 
     @Transactional
@@ -250,6 +254,7 @@ public class NutritionService {
             food.setSource(candidate.source());
             food.setSourceId(candidate.sourceId());
         }
+        applyExternalNutrients(food, candidate);
         food.setLastSyncedAt(OffsetDateTime.now());
         if (candidate.tags() != null) candidate.tags().stream().map(this::clean).filter(tag -> tag != null)
                 .forEach(tag -> { if (food.getTags().size() < 10) food.getTags().add(tag); });
@@ -275,6 +280,7 @@ public class NutritionService {
         food.setSource(candidate.source());
         food.setSourceId(candidate.sourceId());
         food.setLastSyncedAt(OffsetDateTime.now());
+        applyExternalNutrients(food, candidate);
         food.setTags(candidate.tags() == null ? new LinkedHashSet<>() : candidate.tags().stream()
                 .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
         return foods.save(food);
@@ -283,6 +289,38 @@ public class NutritionService {
     @Transactional(readOnly = true)
     public NutritionPreviewResponse preview(Long foodId, BigDecimal quantity, FoodUnit unit) {
         return preview(getFood(foodId), quantity, unit);
+    }
+
+    private void applyExternalNutrients(Food food, ExternalFoodCandidate candidate) {
+        if (candidate.nutrients() == null || candidate.nutrients().isEmpty()) return;
+        candidate.nutrients().forEach((code, value) -> nutrientDefinitions.findById(code).ifPresent(definition -> {
+            FoodNutrient nutrient = food.getNutrients().stream()
+                    .filter(item -> item.getDefinition().getCode().equals(code)).findFirst().orElseGet(() -> {
+                        FoodNutrient next = new FoodNutrient();
+                        next.setFood(food);
+                        next.setDefinition(definition);
+                        food.getNutrients().add(next);
+                        return next;
+                    });
+            nutrient.setValue(scale(value));
+            nutrient.setSource(parseSource(candidate.source()));
+            nutrient.setStatus(NutrientStatus.VERIFIED);
+            nutrient.setExternalReference(candidate.sourceId());
+            nutrient.setUpdatedAt(OffsetDateTime.now());
+        }));
+    }
+
+    private void addAiNutrients(Food food, Map<String, BigDecimal> values, BigDecimal ratio) {
+        if (values == null) return;
+        values.forEach((code, value) -> nutrientDefinitions.findById(code).ifPresent(definition -> {
+            FoodNutrient nutrient = new FoodNutrient();
+            nutrient.setFood(food);
+            nutrient.setDefinition(definition);
+            nutrient.setValue(scale(value.multiply(ratio)));
+            nutrient.setSource(NutrientSource.AI);
+            nutrient.setStatus(NutrientStatus.ESTIMATED);
+            food.getNutrients().add(nutrient);
+        }));
     }
 
     @Transactional(readOnly = true)
@@ -561,6 +599,7 @@ public class NutritionService {
         food.setCarbsGrams(scale(proposal.carbsGrams()));
         food.setFatGrams(scale(proposal.fatGrams()));
         food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
+        addAiNutrients(food, proposal.nutrients(), BigDecimal.ONE);
         food.setPreparation(proposal.preparation() == null ? com.scalegrams.catalog.FoodPreparation.UNSPECIFIED
                 : proposal.preparation());
         food.setPreparationSource("Estimado por IA");
@@ -603,6 +642,7 @@ public class NutritionService {
         food.setCarbsGrams(scale(item.carbsGrams().multiply(ratio)));
         food.setFatGrams(scale(item.fatGrams().multiply(ratio)));
         food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
+        addAiNutrients(food, item.nutrients(), ratio);
         food.setPreparation(request.preparation() == null ? com.scalegrams.catalog.FoodPreparation.UNSPECIFIED : request.preparation());
         food.setPreparationSource("Estimado por IA");
         food.setSource("AI_ESTIMATE");
@@ -646,7 +686,7 @@ public class NutritionService {
         return items.stream().map(item -> new AiEstimateItem(item.name(), item.estimatedGrams(),
                 item.category() == null ? FoodCategory.OTHER : item.category(),
                 item.preparation() == null ? FoodPreparation.UNSPECIFIED : item.preparation(),
-                item.proteinGrams(), item.carbsGrams(), item.fatGrams())).toList();
+                item.proteinGrams(), item.carbsGrams(), item.fatGrams(), item.nutrients())).toList();
     }
 
     private void validateAiEstimateItems(List<AiEstimateItem> items) {
@@ -871,7 +911,8 @@ public class NutritionService {
                 macroCalories(protein, carbs, fat),
                 protein,
                 carbs,
-                fat);
+                fat,
+                scaleNutrients(food, ratio));
     }
 
     private NutritionPreviewResponse previewRecipeServing(Recipe recipe, BigDecimal portions) {
@@ -908,6 +949,18 @@ public class NutritionService {
         log.setProteinGrams(preview.proteinGrams());
         log.setCarbsGrams(preview.carbsGrams());
         log.setFatGrams(preview.fatGrams());
+        log.getNutrientSnapshot().clear();
+        for (NutrientValueResponse value : preview.nutrients()) {
+            nutrientDefinitions.findById(value.code()).ifPresent(definition -> {
+                FoodLogNutrient snapshot = new FoodLogNutrient();
+                snapshot.setFoodLog(log);
+                snapshot.setDefinition(definition);
+                snapshot.setValue(value.value());
+                snapshot.setSource(parseSource(value.source()));
+                snapshot.setStatus(parseStatus(value.status()));
+                log.getNutrientSnapshot().add(snapshot);
+            });
+        }
     }
 
     private void applyRecipeTotals(Recipe recipe) {
@@ -961,14 +1014,14 @@ public class NutritionService {
                 food.getBaseUnit(), food.getBaseQuantity(), macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()), food.getProteinGrams(), food.getCarbsGrams(),
                 food.getFatGrams(), food.getPreparation(), food.getPreparationSource(), food.getPreparationGroup(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl(), food.getSource(), food.getSourceId(), food.getLastSyncedAt(),
                 copyTags(food.getTags()), food.getCreatedBy() == null ? null : food.getCreatedBy().getId(),
-                food.getCreatedAt(), food.getModerationStatus());
+                food.getCreatedAt(), food.getModerationStatus(), scaleNutrients(food, BigDecimal.ONE));
     }
 
     private FoodSummaryResponse toFoodSummaryResponse(Food food) {
         return new FoodSummaryResponse(food.getId(), food.getName(), food.getBrand(), food.getBarcode(), food.getCategory(), food.getBaseUnit(),
                 food.getBaseQuantity(), macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()),
                 food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams(), food.getPreparation(),
-                food.getPreparationGroup(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl());
+                food.getPreparationGroup(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl(), scaleNutrients(food, BigDecimal.ONE));
     }
 
     private FoodLogResponse toFoodLogResponse(FoodLog log) {
@@ -976,7 +1029,7 @@ public class NutritionService {
                 toFoodResponse(log.getFood()), log.getRecipe() == null ? null : toRecipeResponse(log),
                 log.getQuantity(), log.getUnit(), macroCalories(log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams()), log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams(),
                 !log.getRecipeIngredients().isEmpty(), log.getItemType() == MealItemType.AI_ESTIMATE ? log.getAiEstimateName() : null,
-                log.getAiEstimateConfidence(), log.getAiEstimateDetails());
+                log.getAiEstimateConfidence(), log.getAiEstimateDetails(), log.getNutrientSnapshot().stream().map(this::toNutrientResponse).toList());
     }
 
     private RecipeResponse toRecipeResponse(FoodLog log) {
@@ -1018,6 +1071,40 @@ public class NutritionService {
 
     private static BigDecimal scale(BigDecimal value) {
         return value == null ? BigDecimal.ZERO.setScale(1, RoundingMode.HALF_UP) : value.setScale(1, RoundingMode.HALF_UP);
+    }
+
+    private List<NutrientValueResponse> scaleNutrients(Food food, BigDecimal ratio) {
+        List<NutrientValueResponse> values = food.getNutrients().stream()
+                .filter(item -> item.getDefinition() != null)
+                .map(item -> new NutrientValueResponse(item.getDefinition().getCode(), item.getDefinition().getName(),
+                        item.getDefinition().getNutrientGroup(), item.getDefinition().getUnit(),
+                        item.getValue() == null ? null : scale(item.getValue().multiply(ratio)),
+                        item.getSource() == null ? NutrientSource.LEGACY.name() : item.getSource().name(),
+                        item.getStatus() == null ? NutrientStatus.MISSING.name() : item.getStatus().name()))
+                .toList();
+        if (!values.isEmpty()) return values;
+        return List.of(
+                new NutrientValueResponse("PROTEIN", "Proteínas", "MACRO", "g", scale(food.getProteinGrams().multiply(ratio)), "LEGACY", "PARTIAL"),
+                new NutrientValueResponse("CARBOHYDRATE", "Carbohidratos", "MACRO", "g", scale(food.getCarbsGrams().multiply(ratio)), "LEGACY", "PARTIAL"),
+                new NutrientValueResponse("FAT", "Grasas", "MACRO", "g", scale(food.getFatGrams().multiply(ratio)), "LEGACY", "PARTIAL"),
+                new NutrientValueResponse("CALORIES", "Energía", "MACRO", "kcal", BigDecimal.valueOf(macroCalories(food.getProteinGrams().multiply(ratio), food.getCarbsGrams().multiply(ratio), food.getFatGrams().multiply(ratio))), "LEGACY", "PARTIAL"));
+    }
+
+    private NutrientValueResponse toNutrientResponse(FoodLogNutrient item) {
+        NutrientDefinition definition = item.getDefinition();
+        return new NutrientValueResponse(definition.getCode(), definition.getName(), definition.getNutrientGroup(), definition.getUnit(),
+                item.getValue(), item.getSource() == null ? "LEGACY" : item.getSource().name(),
+                item.getStatus() == null ? "MISSING" : item.getStatus().name());
+    }
+
+    private static NutrientSource parseSource(String value) {
+        try { return NutrientSource.valueOf(value == null ? "LEGACY" : value); }
+        catch (IllegalArgumentException ex) { return NutrientSource.LEGACY; }
+    }
+
+    private static NutrientStatus parseStatus(String value) {
+        try { return NutrientStatus.valueOf(value == null ? "MISSING" : value); }
+        catch (IllegalArgumentException ex) { return NutrientStatus.MISSING; }
     }
 
     private static int macroCalories(BigDecimal protein, BigDecimal carbs, BigDecimal fat) {

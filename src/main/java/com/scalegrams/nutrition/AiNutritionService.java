@@ -85,7 +85,7 @@ public class AiNutritionService {
         try {
             AiNutritionResult result = operation.estimate(image.getBytes(), contentType, normalizeContext(context));
             List<AiEstimateItem> items = result.items().stream()
-                    .map(item -> new AiEstimateItem(item.name(), item.estimatedGrams(), item.category(), item.preparation(), item.proteinGrams(), item.carbsGrams(), item.fatGrams()))
+                    .map(item -> new AiEstimateItem(item.name(), item.estimatedGrams(), item.category(), item.preparation(), item.proteinGrams(), item.carbsGrams(), item.fatGrams(), item.nutrients()))
                     .toList();
             usage.setBlockedUntil(null);
             usage.setProviderStatus(null);

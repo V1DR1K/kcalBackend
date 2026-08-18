@@ -37,11 +37,13 @@ public class GeminiNutritionClient {
     private static final String PROMPT = """
             Analizá esta foto de comida para registrar un cheat meal. Respondé únicamente JSON válido.
             Identificá los alimentos visibles y estimá por cada uno gramos, proteínas, carbohidratos y grasas.
+            Si no se puede asociar con una base nutricional confiable, incluí también nutrientes estimados en el objeto nutrients;
+            no inventes valores para nutrientes desconocidos y omitilos. La aplicación marcará esos valores como ESTIMATED.
             Clasificá cada alimento con una categoría y preparación de esta lista exacta: categorías PROTEIN, MEAT, DAIRY, FRUIT, VEGETABLE, LEGUME, CEREAL, BAKERY, BEVERAGE, SWEET, SNACK, FAT, OTHER; preparaciones RAW, COOKED, AS_SOLD, UNSPECIFIED.
             No inventes precisión: usá estimaciones conservadoras, incluí aceite, queso o salsas solo si son visibles,
             y anotá las suposiciones. confidence debe ser un entero entre 0 y 100. Máximo 12 items.
             Incluí una descripción breve de lo que se observa en la foto, sin afirmar ingredientes que no sean visibles.
-            Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"category":"OTHER","preparation":"UNSPECIFIED","proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
+            Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"category":"OTHER","preparation":"UNSPECIFIED","proteinGrams":0,"carbsGrams":0,"fatGrams":0,"nutrients":{"FIBER":0,"SODIUM":0}}]}
             """;
     private static final String TRANSCRIPTION_PROMPT = """
             Transcribí esta breve nota de voz en español sobre una comida. Devolvé solo la transcripción,
@@ -98,10 +100,17 @@ public class GeminiNutritionClient {
                 BigDecimal protein = decimal(item, "proteinGrams");
                 BigDecimal carbs = decimal(item, "carbsGrams");
                 BigDecimal fat = decimal(item, "fatGrams");
+                Map<String, BigDecimal> nutrients = new HashMap<>();
+                if (item.path("nutrients").isObject()) item.path("nutrients").fields().forEachRemaining(entry -> {
+                    try {
+                        BigDecimal value = new BigDecimal(entry.getValue().asText("0"));
+                        if (value.signum() >= 0) nutrients.put(entry.getKey(), value.setScale(1, java.math.RoundingMode.HALF_UP));
+                    } catch (NumberFormatException ignored) { }
+                });
                 if (name.length() >= 2 && grams.signum() > 0 && grams.compareTo(BigDecimal.valueOf(3000)) <= 0
                         && protein.compareTo(BigDecimal.valueOf(500)) <= 0 && carbs.compareTo(BigDecimal.valueOf(1000)) <= 0
                         && fat.compareTo(BigDecimal.valueOf(500)) <= 0) {
-                    items.add(new AiNutritionItem(name.substring(0, Math.min(name.length(), 120)), grams, category, preparation, protein, carbs, fat));
+                    items.add(new AiNutritionItem(name.substring(0, Math.min(name.length(), 120)), grams, category, preparation, protein, carbs, fat, nutrients));
                 }
             }
             if (items.isEmpty()) throw unreadablePhoto();
@@ -272,6 +281,7 @@ public class GeminiNutritionClient {
     }
 
     public record AiNutritionItem(String name, BigDecimal estimatedGrams, FoodCategory category,
-            FoodPreparation preparation, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams) {
+            FoodPreparation preparation, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
+            Map<String, BigDecimal> nutrients) {
     }
 }

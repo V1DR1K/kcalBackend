@@ -69,4 +69,7 @@ public class FoodLog {
     @Column(columnDefinition = "TEXT")
     private String aiEstimateDetails;
     private OffsetDateTime createdAt = OffsetDateTime.now();
+
+    @OneToMany(mappedBy = "foodLog", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<FoodLogNutrient> nutrientSnapshot = new ArrayList<>();
 }
