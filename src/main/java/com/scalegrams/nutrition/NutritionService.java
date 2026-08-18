@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -34,6 +35,7 @@ import com.scalegrams.common.BadRequestException;
 import com.scalegrams.common.NotFoundException;
 import com.scalegrams.externalfood.ExternalFoodCandidate;
 import com.scalegrams.externalfood.ExternalFoodLookupService;
+import com.scalegrams.externalfood.UsdaFoodDataProvider;
 import com.scalegrams.nutrition.NutritionDtos.AddMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddWaterRequest;
@@ -67,6 +69,8 @@ import com.scalegrams.nutrition.NutritionDtos.RecipeResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeOwnerResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecentMealResponse;
 import com.scalegrams.nutrition.NutritionDtos.NutrientValueResponse;
+import com.scalegrams.nutrition.NutritionDtos.NutrientInput;
+import com.scalegrams.nutrition.NutritionDtos.NutrientUpdateRequest;
 import com.scalegrams.recipe.Recipe;
 import com.scalegrams.recipe.RecipeIngredient;
 import com.scalegrams.recipe.RecipeRepository;
@@ -74,6 +78,7 @@ import com.scalegrams.profile.NutritionPlan;
 import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
 import com.scalegrams.profile.ProfileService;
 import com.scalegrams.user.AppUser;
+import com.scalegrams.user.Role;
 
 @Service
 public class NutritionService {
@@ -85,11 +90,12 @@ public class NutritionService {
     private final ExternalFoodLookupService externalFoodLookup;
     private final ObjectMapper objectMapper;
     private final NutrientDefinitionRepository nutrientDefinitions;
+    private final UsdaFoodDataProvider usda;
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
             WaterLogRepository waterLogs, ProfileService profileService,
             ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper,
-            NutrientDefinitionRepository nutrientDefinitions) {
+            NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda) {
         this.foods = foods;
         this.recipes = recipes;
         this.foodLogs = foodLogs;
@@ -98,6 +104,7 @@ public class NutritionService {
         this.externalFoodLookup = externalFoodLookup;
         this.objectMapper = objectMapper;
         this.nutrientDefinitions = nutrientDefinitions;
+        this.usda = usda;
     }
 
     @Transactional
@@ -206,6 +213,71 @@ public class NutritionService {
     @Transactional(readOnly = true)
     public FoodResponse findFood(Long id) {
         return toFoodResponse(getFood(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<NutrientValueResponse> nutrientDefinitions() {
+        return nutrientDefinitions.findAll().stream().filter(NutrientDefinition::isVisible)
+                .sorted(java.util.Comparator.comparing(NutrientDefinition::getDisplayOrder))
+                .map(item -> new NutrientValueResponse(item.getCode(), item.getName(), item.getNutrientGroup(), item.getUnit(), null, null, "MISSING"))
+                .toList();
+    }
+
+    @Transactional
+    public FoodResponse enrichFood(Long id, AppUser user) {
+        Food food = getFood(id);
+        if (food.getCreatedBy() != null && !food.getCreatedBy().getId().equals(user.getId()) && user.getRole() != Role.ADMIN) {
+            throw new BadRequestException("Solo podés enriquecer alimentos propios.");
+        }
+        Optional<ExternalFoodCandidate> candidate = food.getBarcode() == null
+                ? externalFoodLookup.searchByText(food.getName(), 1).stream().findFirst()
+                : externalFoodLookup.lookupByBarcode(food.getBarcode());
+        if (candidate.isEmpty()) return toFoodResponse(food);
+        return toFoodResponse(enrichExistingFood(food, candidate.get()));
+    }
+
+    @Transactional
+    public FoodResponse updateNutrients(Long id, NutrientUpdateRequest request, AppUser user) {
+        Food food = getFood(id);
+        if (food.getCreatedBy() != null && !food.getCreatedBy().getId().equals(user.getId()) && user.getRole() != Role.ADMIN) {
+            throw new BadRequestException("Solo podés editar nutrientes de alimentos propios.");
+        }
+        for (NutrientInput input : request.nutrients()) {
+            NutrientDefinition definition = nutrientDefinitions.findById(input.code().trim().toUpperCase())
+                    .orElseThrow(() -> new BadRequestException("Nutriente desconocido: " + input.code()));
+            FoodNutrient nutrient = food.getNutrients().stream().filter(item -> item.getDefinition().getCode().equals(definition.getCode()))
+                    .findFirst().orElseGet(() -> { FoodNutrient next = new FoodNutrient(); next.setFood(food); next.setDefinition(definition); food.getNutrients().add(next); return next; });
+            nutrient.setValue(scale(input.value()));
+            nutrient.setSource(NutrientSource.MANUAL);
+            nutrient.setStatus(NutrientStatus.VERIFIED);
+            nutrient.setUpdatedAt(OffsetDateTime.now());
+            if ("PROTEIN".equals(definition.getCode())) food.setProteinGrams(scale(input.value()));
+            if ("CARBOHYDRATE".equals(definition.getCode())) food.setCarbsGrams(scale(input.value()));
+            if ("FAT".equals(definition.getCode())) food.setFatGrams(scale(input.value()));
+            if ("CALORIES".equals(definition.getCode())) food.setCalories(input.value().setScale(0, RoundingMode.HALF_UP).intValue());
+        }
+        if (food.getCalories() == null || request.nutrients().stream().noneMatch(item -> "CALORIES".equalsIgnoreCase(item.code()))) {
+            food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
+        }
+        return toFoodResponse(foods.save(food));
+    }
+
+    @Transactional
+    public int enrichFoodCatalog(AppUser user, int limit) {
+        if (user.getRole() != Role.ADMIN) throw new BadRequestException("Solo un administrador puede enriquecer el catálogo.");
+        int updated = 0;
+        for (Food food : foods.findAll(PageRequest.of(0, Math.min(Math.max(limit, 1), 100)))) {
+            if (hasDetailedNutrients(food)) continue;
+            Optional<ExternalFoodCandidate> candidate = food.getBarcode() == null
+                    ? externalFoodLookup.searchByText(food.getName(), 1).stream().findFirst()
+                    : externalFoodLookup.lookupByBarcode(food.getBarcode());
+            if (candidate.isPresent()) { enrichExistingFood(food, candidate.get()); updated++; }
+        }
+        return updated;
+    }
+
+    private boolean hasDetailedNutrients(Food food) {
+        return food.getNutrients().stream().anyMatch(item -> item.getDefinition() != null && !List.of("CALORIES", "PROTEIN", "CARBOHYDRATE", "FAT").contains(item.getDefinition().getCode()));
     }
 
     @Transactional(readOnly = true)
@@ -827,6 +899,8 @@ public class NutritionService {
         BigDecimal protein = sum(logs, FoodLog::getProteinGrams);
         BigDecimal carbs = sum(logs, FoodLog::getCarbsGrams);
         BigDecimal fat = sum(logs, FoodLog::getFatGrams);
+        Map<String, NutrientValueResponse> dailyNutrients = new LinkedHashMap<>();
+        logs.forEach(log -> mergeNutrients(dailyNutrients, log.getNutrientSnapshot().stream().map(this::toNutrientResponse).toList()));
         int calories = macroCalories(protein, carbs, fat);
         BigDecimal water = waterLogs.sumLitersByUserAndLogDate(user, targetDate);
         Map<MealType, List<FoodLog>> byMeal = logs.stream().collect(Collectors.groupingBy(FoodLog::getMealType));
@@ -848,7 +922,7 @@ public class NutritionService {
                 new NutritionPlanResponse(plan.getId(), plan.getName(), plan.getDailyCalories(), plan.getProteinPercent(),
                         plan.getCarbsPercent(), plan.getFatPercent(), plan.getProteinGoalGrams(), plan.getCarbsGoalGrams(),
                         plan.getFatGoalGrams(), plan.getStartDate(), plan.getEndDate(), !plan.getStartDate().isAfter(targetDate)
-                                && (plan.getEndDate() == null || !plan.getEndDate().isBefore(targetDate))));
+                                && (plan.getEndDate() == null || !plan.getEndDate().isBefore(targetDate))), dailyNutrients.values().stream().toList());
     }
 
     @Transactional(readOnly = true)
@@ -901,6 +975,13 @@ public class NutritionService {
         return log;
     }
 
+    @Transactional(readOnly = true)
+    public List<NutrientValueResponse> nutrientsForLog(AppUser user, Long logId) {
+        FoodLog log = foodLogs.findByIdAndUser(logId, user)
+                .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));
+        return log.getNutrientSnapshot().stream().map(this::toNutrientResponse).toList();
+    }
+
     private NutritionPreviewResponse preview(Food food, BigDecimal quantity, FoodUnit unit) {
         BigDecimal normalizedQuantity = normalizeQuantity(food, quantity, unit);
         BigDecimal ratio = normalizedQuantity.divide(food.getBaseQuantity(), 4, RoundingMode.HALF_UP);
@@ -924,7 +1005,8 @@ public class NutritionService {
                 macroCalories(protein, carbs, fat),
                 protein,
                 carbs,
-                fat);
+                fat,
+                scaleRecipeNutrients(recipe, ratio));
     }
 
     private NutritionPreviewResponse previewRecipeServing(FoodLog log, BigDecimal portions) {
@@ -932,16 +1014,19 @@ public class NutritionService {
         BigDecimal protein = BigDecimal.ZERO;
         BigDecimal carbs = BigDecimal.ZERO;
         BigDecimal fat = BigDecimal.ZERO;
+        Map<String, NutrientValueResponse> nutrients = new LinkedHashMap<>();
         for (FoodLogRecipeIngredient ingredient : log.getRecipeIngredients()) {
             NutritionPreviewResponse ingredientPreview = preview(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit());
             protein = protein.add(ingredientPreview.proteinGrams());
             carbs = carbs.add(ingredientPreview.carbsGrams());
             fat = fat.add(ingredientPreview.fatGrams());
+            mergeNutrients(nutrients, ingredientPreview.nutrients());
         }
         protein = scale(protein.multiply(portions));
         carbs = scale(carbs.multiply(portions));
         fat = scale(fat.multiply(portions));
-        return new NutritionPreviewResponse(macroCalories(protein, carbs, fat), protein, carbs, fat);
+        return new NutritionPreviewResponse(macroCalories(protein, carbs, fat), protein, carbs, fat,
+                scaleNutrientResponses(nutrients.values().stream().toList(), portions));
     }
 
     private void applyLogNutrition(FoodLog log, NutritionPreviewResponse preview) {
@@ -1038,6 +1123,7 @@ public class NutritionService {
         BigDecimal carbs = BigDecimal.ZERO;
         BigDecimal fat = BigDecimal.ZERO;
         BigDecimal totalWeight = BigDecimal.ZERO;
+        Map<String, NutrientValueResponse> nutrients = new LinkedHashMap<>();
         List<RecipeIngredientResponse> ingredients = log.getRecipeIngredients().stream().map(item -> {
             return new RecipeIngredientResponse(toFoodResponse(item.getFood()), item.getQuantity(), item.getUnit());
         }).toList();
@@ -1046,10 +1132,11 @@ public class NutritionService {
             protein = protein.add(preview.proteinGrams());
             carbs = carbs.add(preview.carbsGrams());
             fat = fat.add(preview.fatGrams());
+            mergeNutrients(nutrients, preview.nutrients());
             totalWeight = totalWeight.add(normalizeQuantity(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit()));
         }
         return new RecipeResponse(log.getRecipe().getId(), log.getRecipe().getName(), log.getRecipe().getDescription(), scale(totalWeight),
-                macroCalories(protein, carbs, fat), scale(protein), scale(carbs), scale(fat), ingredients);
+                macroCalories(protein, carbs, fat), scale(protein), scale(carbs), scale(fat), ingredients, nutrients.values().stream().toList());
     }
 
     private RecipeResponse toRecipeResponse(Recipe recipe) {
@@ -1057,12 +1144,12 @@ public class NutritionService {
                 macroCalories(recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams()), recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams(),
                 recipe.getIngredients().stream()
                         .map(item -> new RecipeIngredientResponse(toFoodResponse(item.getFood()), item.getQuantity(), item.getUnit()))
-                        .toList());
+                        .toList(), scaleRecipeNutrients(recipe, BigDecimal.ONE));
     }
 
     private RecipeResponse toRecipeSummary(Recipe recipe) {
         return new RecipeResponse(recipe.getId(), recipe.getName(), recipe.getDescription(), recipe.getTotalWeightGrams(),
-                macroCalories(recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams()), recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams(), List.of());
+                macroCalories(recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams()), recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams(), List.of(), scaleRecipeNutrients(recipe, BigDecimal.ONE));
     }
 
     private static BigDecimal sum(List<FoodLog> logs, java.util.function.Function<FoodLog, BigDecimal> mapper) {
@@ -1073,21 +1160,56 @@ public class NutritionService {
         return value == null ? BigDecimal.ZERO.setScale(1, RoundingMode.HALF_UP) : value.setScale(1, RoundingMode.HALF_UP);
     }
 
+    private List<NutrientValueResponse> scaleRecipeNutrients(Recipe recipe, BigDecimal ratio) {
+        Map<String, NutrientValueResponse> values = new LinkedHashMap<>();
+        for (RecipeIngredient ingredient : recipe.getIngredients()) {
+            mergeNutrients(values, preview(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit()).nutrients());
+        }
+        return scaleNutrientResponses(values.values().stream().toList(), ratio);
+    }
+
+    private void mergeNutrients(Map<String, NutrientValueResponse> target, List<NutrientValueResponse> source) {
+        for (NutrientValueResponse value : source) {
+            NutrientValueResponse current = target.get(value.code());
+            if (current == null) target.put(value.code(), value);
+            else target.put(value.code(), new NutrientValueResponse(value.code(), value.name(), value.group(), value.unit(),
+                    current.value() == null || value.value() == null ? null : scale(current.value().add(value.value())),
+                    current.source(), current.status()));
+        }
+    }
+
+    private List<NutrientValueResponse> scaleNutrientResponses(List<NutrientValueResponse> values, BigDecimal ratio) {
+        return values.stream().map(value -> new NutrientValueResponse(value.code(), value.name(), value.group(), value.unit(),
+                value.value() == null ? null : scale(value.value().multiply(ratio)), value.source(), value.status())).toList();
+    }
+
     private List<NutrientValueResponse> scaleNutrients(Food food, BigDecimal ratio) {
-        List<NutrientValueResponse> values = food.getNutrients().stream()
-                .filter(item -> item.getDefinition() != null)
-                .map(item -> new NutrientValueResponse(item.getDefinition().getCode(), item.getDefinition().getName(),
-                        item.getDefinition().getNutrientGroup(), item.getDefinition().getUnit(),
-                        item.getValue() == null ? null : scale(item.getValue().multiply(ratio)),
-                        item.getSource() == null ? NutrientSource.LEGACY.name() : item.getSource().name(),
-                        item.getStatus() == null ? NutrientStatus.MISSING.name() : item.getStatus().name()))
-                .toList();
-        if (!values.isEmpty()) return values;
-        return List.of(
+        Map<String, FoodNutrient> existing = food.getNutrients().stream().filter(item -> item.getDefinition() != null)
+                .collect(Collectors.toMap(item -> item.getDefinition().getCode(), item -> item, (left, right) -> left, LinkedHashMap::new));
+        List<NutrientValueResponse> values = nutrientDefinitions.findAll().stream()
+                .filter(NutrientDefinition::isVisible)
+                .sorted(Comparator.comparing(NutrientDefinition::getDisplayOrder))
+                .map(definition -> {
+                    FoodNutrient item = existing.get(definition.getCode());
+                    BigDecimal legacyValue = switch (definition.getCode()) {
+                        case "CALORIES" -> BigDecimal.valueOf(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
+                        case "PROTEIN" -> food.getProteinGrams();
+                        case "CARBOHYDRATE" -> food.getCarbsGrams();
+                        case "FAT" -> food.getFatGrams();
+                        default -> null;
+                    };
+                    BigDecimal value = item == null ? legacyValue : item.getValue();
+                    String source = item == null ? (legacyValue == null ? NutrientSource.LEGACY.name() : NutrientSource.LEGACY.name())
+                            : item.getSource() == null ? NutrientSource.LEGACY.name() : item.getSource().name();
+                    String status = item == null ? (legacyValue == null ? NutrientStatus.MISSING.name() : NutrientStatus.PARTIAL.name())
+                            : item.getStatus() == null ? NutrientStatus.MISSING.name() : item.getStatus().name();
+                    return new NutrientValueResponse(definition.getCode(), definition.getName(), definition.getNutrientGroup(), definition.getUnit(),
+                            value == null ? null : scale(value.multiply(ratio)), source, status);
+                }).toList();
+        return values.isEmpty() ? List.of(
                 new NutrientValueResponse("PROTEIN", "Proteínas", "MACRO", "g", scale(food.getProteinGrams().multiply(ratio)), "LEGACY", "PARTIAL"),
                 new NutrientValueResponse("CARBOHYDRATE", "Carbohidratos", "MACRO", "g", scale(food.getCarbsGrams().multiply(ratio)), "LEGACY", "PARTIAL"),
-                new NutrientValueResponse("FAT", "Grasas", "MACRO", "g", scale(food.getFatGrams().multiply(ratio)), "LEGACY", "PARTIAL"),
-                new NutrientValueResponse("CALORIES", "Energía", "MACRO", "kcal", BigDecimal.valueOf(macroCalories(food.getProteinGrams().multiply(ratio), food.getCarbsGrams().multiply(ratio), food.getFatGrams().multiply(ratio))), "LEGACY", "PARTIAL"));
+                new NutrientValueResponse("FAT", "Grasas", "MACRO", "g", scale(food.getFatGrams().multiply(ratio)), "LEGACY", "PARTIAL")) : values;
     }
 
     private NutrientValueResponse toNutrientResponse(FoodLogNutrient item) {

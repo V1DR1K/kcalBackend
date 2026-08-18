@@ -36,7 +36,7 @@ Swagger: `http://localhost:8081/swagger-ui.html`
 
 PostgreSQL: `localhost:5433`, DB `scalegrams_db`, user `scalegrams_user`, password `scalegrams_password`
 
-## Fuentes externas de alimentos
+## Fuentes externas de alimentos y nutrientes
 
 El endpoint `GET /api/foods/barcode/{barcode}` busca primero en PostgreSQL. Si no existe y `app.food-lookup.enabled=true`, consulta Open Food Facts, normaliza kcal/macros por 100g, guarda el alimento localmente y lo devuelve. La búsqueda `GET /api/foods?q=texto` también consulta productos comercializados en Argentina cuando los resultados locales son escasos y conserva únicamente fichas con kcal y macros completos. Las búsquedas locales incluyen nombre, marca y etiquetas/sinónimos. USDA FoodData Central queda configurado para enriquecimiento genérico.
 
@@ -54,7 +54,17 @@ Variables utiles:
 
 La importación masiva está desactivada por defecto. Al activarla, procesa marcas por páginas, espera al menos 6 segundos entre búsquedas y actualiza por código de barras sin duplicar productos.
 
-Fuentes: Open Food Facts y USDA FoodData Central.
+Fuentes: Open Food Facts y USDA FoodData Central. La migración `V20__normalized_nutrients.sql` crea el catálogo extensible de nutrientes, conserva snapshots por registro y deja los alimentos legacy como perfiles parciales.
+
+Endpoints nutricionales adicionales:
+
+- `POST /api/foods/{id}/enrich`: completa una ficha desde USDA/Open Food Facts.
+- `PUT /api/foods/{id}/nutrients`: permite editar valores manuales del propietario o administrador.
+- `POST /api/foods/enrich-existing?limit=50`: enriquece progresivamente el catálogo; requiere administrador.
+- `GET /api/foods/nutrient-definitions`: devuelve los nutrientes editables y sus unidades.
+- `GET /api/nutrition/food-logs/{id}/nutrients`: devuelve el snapshot nutricional de un registro.
+
+Después de desplegar la migración, ejecutar el endpoint de enriquecimiento progresivo por lotes para poblar los alimentos existentes. Los valores no disponibles se mantienen como `MISSING` y no se convierten en cero.
 
 Si `8081` esta ocupado:
 

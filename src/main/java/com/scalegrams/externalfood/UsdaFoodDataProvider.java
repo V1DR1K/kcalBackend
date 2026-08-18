@@ -10,7 +10,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 import com.scalegrams.catalog.FoodCategory;
@@ -42,7 +41,8 @@ public class UsdaFoodDataProvider implements ExternalFoodProvider {
             if (body == null || !(body.get("foods") instanceof List<?> foods) || foods.isEmpty()) return Optional.empty();
             Object first = foods.get(0);
             if (!(first instanceof Map<?, ?> food)) return Optional.empty();
-            return Optional.of(candidate(food));
+            String fdcId = text(food.get("fdcId"));
+            return fdcId == null ? Optional.of(candidate(food)) : lookupByFdcId(fdcId).or(() -> Optional.of(candidate(food)));
         } catch (RuntimeException ex) {
             return Optional.empty();
         }
@@ -51,6 +51,17 @@ public class UsdaFoodDataProvider implements ExternalFoodProvider {
     @Override
     public Optional<ExternalFoodCandidate> lookupByBarcode(String barcode) {
         return Optional.empty();
+    }
+
+    public Optional<ExternalFoodCandidate> lookupByFdcId(String fdcId) {
+        if (fdcId == null || fdcId.isBlank() || properties.usda().apiKey() == null || properties.usda().apiKey().isBlank()) return Optional.empty();
+        try {
+            String url = UriComponentsBuilder.fromUriString(properties.usda().baseUrl()).path("/food/{id}")
+                    .queryParam("api_key", properties.usda().apiKey()).buildAndExpand(fdcId).toUriString();
+            Map<String, Object> body = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers()),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+            return body == null ? Optional.empty() : Optional.of(candidate(body));
+        } catch (RuntimeException ex) { return Optional.empty(); }
     }
 
     @Override

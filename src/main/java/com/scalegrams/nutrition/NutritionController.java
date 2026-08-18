@@ -65,6 +65,11 @@ public class NutritionController {
         return nutritionService.mealTypes();
     }
 
+    @GetMapping("/food-logs/{id}/nutrients")
+    List<NutritionDtos.NutrientValueResponse> nutrients(Authentication authentication, @PathVariable Long id) {
+        return nutritionService.nutrientsForLog(currentUser.from(authentication), id);
+    }
+
     @GetMapping("/recent-meals")
     List<RecentMealResponse> recentMeals(Authentication authentication,
             @RequestParam(defaultValue = "20") int limit) {

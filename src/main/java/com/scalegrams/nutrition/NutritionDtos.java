@@ -28,6 +28,10 @@ public class NutritionDtos {
     public record NutrientValueResponse(String code, String name, String group, String unit, BigDecimal value,
             String source, String status) { }
 
+    public record NutrientInput(@NotBlank @Size(max = 80) String code, @NotNull @PositiveOrZero BigDecimal value) { }
+
+    public record NutrientUpdateRequest(@NotEmpty @Size(max = 40) List<@Valid NutrientInput> nutrients) { }
+
     public record FoodResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
             BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
             FoodPreparation preparation, String preparationSource, String preparationGroup, String servingName, BigDecimal servingWeightGrams,
@@ -236,7 +240,12 @@ public class NutritionDtos {
 
     public record DashboardResponse(LocalDate date, Integer calorieGoal, Integer caloriesConsumed, Integer caloriesRemaining,
             List<MacroProgress> macros, List<MealSummary> meals, BigDecimal waterConsumedLiters, BigDecimal waterGoalLiters,
-            NutritionPlanResponse plan) {
+            NutritionPlanResponse plan, List<NutrientValueResponse> nutrients) {
+        public DashboardResponse(LocalDate date, Integer calorieGoal, Integer caloriesConsumed, Integer caloriesRemaining,
+                List<MacroProgress> macros, List<MealSummary> meals, BigDecimal waterConsumedLiters, BigDecimal waterGoalLiters,
+                NutritionPlanResponse plan) {
+            this(date, calorieGoal, caloriesConsumed, caloriesRemaining, macros, meals, waterConsumedLiters, waterGoalLiters, plan, List.of());
+        }
     }
 
     public record DaySummary(LocalDate date, Integer caloriesConsumed, Integer calorieGoal, BigDecimal proteinGrams,
@@ -265,7 +274,12 @@ public class NutritionDtos {
 
     public record RecipeResponse(Long id, String name, String description, BigDecimal totalWeightGrams, Integer calories,
             BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
-            List<RecipeIngredientResponse> ingredients) {
+            List<RecipeIngredientResponse> ingredients, List<NutrientValueResponse> nutrients) {
+        public RecipeResponse(Long id, String name, String description, BigDecimal totalWeightGrams, Integer calories,
+                BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
+                List<RecipeIngredientResponse> ingredients) {
+            this(id, name, description, totalWeightGrams, calories, proteinGrams, carbsGrams, fatGrams, ingredients, List.of());
+        }
     }
 
     public record RecipeOwnerResponse(Long id, String fullName, long recipeCount) {

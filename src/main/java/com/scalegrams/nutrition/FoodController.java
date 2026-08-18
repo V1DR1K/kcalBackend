@@ -20,6 +20,7 @@ import com.scalegrams.nutrition.NutritionDtos.FoodSummaryResponse;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewRequest;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewResponse;
 import com.scalegrams.nutrition.NutritionDtos.PageResponse;
+import com.scalegrams.nutrition.NutritionDtos.NutrientUpdateRequest;
 
 import jakarta.validation.Valid;
 
@@ -60,6 +61,28 @@ public class FoodController {
     @GetMapping("/{id}")
     FoodResponse find(@PathVariable Long id) {
         return nutritionService.findFood(id);
+    }
+
+    @GetMapping("/nutrient-definitions")
+    List<NutritionDtos.NutrientValueResponse> nutrientDefinitions() {
+        return nutritionService.nutrientDefinitions();
+    }
+
+    @PostMapping("/{id}/enrich")
+    FoodResponse enrich(Authentication authentication, @PathVariable Long id) {
+        return nutritionService.enrichFood(id, currentUser.from(authentication));
+    }
+
+    @PutMapping("/{id}/nutrients")
+    FoodResponse updateNutrients(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody NutrientUpdateRequest request) {
+        return nutritionService.updateNutrients(id, request, currentUser.from(authentication));
+    }
+
+    @PostMapping("/enrich-existing")
+    java.util.Map<String, Integer> enrichExisting(Authentication authentication,
+            @RequestParam(defaultValue = "50") int limit) {
+        return java.util.Map.of("updated", nutritionService.enrichFoodCatalog(currentUser.from(authentication), limit));
     }
 
     @GetMapping("/{id}/preparations")
