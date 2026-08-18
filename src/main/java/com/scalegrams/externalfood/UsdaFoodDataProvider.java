@@ -80,9 +80,15 @@ public class UsdaFoodDataProvider implements ExternalFoodProvider {
         if (food.get("foodNutrients") instanceof Iterable<?> list) {
             for (Object item : list) {
                 if (!(item instanceof Map<?, ?> nutrient)) continue;
-                String code = code(String.valueOf(nutrient.get("nutrientId")));
-                BigDecimal amount = decimal(nutrient.get("value"));
-                if (code != null && amount != null) nutrients.put(code, amount);
+                Object id = nutrient.get("nutrientId");
+                Object amount = nutrient.get("value");
+                if (id == null && nutrient.get("nutrient") instanceof Map<?, ?> meta) {
+                    id = meta.get("id");
+                    amount = nutrient.get("amount");
+                }
+                String code = code(String.valueOf(id));
+                BigDecimal value = decimal(amount);
+                if (code != null && value != null) nutrients.put(code, value);
             }
         }
         Integer calories = integer(nutrients.get("CALORIES"));
