@@ -80,9 +80,9 @@ public class FoodController {
     }
 
     @PostMapping("/enrich-existing")
-    java.util.Map<String, Integer> enrichExisting(Authentication authentication,
+    NutritionService.EnrichmentReport enrichExisting(Authentication authentication,
             @RequestParam(defaultValue = "50") int limit) {
-        return java.util.Map.of("updated", nutritionService.enrichFoodCatalog(currentUser.from(authentication), limit));
+        return nutritionService.enrichFoodCatalog(currentUser.from(authentication), limit);
     }
 
     @GetMapping("/{id}/preparations")

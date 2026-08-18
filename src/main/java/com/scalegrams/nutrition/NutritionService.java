@@ -82,6 +82,7 @@ import com.scalegrams.user.Role;
 
 @Service
 public class NutritionService {
+    public record EnrichmentReport(int examined, int updated, int skipped, int noMatch) {}
     private final FoodRepository foods;
     private final RecipeRepository recipes;
     private final FoodLogRepository foodLogs;
@@ -232,7 +233,9 @@ public class NutritionService {
         Optional<ExternalFoodCandidate> candidate = food.getBarcode() == null
                 ? externalFoodLookup.searchByText(food.getName(), 1).stream().findFirst()
                 : externalFoodLookup.lookupByBarcode(food.getBarcode());
-        if (candidate.isEmpty()) return toFoodResponse(food);
+        if (candidate.isEmpty()) {
+            throw new BadRequestException("No encontramos una fuente nutricional para este alimento. Configurá USDA_FOOD_DATA_API_KEY para alimentos genéricos o usá Open Food Facts para productos con código de barras.");
+        }
         return toFoodResponse(enrichExistingFood(food, candidate.get()));
     }
 
@@ -263,21 +266,28 @@ public class NutritionService {
     }
 
     @Transactional
-    public int enrichFoodCatalog(AppUser user, int limit) {
+    public EnrichmentReport enrichFoodCatalog(AppUser user, int limit) {
         if (user.getRole() != Role.ADMIN) throw new BadRequestException("Solo un administrador puede enriquecer el catálogo.");
+        int examined = 0;
         int updated = 0;
-        for (Food food : foods.findAll(PageRequest.of(0, Math.min(Math.max(limit, 1), 100)))) {
-            if (hasDetailedNutrients(food)) continue;
+        int skipped = 0;
+        int noMatch = 0;
+        for (Food food : foods.findAll(PageRequest.of(0, Math.min(Math.max(limit, 1), 100), Sort.by(Sort.Direction.ASC, "id")))) {
+            examined++;
+            if (hasDetailedNutrients(food)) { skipped++; continue; }
             Optional<ExternalFoodCandidate> candidate = food.getBarcode() == null
                     ? externalFoodLookup.searchByText(food.getName(), 1).stream().findFirst()
                     : externalFoodLookup.lookupByBarcode(food.getBarcode());
             if (candidate.isPresent()) { enrichExistingFood(food, candidate.get()); updated++; }
+            else noMatch++;
         }
-        return updated;
+        return new EnrichmentReport(examined, updated, skipped, noMatch);
     }
 
     private boolean hasDetailedNutrients(Food food) {
-        return food.getNutrients().stream().anyMatch(item -> item.getDefinition() != null && !List.of("CALORIES", "PROTEIN", "CARBOHYDRATE", "FAT").contains(item.getDefinition().getCode()));
+        return food.getNutrients().stream().anyMatch(item -> item.getDefinition() != null
+                && item.getValue() != null
+                && !List.of("CALORIES", "PROTEIN", "CARBOHYDRATE", "FAT").contains(item.getDefinition().getCode()));
     }
 
     @Transactional(readOnly = true)
