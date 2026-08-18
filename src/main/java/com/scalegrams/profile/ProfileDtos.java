@@ -34,7 +34,7 @@ public class ProfileDtos {
 
     public record NutritionPlanResponse(Long id, String name, Integer dailyCalories, BigDecimal proteinPercent,
             BigDecimal carbsPercent, BigDecimal fatPercent, Integer proteinGoalGrams, Integer carbsGoalGrams,
-            Integer fatGoalGrams, LocalDate startDate, LocalDate endDate) {
+            Integer fatGoalGrams, LocalDate startDate, LocalDate endDate, boolean current) {
     }
 
     public record UpsertNutritionPlanRequest(@NotBlank @Size(min = 2, max = 120) String name,

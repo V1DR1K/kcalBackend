@@ -150,7 +150,7 @@ public class ProfileService {
                 .orElseThrow(() -> new NotFoundException("Plan alimenticio no encontrado."));
         LocalDate today = LocalDate.now();
         if (!plan.getStartDate().isAfter(today) && (plan.getEndDate() == null || !plan.getEndDate().isBefore(today))) {
-            throw new BadRequestException("No se puede borrar el plan actual.");
+            throw new BadRequestException("No podés borrar el plan vigente. Primero activá otro plan.");
         }
         plan.setActive(false);
         plan.setUpdatedAt(OffsetDateTime.now());
@@ -243,9 +243,12 @@ public class ProfileService {
     }
 
     private NutritionPlanResponse toPlanResponse(NutritionPlan plan) {
+        LocalDate today = LocalDate.now();
+        boolean current = !plan.getStartDate().isAfter(today)
+                && (plan.getEndDate() == null || !plan.getEndDate().isBefore(today));
         return new NutritionPlanResponse(plan.getId(), plan.getName(), plan.getDailyCalories(), plan.getProteinPercent(),
                 plan.getCarbsPercent(), plan.getFatPercent(), plan.getProteinGoalGrams(), plan.getCarbsGoalGrams(),
-                plan.getFatGoalGrams(), plan.getStartDate(), plan.getEndDate());
+                plan.getFatGoalGrams(), plan.getStartDate(), plan.getEndDate(), current);
     }
 
     private NutritionPlanPresetResponse preset(String key, String name, String description, int calories,

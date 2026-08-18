@@ -186,6 +186,10 @@ public class NutritionDtos {
             BigDecimal carbsGrams, BigDecimal fatGrams, List<FoodLogResponse> items) {
     }
 
+    public record RecentMealResponse(LocalDate sourceDate, MealType mealType, String label, Integer calories,
+            BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams, List<FoodLogResponse> items) {
+    }
+
     public record DashboardResponse(LocalDate date, Integer calorieGoal, Integer caloriesConsumed, Integer caloriesRemaining,
             List<MacroProgress> macros, List<MealSummary> meals, BigDecimal waterConsumedLiters, BigDecimal waterGoalLiters,
             NutritionPlanResponse plan) {

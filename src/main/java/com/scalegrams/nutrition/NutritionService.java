@@ -6,6 +6,9 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +64,7 @@ import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientRequest;
 import com.scalegrams.nutrition.NutritionDtos.RecipeResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeOwnerResponse;
+import com.scalegrams.nutrition.NutritionDtos.RecentMealResponse;
 import com.scalegrams.recipe.Recipe;
 import com.scalegrams.recipe.RecipeIngredient;
 import com.scalegrams.recipe.RecipeRepository;
@@ -464,6 +468,45 @@ public class NutritionService {
         return request.logs().stream().map(item -> addMealLog(user, item)).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<RecentMealResponse> recentMeals(AppUser user, int requestedLimit) {
+        int limit = Math.min(Math.max(requestedLimit, 1), 50);
+        LocalDate end = LocalDate.now().minusDays(1);
+        LocalDate start = end.minusMonths(12);
+        List<FoodLog> logs = new ArrayList<>(foodLogs.findByUserAndLogDateBetween(user, start, end));
+        logs.sort(Comparator.comparing(FoodLog::getLogDate).reversed()
+                .thenComparing(FoodLog::getMealType)
+                .thenComparing(FoodLog::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(FoodLog::getId, Comparator.reverseOrder()));
+        Map<String, List<FoodLog>> grouped = logs.stream().collect(Collectors.groupingBy(
+                log -> log.getLogDate() + ":" + log.getMealType(), LinkedHashMap::new, Collectors.toList()));
+        Set<String> signatures = new LinkedHashSet<>();
+        List<RecentMealResponse> result = new ArrayList<>();
+        for (List<FoodLog> bracket : grouped.values()) {
+            if (bracket.isEmpty()) continue;
+            String signature = bracket.stream().map(this::recentMealItemSignature).sorted().collect(Collectors.joining("|"));
+            if (!signatures.add(bracket.get(0).getMealType() + ":" + signature)) continue;
+            BigDecimal protein = bracket.stream().map(FoodLog::getProteinGrams).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal carbs = bracket.stream().map(FoodLog::getCarbsGrams).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal fat = bracket.stream().map(FoodLog::getFatGrams).reduce(BigDecimal.ZERO, BigDecimal::add);
+            result.add(new RecentMealResponse(bracket.get(0).getLogDate(), bracket.get(0).getMealType(),
+                    label(bracket.get(0).getMealType()), macroCalories(protein, carbs, fat), scale(protein), scale(carbs),
+                    scale(fat), bracket.stream().map(this::toFoodLogResponse).toList()));
+            if (result.size() >= limit) break;
+        }
+        return result;
+    }
+
+    private String recentMealItemSignature(FoodLog log) {
+        String item = log.getItemType() + ":" + (log.getFood() == null
+                ? log.getRecipe() == null ? "" : log.getRecipe().getId()
+                : log.getFood().getId());
+        String ingredients = log.getRecipeIngredients().stream()
+                .map(ingredient -> ingredient.getFood().getId() + "=" + ingredient.getQuantity() + "=" + ingredient.getUnit())
+                .collect(Collectors.joining(","));
+        return item + ":" + log.getQuantity() + ":" + log.getUnit() + ":" + ingredients;
+    }
+
     @Transactional
     public FoodLogResponse addRecipeMealLog(AppUser user, AddRecipeMealLogRequest request) {
         Recipe recipe = getRecipe(request.recipeId());
@@ -755,7 +798,8 @@ public class NutritionService {
                 meals, water, user.getWaterGoalLiters(),
                 new NutritionPlanResponse(plan.getId(), plan.getName(), plan.getDailyCalories(), plan.getProteinPercent(),
                         plan.getCarbsPercent(), plan.getFatPercent(), plan.getProteinGoalGrams(), plan.getCarbsGoalGrams(),
-                        plan.getFatGoalGrams(), plan.getStartDate(), plan.getEndDate()));
+                        plan.getFatGoalGrams(), plan.getStartDate(), plan.getEndDate(), !plan.getStartDate().isAfter(targetDate)
+                                && (plan.getEndDate() == null || !plan.getEndDate().isBefore(targetDate))));
     }
 
     @Transactional(readOnly = true)

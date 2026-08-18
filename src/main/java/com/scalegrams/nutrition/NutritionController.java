@@ -27,6 +27,7 @@ import com.scalegrams.nutrition.NutritionDtos.DashboardResponse;
 import com.scalegrams.nutrition.NutritionDtos.FoodLogResponse;
 import com.scalegrams.nutrition.NutritionDtos.HistoryResponse;
 import com.scalegrams.nutrition.NutritionDtos.MealTypeResponse;
+import com.scalegrams.nutrition.NutritionDtos.RecentMealResponse;
 import com.scalegrams.nutrition.NutritionDtos.UpdateFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeLogIngredientsRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeFoodLogRequest;
@@ -62,6 +63,12 @@ public class NutritionController {
     @GetMapping("/meal-types")
     List<MealTypeResponse> mealTypes() {
         return nutritionService.mealTypes();
+    }
+
+    @GetMapping("/recent-meals")
+    List<RecentMealResponse> recentMeals(Authentication authentication,
+            @RequestParam(defaultValue = "20") int limit) {
+        return nutritionService.recentMeals(currentUser.from(authentication), limit);
     }
 
     @PostMapping("/food-logs")
