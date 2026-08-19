@@ -550,6 +550,25 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void batchAcceptsFoodAndRecipeReferencesUsedByMealCopy() {
+		HttpHeaders headers = authHeaders();
+		Map<String, Object> recipe = Map.of(
+				"name", "Receta para copiar",
+				"description", "",
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM")));
+		ResponseEntity<Map> createdRecipe = rest.postForEntity("/api/recipes", new HttpEntity<>(recipe, headers), Map.class);
+		assertThat(createdRecipe.getStatusCode().is2xxSuccessful()).isTrue();
+
+		Map<String, Object> request = Map.of("logs", List.of(
+				Map.of("itemType", "FOOD", "itemId", 1, "mealType", "DINNER", "quantity", 100, "unit", "GRAM", "logDate", "2032-03-10"),
+				Map.of("itemType", "RECIPE", "itemId", createdRecipe.getBody().get("id"), "mealType", "DINNER", "quantity", 1, "unit", "PORTION", "logDate", "2032-03-10")));
+		ResponseEntity<String> response = rest.postForEntity("/api/nutrition/meal-logs/batch", new HttpEntity<>(request, headers), String.class);
+
+		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(response.getBody()).contains("\"itemType\":\"FOOD\"", "\"itemType\":\"RECIPE\"");
+	}
+
+	@Test
 	void dashboardDoesNotDuplicateRecipeIngredientsWhenFoodsHaveTags() {
 		HttpHeaders headers = authHeaders();
 		String date = "2032-03-11";
