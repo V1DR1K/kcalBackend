@@ -241,8 +241,9 @@ public class NutritionService {
         Page<Food> result;
         boolean hasQuery = query != null && !query.isBlank();
         if (hasQuery) {
-            query = query.trim();
+            query = query.trim().replaceAll("\\s+", " ");
             if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
+            if (query.length() < 2) return page(new org.springframework.data.domain.PageImpl<>(List.of(), pageable, 0));
         }
         if (hasQuery && category != null) {
             result = foods.search(query, category, ModerationStatus.APPROVED, pageable);
@@ -252,13 +253,6 @@ public class NutritionService {
             result = foods.findByModerationStatusAndCategory(ModerationStatus.APPROVED, category, pageable);
         } else {
             result = foods.findByModerationStatus(ModerationStatus.APPROVED, pageable);
-        }
-        if (hasQuery && page == 0 && result.getTotalElements() < Math.min(size, 10)) {
-            externalFoodLookup.searchByText(query, 12).forEach(candidate -> {
-                if (candidate.barcode() != null && !foods.existsByBarcode(candidate.barcode())) importExternalFood(candidate);
-            });
-            result = category == null ? foods.search(query, ModerationStatus.APPROVED, pageable)
-                    : foods.search(query, category, ModerationStatus.APPROVED, pageable);
         }
         return page(result.map(this::toFoodSummaryResponse));
     }

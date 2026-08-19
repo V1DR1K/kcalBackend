@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -364,6 +365,16 @@ class ScaleGramsApplicationTests {
 		assertThat(bounded.getBody()).contains("\"page\":0", "\"size\":50", "\"totalElements\"", "\"totalPages\"");
 		assertThat(recipes.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(recipes.getBody()).contains("\"items\"", "\"page\":0", "\"size\":2", "\"hasNext\"");
+	}
+
+	@Test
+	void foodSearchIgnoresIncompleteQueriesWithoutCallingExternalProviders() {
+		ResponseEntity<String> response = rest.exchange("/api/foods?q=a&page=0&size=20", HttpMethod.GET,
+				new HttpEntity<>(authHeaders()), String.class);
+
+		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(response.getBody()).contains("\"page\":0", "\"totalElements\":0", "\"hasNext\":false");
+		verifyNoInteractions(externalFoodLookup);
 	}
 
 	@Test

@@ -35,13 +35,23 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
     @Query("select distinct f from Food f left join f.tags t where f.moderationStatus = :status and (" +
             "lower(f.name) like lower(concat('%', :q, '%')) or " +
             "lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) or " +
-            "lower(t) like lower(concat('%', :q, '%'))) ")
+            "lower(t) like lower(concat('%', :q, '%'))) " +
+            "order by case when lower(f.name) = lower(:q) then 0 " +
+            "when lower(f.name) like lower(concat(:q, '%')) then 1 " +
+            "when lower(f.name) like lower(concat('%', :q, '%')) then 2 " +
+            "when lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) then 3 else 4 end, " +
+            "lower(f.name), f.id")
     Page<Food> search(@Param("q") String query, @Param("status") ModerationStatus status, Pageable pageable);
 
     @Query("select distinct f from Food f left join f.tags t where f.moderationStatus = :status and f.category = :category and (" +
             "lower(f.name) like lower(concat('%', :q, '%')) or " +
             "lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) or " +
-            "lower(t) like lower(concat('%', :q, '%')))")
+            "lower(t) like lower(concat('%', :q, '%'))) " +
+            "order by case when lower(f.name) = lower(:q) then 0 " +
+            "when lower(f.name) like lower(concat(:q, '%')) then 1 " +
+            "when lower(f.name) like lower(concat('%', :q, '%')) then 2 " +
+            "when lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) then 3 else 4 end, " +
+            "lower(f.name), f.id")
     Page<Food> search(@Param("q") String query, @Param("category") FoodCategory category,
             @Param("status") ModerationStatus status, Pageable pageable);
 
