@@ -2,7 +2,6 @@ package com.scalegrams.nutrition;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.YearMonth;
@@ -36,7 +35,6 @@ import com.scalegrams.common.BadRequestException;
 import com.scalegrams.common.NotFoundException;
 import com.scalegrams.externalfood.ExternalFoodCandidate;
 import com.scalegrams.externalfood.ExternalFoodLookupService;
-import com.scalegrams.externalfood.OpenFoodFactsProvider;
 import com.scalegrams.externalfood.UsdaFoodDataProvider;
 import com.scalegrams.nutrition.NutritionDtos.AddMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddFoodLogRequest;
@@ -81,14 +79,10 @@ import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
 import com.scalegrams.profile.ProfileService;
 import com.scalegrams.user.AppUser;
 import com.scalegrams.user.Role;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @Service
 public class NutritionService {
-    private static final Logger log = LoggerFactory.getLogger(NutritionService.class);
-    public record EnrichmentReport(int examined, int updated, int skipped, int noMatch,
-            int matchedOff, int matchedUsda, int aiEstimated) {}
+    public record EnrichmentReport(int examined, int updated, int skipped, int noMatch) {}
     private final FoodRepository foods;
     private final RecipeRepository recipes;
     private final FoodLogRepository foodLogs;
@@ -98,14 +92,11 @@ public class NutritionService {
     private final ObjectMapper objectMapper;
     private final NutrientDefinitionRepository nutrientDefinitions;
     private final UsdaFoodDataProvider usda;
-    private final OpenFoodFactsProvider openFoodFacts;
-    private final GeminiNutritionClient gemini;
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
             WaterLogRepository waterLogs, ProfileService profileService,
             ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper,
-            NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda,
-            OpenFoodFactsProvider openFoodFacts, GeminiNutritionClient gemini) {
+            NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda) {
         this.foods = foods;
         this.recipes = recipes;
         this.foodLogs = foodLogs;
@@ -115,8 +106,6 @@ public class NutritionService {
         this.objectMapper = objectMapper;
         this.nutrientDefinitions = nutrientDefinitions;
         this.usda = usda;
-        this.openFoodFacts = openFoodFacts;
-        this.gemini = gemini;
     }
 
     @Transactional
@@ -283,123 +272,16 @@ public class NutritionService {
         int updated = 0;
         int skipped = 0;
         int noMatch = 0;
-        int matchedOff = 0;
-        int matchedUsda = 0;
-        int aiEstimated = 0;
-        Map<String, String> translations = new LinkedHashMap<>();
         for (Food food : foods.findAll(PageRequest.of(0, Math.min(Math.max(limit, 1), 100), Sort.by(Sort.Direction.ASC, "id")))) {
             examined++;
             if (hasDetailedNutrients(food)) { skipped++; continue; }
-            boolean aborted = false;
-            for (int attempt = 0; attempt < 5 && !aborted; attempt++) {
-                try {
-                    EnrichOutcome outcome = enrichOne(food, translations);
-                    switch (outcome) {
-                        case MATCHED_OFF -> { updated++; matchedOff++; }
-                        case MATCHED_USDA -> { updated++; matchedUsda++; }
-                        case AI_ESTIMATED -> { updated++; aiEstimated++; }
-                        default -> noMatch++;
-                    }
-                    try { Thread.sleep(2000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
-                    break;
-                } catch (AiQuotaExceededException ex) {
-                    if (!awaitGeminiQuota(ex)) aborted = true;
-                }
-            }
+            Optional<ExternalFoodCandidate> candidate = food.getBarcode() == null
+                    ? externalFoodLookup.searchByText(food.getName(), 1).stream().findFirst()
+                    : externalFoodLookup.lookupByBarcode(food.getBarcode());
+            if (candidate.isPresent()) { enrichExistingFood(food, candidate.get()); updated++; }
+            else noMatch++;
         }
-        return new EnrichmentReport(examined, updated, skipped, noMatch, matchedOff, matchedUsda, aiEstimated);
-    }
-
-    private enum EnrichOutcome { MATCHED_OFF, MATCHED_USDA, AI_ESTIMATED, NO_MATCH }
-
-    private EnrichOutcome enrichOne(Food food, Map<String, String> translations) {
-        String barcode = food.getBarcode();
-        boolean hasRealBarcode = barcode != null && !barcode.matches("^7790000000\\d+");
-        if (hasRealBarcode) {
-            Optional<ExternalFoodCandidate> byBarcode = externalFoodLookup.lookupByBarcode(barcode);
-            if (byBarcode.isEmpty()) return EnrichOutcome.NO_MATCH;
-            enrichExistingFood(food, byBarcode.get());
-            return EnrichOutcome.MATCHED_OFF;
-        }
-        Optional<ExternalFoodCandidate> candidate = smartCandidate(food, translations);
-        if (candidate.isPresent()) {
-            enrichExistingFood(food, candidate.get());
-            return "OPEN_FOOD_FACTS".equals(candidate.get().source()) ? EnrichOutcome.MATCHED_OFF : EnrichOutcome.MATCHED_USDA;
-        }
-        Optional<GeminiNutritionClient.AiNutritionItem> estimate = gemini.estimateByName(food.getName(),
-                food.getCategory() == null ? null : food.getCategory().name());
-        if (estimate.isPresent()) {
-            applyAiEstimateToFood(food, estimate.get());
-            return EnrichOutcome.AI_ESTIMATED;
-        }
-        return EnrichOutcome.NO_MATCH;
-    }
-
-    private boolean awaitGeminiQuota(AiQuotaExceededException ex) {
-        OffsetDateTime retryAt = ex.getRetryAt();
-        Duration wait = Duration.between(OffsetDateTime.now(), retryAt).plusSeconds(5);
-        if (wait.isNegative() || wait.toMinutes() > 10) {
-            log.warn("Gemini quota exhausted until {}; enrichment aborted.", retryAt);
-            return false;
-        }
-        log.warn("Gemini quota exhausted; waiting {}s before continuing.", wait.getSeconds());
-        try { Thread.sleep(wait.toMillis()); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
-        return true;
-    }
-
-    private Optional<ExternalFoodCandidate> smartCandidate(Food food, Map<String, String> translations) {
-        Optional<ExternalFoodCandidate> off = openFoodFacts.searchByText(food.getName(), 8).stream()
-                .filter(candidate -> plausible(candidate, food))
-                .findFirst();
-        if (off.isPresent()) return off;
-        String translated = translations.computeIfAbsent(food.getName(), name -> {
-            if (name == null || name.isBlank()) return null;
-            return gemini.translateFoodNames(List.of(name)).get(name);
-        });
-        if (translated == null || translated.isBlank()) return Optional.empty();
-        Optional<ExternalFoodCandidate> usdaCandidate = usda.searchOne(translated);
-        if (usdaCandidate.isPresent() && plausible(usdaCandidate.get(), food)) return usdaCandidate;
-        return Optional.empty();
-    }
-
-    private boolean plausible(ExternalFoodCandidate candidate, Food food) {
-        Integer calories = candidate.calories();
-        BigDecimal protein = candidate.proteinGrams();
-        BigDecimal carbs = candidate.carbsGrams();
-        BigDecimal fat = candidate.fatGrams();
-        if (calories == null || protein == null || carbs == null || fat == null) return false;
-        if (calories < 15 || calories > 950) return false;
-        if (protein.signum() < 0 || carbs.signum() < 0 || fat.signum() < 0) return false;
-        if (protein.compareTo(BigDecimal.valueOf(120)) > 0 || fat.compareTo(BigDecimal.valueOf(100)) > 0) return false;
-        int macroCalories = macroCalories(protein, carbs, fat);
-        if (Math.abs(macroCalories - calories) > Math.max(45, calories / 3)) return false;
-        FoodCategory category = food.getCategory();
-        if (category != null) {
-            int maxCalories = switch (category) {
-                case FRUIT, VEGETABLE -> 450;
-                case LEGUME, CEREAL, PROTEIN, DAIRY -> 700;
-                case BEVERAGE -> 350;
-                default -> 950;
-            };
-            if (calories > maxCalories) return false;
-        }
-        return true;
-    }
-
-    private Food applyAiEstimateToFood(Food food, GeminiNutritionClient.AiNutritionItem estimate) {
-        BigDecimal ratio = BigDecimal.valueOf(100).divide(estimate.estimatedGrams(), 4, RoundingMode.HALF_UP);
-        food.setProteinGrams(scale(estimate.proteinGrams().multiply(ratio)));
-        food.setCarbsGrams(scale(estimate.carbsGrams().multiply(ratio)));
-        food.setFatGrams(scale(estimate.fatGrams().multiply(ratio)));
-        food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
-        addAiNutrients(food, estimate.nutrients(), ratio);
-        food.setPreparationSource("Estimado por IA");
-        if (food.getSource() == null || "LOCAL".equals(food.getSource())) {
-            food.setSource("AI_ESTIMATE");
-            food.setSourceId("ai-estimate:" + food.getId());
-        }
-        food.setLastSyncedAt(OffsetDateTime.now());
-        return foods.save(food);
+        return new EnrichmentReport(examined, updated, skipped, noMatch);
     }
 
     private boolean hasDetailedNutrients(Food food) {
