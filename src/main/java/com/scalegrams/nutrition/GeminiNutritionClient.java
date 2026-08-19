@@ -1,7 +1,6 @@
 package com.scalegrams.nutrition;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -13,7 +12,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
@@ -58,18 +56,6 @@ public class GeminiNutritionClient {
             Aplicá la corrección a una lista completa de alimentos: agregá, quitá o ajustá ítems según corresponda.
             No inventes precisión: usá estimaciones conservadoras, anotá las suposiciones y devolvé como máximo 12 ítems.
             Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"category":"OTHER","preparation":"UNSPECIFIED","proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
-            """;
-    private static final String TRANSLATION_PROMPT = """
-            Traducí estos nombres de alimentos del español al inglés americano, para buscar en una base de datos nutricional genérica (USDA FoodData Central).
-            Devolvé únicamente JSON válido con la misma cantidad de claves: {"<nombre original>":"<traducción en inglés>"}.
-            Usá términos genéricos y simples (ej. "Pechuga de Pollo" -> "chicken breast", "Arroz Blanco" -> "white rice").
-            """;
-    private static final String NAME_ESTIMATE_PROMPT = """
-            Estimá el perfil nutricional por 100 gramos de alimento comestible, para una base de datos nutricional.
-            Respondé únicamente JSON válido:
-            {"name":"...","calories":0,"proteinGrams":0.0,"carbsGrams":0.0,"fatGrams":0.0,"nutrients":{"FIBER":0.0,"SUGARS_TOTAL":0.0,"SATURATED_FAT":0.0,"SODIUM":0.0,"CHOLESTEROL":0.0,"POTASSIUM":0.0,"CALCIUM":0.0,"IRON":0.0,"VITAMIN_C":0.0,"VITAMIN_D":0.0}}
-            Valores por 100 gramos, estimación conservadora basada en tablas nutricionales reconocidas.
-            Incluí en nutrients solo los valores que puedas estimar con confianza; omití los inciertos. No inventes precisión.
             """;
 
     private final RestClient restClient;
@@ -181,69 +167,6 @@ public class GeminiNutritionClient {
             log.warn("Gemini meal note transcription did not return text: {}", ex.getClass().getSimpleName());
             throw new AiProviderException("AI_PROVIDER_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE,
                     "Gemini no está disponible para transcribir la nota. Intentá nuevamente en unos minutos.");
-        }
-    }
-
-    public Map<String, String> translateFoodNames(List<String> names) {
-        if (names == null || names.isEmpty()) return Map.of();
-        try {
-            JsonNode response = generateContent(List.of(Map.of("text", TRANSLATION_PROMPT + "\nNombres: "
-                    + objectMapper.writeValueAsString(names))), true);
-            String text = responseText(response);
-            if (text == null || text.isBlank()) return Map.of();
-            JsonNode result = objectMapper.readTree(stripCodeFence(text));
-            Map<String, String> translations = new HashMap<>();
-            for (String name : names) {
-                String translation = result.path(name).asText(null);
-                if (translation != null && !translation.isBlank()) translations.put(name, translation.trim());
-            }
-            return translations;
-        } catch (Exception ex) {
-            log.warn("Gemini food name translation failed: {}", ex.getClass().getSimpleName());
-            return Map.of();
-        }
-    }
-
-    public Optional<AiNutritionItem> estimateByName(String name, String category) {
-        if (name == null || name.isBlank()) return Optional.empty();
-        try {
-            String prompt = NAME_ESTIMATE_PROMPT + "\nAlimento: \"" + name + "\""
-                    + (category == null || category.isBlank() ? "" : " (categoría: " + category + ").");
-            JsonNode response = generateContent(List.of(Map.of("text", prompt)), true);
-            String text = responseText(response);
-            if (text == null || text.isBlank()) return Optional.empty();
-            JsonNode result = objectMapper.readTree(stripCodeFence(text));
-            if (!result.path("calories").isNumber()) return Optional.empty();
-            int calories = Math.max(0, result.path("calories").asInt(0));
-            BigDecimal protein = decimal(result, "proteinGrams");
-            BigDecimal carbs = decimal(result, "carbsGrams");
-            BigDecimal fat = decimal(result, "fatGrams");
-            if (calories == 0 && protein.signum() == 0 && carbs.signum() == 0 && fat.signum() == 0) {
-                return Optional.empty();
-            }
-            Map<String, BigDecimal> nutrients = new HashMap<>();
-            if (result.path("nutrients").isObject()) result.path("nutrients").fields().forEachRemaining(entry -> {
-                try {
-                    BigDecimal value = new BigDecimal(entry.getValue().asText("0"));
-                    if (value.signum() >= 0) nutrients.put(entry.getKey(), value.setScale(1, RoundingMode.HALF_UP));
-                } catch (NumberFormatException ignored) { }
-            });
-            int grams = Math.max((int) Math.round(100), 100);
-            String itemName = result.path("name").asText("").trim();
-            return Optional.of(new AiNutritionItem(
-                    itemName.isBlank() ? name.substring(0, Math.min(name.length(), 120)) : itemName.substring(0, Math.min(itemName.length(), 120)),
-                    BigDecimal.valueOf(grams),
-                    FoodCategory.OTHER,
-                    FoodPreparation.UNSPECIFIED,
-                    protein, carbs, fat, nutrients));
-        } catch (RestClientResponseException ex) {
-            if (ex.getStatusCode().value() == 429) throw new AiQuotaExceededException(retryAt(ex));
-            int status = ex.getStatusCode().value();
-            log.warn("Gemini name estimate failed with upstream status {} ({})", status, upstreamReason(ex));
-            return Optional.empty();
-        } catch (Exception ex) {
-            log.warn("Gemini name estimate failed for '{}': {}", name, ex.getClass().getSimpleName());
-            return Optional.empty();
         }
     }
 
