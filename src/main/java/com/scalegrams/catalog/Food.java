@@ -76,6 +76,7 @@ public class Food {
     private AppUser createdBy;
     @Column(nullable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
+    private OffsetDateTime deletedAt;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ModerationStatus moderationStatus = ModerationStatus.APPROVED;

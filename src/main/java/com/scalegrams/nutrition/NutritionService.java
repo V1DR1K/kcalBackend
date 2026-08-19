@@ -250,9 +250,9 @@ public class NutritionService {
         } else if (hasQuery) {
             result = foods.search(query, ModerationStatus.APPROVED, pageable);
         } else if (category != null) {
-            result = foods.findByModerationStatusAndCategory(ModerationStatus.APPROVED, category, pageable);
+            result = foods.findByModerationStatusAndCategoryAndDeletedAtIsNull(ModerationStatus.APPROVED, category, pageable);
         } else {
-            result = foods.findByModerationStatus(ModerationStatus.APPROVED, pageable);
+            result = foods.findByModerationStatusAndDeletedAtIsNull(ModerationStatus.APPROVED, pageable);
         }
         return page(result.map(this::toFoodSummaryResponse));
     }
@@ -293,7 +293,7 @@ public class NutritionService {
 
     @Transactional(readOnly = true)
     public List<FoodResponse> findFoodsCreatedBy(com.scalegrams.user.AppUser creator) {
-        return foods.findByCreatedByIdOrderByCreatedAtDesc(creator.getId()).stream().map(this::toFoodResponse).toList();
+        return foods.findByCreatedByIdAndDeletedAtIsNullOrderByCreatedAtDesc(creator.getId()).stream().map(this::toFoodResponse).toList();
     }
 
     @Transactional
@@ -329,6 +329,16 @@ public class NutritionService {
                     .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
         }
         return toFoodResponse(foods.save(food));
+    }
+
+    @Transactional
+    public void deleteOwnedFood(Long id, com.scalegrams.user.AppUser creator) {
+        Food food = getFood(id);
+        if (food.getCreatedBy() == null || !food.getCreatedBy().getId().equals(creator.getId())) {
+            throw new BadRequestException("Solo podés borrar alimentos creados por vos.");
+        }
+        if (food.getDeletedAt() == null) food.setDeletedAt(OffsetDateTime.now());
+        foods.save(food);
     }
 
     @Transactional(readOnly = true)
@@ -412,9 +422,9 @@ public class NutritionService {
 
     @Transactional(readOnly = true)
     public List<FoodResponse> findPreparationOptions(Long id) {
-        Food food = getFood(id);
+        Food food = getActiveFood(id);
         if (clean(food.getPreparationGroup()) == null) return List.of(toFoodResponse(food));
-        return foods.findByPreparationGroupOrderByPreparationAsc(food.getPreparationGroup()).stream()
+        return foods.findByPreparationGroupAndDeletedAtIsNullOrderByPreparationAsc(food.getPreparationGroup()).stream()
                 .map(this::toFoodResponse).toList();
     }
 
@@ -424,7 +434,7 @@ public class NutritionService {
         if (cleanBarcode == null) {
             throw new NotFoundException("No encontramos un alimento con ese codigo.");
         }
-        return foods.findByBarcode(cleanBarcode)
+        return foods.findByBarcodeAndDeletedAtIsNull(cleanBarcode)
                 .map(existing -> shouldEnrich(existing) ? externalFoodLookup.lookupByBarcode(cleanBarcode)
                         .map(candidate -> enrichExistingFood(existing, candidate))
                         .orElse(existing) : existing)
@@ -593,7 +603,7 @@ public class NutritionService {
         recipe.setName(request.name().trim());
         recipe.setDescription(clean(request.description()));
         recipe.setCreatedBy(user);
-        replaceRecipeIngredients(recipe, request);
+        replaceRecipeIngredients(recipe, request, false);
         recipe.setTotalWeightGrams(recipeTotalWeight(recipe));
         applyRecipeTotals(recipe);
         return toRecipeResponse(recipes.save(recipe));
@@ -630,7 +640,7 @@ public class NutritionService {
         }
         recipe.setName(request.name().trim());
         recipe.setDescription(clean(request.description()));
-        replaceRecipeIngredients(recipe, request);
+        replaceRecipeIngredients(recipe, request, true);
         recipe.setTotalWeightGrams(recipeTotalWeight(recipe));
         applyRecipeTotals(recipe);
         return toRecipeResponse(recipes.save(recipe));
@@ -648,12 +658,12 @@ public class NutritionService {
         recipes.delete(recipe);
     }
 
-    private void replaceRecipeIngredients(Recipe recipe, CreateRecipeRequest request) {
+    private void replaceRecipeIngredients(Recipe recipe, CreateRecipeRequest request, boolean allowDeletedFoods) {
         recipe.getIngredients().clear();
         for (var item : request.ingredients()) {
             RecipeIngredient ingredient = new RecipeIngredient();
             ingredient.setRecipe(recipe);
-            ingredient.setFood(getFood(item.foodId()));
+            ingredient.setFood(allowDeletedFoods ? getFood(item.foodId()) : getActiveFood(item.foodId()));
             ingredient.setQuantity(item.quantity());
             ingredient.setUnit(item.unit());
             recipe.getIngredients().add(ingredient);
@@ -677,7 +687,7 @@ public class NutritionService {
         for (var item : request.ingredients()) {
             RecipeIngredient ingredient = new RecipeIngredient();
             ingredient.setRecipe(recipe);
-            ingredient.setFood(getFood(item.foodId()));
+            ingredient.setFood(getActiveFood(item.foodId()));
             ingredient.setQuantity(item.quantity());
             ingredient.setUnit(item.unit());
             recipe.getIngredients().add(ingredient);
@@ -699,7 +709,7 @@ public class NutritionService {
         log.setUser(user);
         log.setItemType(request.itemType());
         if (request.itemType() == MealItemType.FOOD) {
-            Food food = getFood(request.itemId());
+            Food food = getActiveFood(request.itemId());
             preview = preview(food, request.quantity(), request.unit());
             log.setFood(food);
         } else if (request.itemType() == MealItemType.RECIPE) {
@@ -1106,6 +1116,12 @@ public class NutritionService {
 
     private Food getFood(Long foodId) {
         return foods.findById(foodId).orElseThrow(() -> new NotFoundException("Alimento no encontrado."));
+    }
+
+    private Food getActiveFood(Long foodId) {
+        Food food = getFood(foodId);
+        if (food.getDeletedAt() != null) throw new NotFoundException("Alimento no encontrado.");
+        return food;
     }
 
     private Recipe getRecipe(Long recipeId) {

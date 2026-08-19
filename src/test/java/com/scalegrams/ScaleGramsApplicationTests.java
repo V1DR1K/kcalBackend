@@ -569,6 +569,34 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void userCanLogicallyDeleteOwnFoodAndDeletedFoodsStayOutOfNewSelections() {
+		HttpHeaders headers = authHeaders();
+		Map<String, Object> food = Map.of("name", "Alimento lógico para borrar", "category", "OTHER", "baseUnit", "GRAM",
+				"baseQuantity", 100, "calories", 100, "proteinGrams", 10, "carbsGrams", 10, "fatGrams", 0,
+				"preparation", "UNSPECIFIED", "tags", Set.of());
+		ResponseEntity<Map> created = rest.postForEntity("/api/foods", new HttpEntity<>(food, headers), Map.class);
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+		Object foodId = created.getBody().get("id");
+
+		ResponseEntity<Void> deleted = rest.exchange("/api/foods/" + foodId, HttpMethod.DELETE,
+				new HttpEntity<>(headers), Void.class);
+		ResponseEntity<String> mine = rest.exchange("/api/foods/mine", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> search = rest.exchange("/api/foods?q=lógico&page=0&size=20", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		Map<String, Object> recipe = Map.of("name", "No usa alimento borrado", "description", "",
+				"ingredients", List.of(Map.of("foodId", foodId, "quantity", 100, "unit", "GRAM")));
+		ResponseEntity<String> newRecipe = rest.postForEntity("/api/recipes", new HttpEntity<>(recipe, headers), String.class);
+
+		assertThat(deleted.getStatusCode().value()).isEqualTo(204);
+		assertThat(search.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(mine.getBody()).doesNotContain("Alimento lógico para borrar");
+		assertThat(search.getBody()).doesNotContain("Alimento lógico para borrar");
+		assertThat(newRecipe.getStatusCode().value()).isEqualTo(404);
+		assertThat(foods.findById(((Number) foodId).longValue()).orElseThrow().getDeletedAt()).isNotNull();
+	}
+
+	@Test
 	void dashboardDoesNotDuplicateRecipeIngredientsWhenFoodsHaveTags() {
 		HttpHeaders headers = authHeaders();
 		String date = "2032-03-11";

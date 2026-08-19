@@ -13,10 +13,13 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
     @EntityGraph(attributePaths = "tags")
     Optional<Food> findByBarcode(String barcode);
 
+    @EntityGraph(attributePaths = "tags")
+    Optional<Food> findByBarcodeAndDeletedAtIsNull(String barcode);
+
     boolean existsByBarcode(String barcode);
 
     @EntityGraph(attributePaths = "tags")
-    java.util.List<Food> findByPreparationGroupOrderByPreparationAsc(String preparationGroup);
+    java.util.List<Food> findByPreparationGroupAndDeletedAtIsNullOrderByPreparationAsc(String preparationGroup);
 
     @Override
     @EntityGraph(attributePaths = "tags")
@@ -24,18 +27,18 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 
     Page<Food> findByNameContainingIgnoreCase(String name, Pageable pageable);
 
-    Page<Food> findByModerationStatus(ModerationStatus status, Pageable pageable);
+    Page<Food> findByModerationStatusAndDeletedAtIsNull(ModerationStatus status, Pageable pageable);
 
-    Page<Food> findByModerationStatusAndCategory(ModerationStatus status, FoodCategory category, Pageable pageable);
+    Page<Food> findByModerationStatusAndCategoryAndDeletedAtIsNull(ModerationStatus status, FoodCategory category, Pageable pageable);
 
-    java.util.List<Food> findByCreatedByIdOrderByCreatedAtDesc(Long createdById);
+    java.util.List<Food> findByCreatedByIdAndDeletedAtIsNullOrderByCreatedAtDesc(Long createdById);
 
     Page<Food> findByNameContainingIgnoreCaseAndCategory(String name, FoodCategory category, Pageable pageable);
 
-    @Query("select distinct f from Food f left join f.tags t where f.moderationStatus = :status and (" +
+    @Query("select f from Food f where f.deletedAt is null and f.moderationStatus = :status and (" +
             "lower(f.name) like lower(concat('%', :q, '%')) or " +
             "lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) or " +
-            "lower(t) like lower(concat('%', :q, '%'))) " +
+            "exists (select 1 from Food taggedFood join taggedFood.tags tag where taggedFood.id = f.id and lower(tag) like lower(concat('%', :q, '%')))) " +
             "order by case when lower(f.name) = lower(:q) then 0 " +
             "when lower(f.name) like lower(concat(:q, '%')) then 1 " +
             "when lower(f.name) like lower(concat('%', :q, '%')) then 2 " +
@@ -43,10 +46,10 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
             "lower(f.name), f.id")
     Page<Food> search(@Param("q") String query, @Param("status") ModerationStatus status, Pageable pageable);
 
-    @Query("select distinct f from Food f left join f.tags t where f.moderationStatus = :status and f.category = :category and (" +
+    @Query("select f from Food f where f.deletedAt is null and f.moderationStatus = :status and f.category = :category and (" +
             "lower(f.name) like lower(concat('%', :q, '%')) or " +
             "lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) or " +
-            "lower(t) like lower(concat('%', :q, '%'))) " +
+            "exists (select 1 from Food taggedFood join taggedFood.tags tag where taggedFood.id = f.id and lower(tag) like lower(concat('%', :q, '%')))) " +
             "order by case when lower(f.name) = lower(:q) then 0 " +
             "when lower(f.name) like lower(concat(:q, '%')) then 1 " +
             "when lower(f.name) like lower(concat('%', :q, '%')) then 2 " +
