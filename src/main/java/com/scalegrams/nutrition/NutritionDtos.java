@@ -259,6 +259,38 @@ public class NutritionDtos {
     public record MealTypeResponse(MealType code, String label) {
     }
 
+    public record DayPresetItemRequest(
+            @NotNull MealItemType itemType,
+            Long itemId,
+            @NotNull MealType mealType,
+            @NotNull @Positive BigDecimal quantity,
+            @NotNull FoodUnit unit,
+            String displayName,
+            Integer calories,
+            @NotNull @PositiveOrZero BigDecimal proteinGrams,
+            @NotNull @PositiveOrZero BigDecimal carbsGrams,
+            @NotNull @PositiveOrZero BigDecimal fatGrams,
+            Integer aiEstimateConfidence,
+            String aiEstimateDetails) {
+    }
+
+    public record CreateDayPresetRequest(
+            @NotBlank @Size(min = 1, max = 120) String name,
+            @NotEmpty @Size(max = 200) List<@NotNull @Valid DayPresetItemRequest> items) {
+    }
+
+    public record UpdateDayPresetRequest(
+            @NotBlank @Size(min = 1, max = 120) String name,
+            @NotEmpty @Size(max = 200) List<@NotNull @Valid DayPresetItemRequest> items) {
+    }
+
+    public record DayPresetResponse(Long id, String name, OffsetDateTime createdAt, OffsetDateTime updatedAt,
+            List<DayPresetItemRequest> items, int itemCount, Map<String, Integer> mealCounts) {
+    }
+
+    public record ApplyDayPresetRequest(@NotNull LocalDate logDate, boolean replace) {
+    }
+
     public record RecipeIngredientRequest(@NotNull Long foodId, @Positive BigDecimal quantity, @NotNull FoodUnit unit) {
     }
 

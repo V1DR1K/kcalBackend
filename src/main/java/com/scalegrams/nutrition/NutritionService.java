@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -41,6 +42,7 @@ import com.scalegrams.externalfood.UsdaFoodDataProvider;
 import com.scalegrams.nutrition.NutritionDtos.AddMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddWaterRequest;
+import com.scalegrams.nutrition.NutritionDtos.ApplyDayPresetRequest;
 import com.scalegrams.nutrition.NutritionDtos.BatchAddMealLogsRequest;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateItem;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
@@ -50,6 +52,9 @@ import com.scalegrams.nutrition.NutritionDtos.CreateFoodRequest;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddRecipeMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.DashboardResponse;
+import com.scalegrams.nutrition.NutritionDtos.CreateDayPresetRequest;
+import com.scalegrams.nutrition.NutritionDtos.DayPresetItemRequest;
+import com.scalegrams.nutrition.NutritionDtos.DayPresetResponse;
 import com.scalegrams.nutrition.NutritionDtos.DaySummary;
 import com.scalegrams.nutrition.NutritionDtos.FoodLogResponse;
 import com.scalegrams.nutrition.NutritionDtos.FoodResponse;
@@ -61,6 +66,7 @@ import com.scalegrams.nutrition.NutritionDtos.MealTypeResponse;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewResponse;
 import com.scalegrams.nutrition.NutritionDtos.UpdateFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateAiEstimateRequest;
+import com.scalegrams.nutrition.NutritionDtos.UpdateDayPresetRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeLogIngredientsRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.SaveAiEstimateItemRequest;
@@ -92,6 +98,7 @@ public class NutritionService {
     private final FoodRepository foods;
     private final RecipeRepository recipes;
     private final FoodLogRepository foodLogs;
+    private final DayPresetRepository dayPresets;
     private final WaterLogRepository waterLogs;
     private final ProfileService profileService;
     private final ExternalFoodLookupService externalFoodLookup;
@@ -102,6 +109,7 @@ public class NutritionService {
     private final GeminiNutritionClient gemini;
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
+            DayPresetRepository dayPresets,
             WaterLogRepository waterLogs, ProfileService profileService,
             ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper,
             NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda,
@@ -109,6 +117,7 @@ public class NutritionService {
         this.foods = foods;
         this.recipes = recipes;
         this.foodLogs = foodLogs;
+        this.dayPresets = dayPresets;
         this.waterLogs = waterLogs;
         this.profileService = profileService;
         this.externalFoodLookup = externalFoodLookup;
@@ -117,6 +126,123 @@ public class NutritionService {
         this.usda = usda;
         this.openFoodFacts = openFoodFacts;
         this.gemini = gemini;
+    }
+
+    @Transactional(readOnly = true)
+    public List<DayPresetResponse> dayPresets(AppUser user) {
+        return dayPresets.findByUserAndDeletedAtIsNullOrderByUpdatedAtDesc(user).stream()
+                .map(this::toDayPresetResponse).toList();
+    }
+
+    @Transactional
+    public DayPresetResponse createDayPreset(AppUser user, CreateDayPresetRequest request) {
+        String name = normalizedPresetName(request.name());
+        ensurePresetNameAvailable(user, name, null);
+        DayPreset preset = new DayPreset();
+        preset.setUser(user);
+        preset.setName(name);
+        preset.setItemsJson(writePresetItems(validatePresetItems(request.items())));
+        preset.setCreatedAt(OffsetDateTime.now());
+        preset.setUpdatedAt(OffsetDateTime.now());
+        return toDayPresetResponse(dayPresets.save(preset));
+    }
+
+    @Transactional
+    public DayPresetResponse updateDayPreset(AppUser user, Long id, UpdateDayPresetRequest request) {
+        DayPreset preset = ownedDayPreset(user, id);
+        String name = normalizedPresetName(request.name());
+        ensurePresetNameAvailable(user, name, id);
+        preset.setName(name);
+        preset.setItemsJson(writePresetItems(validatePresetItems(request.items())));
+        preset.setUpdatedAt(OffsetDateTime.now());
+        return toDayPresetResponse(dayPresets.save(preset));
+    }
+
+    @Transactional
+    public void deleteDayPreset(AppUser user, Long id) {
+        DayPreset preset = ownedDayPreset(user, id);
+        preset.setDeletedAt(OffsetDateTime.now());
+        preset.setUpdatedAt(OffsetDateTime.now());
+        dayPresets.save(preset);
+    }
+
+    @Transactional
+    public void applyDayPreset(AppUser user, Long id, ApplyDayPresetRequest request) {
+        DayPreset preset = ownedDayPreset(user, id);
+        LocalDate date = request.logDate();
+        List<DayPresetItemRequest> items = readPresetItems(preset.getItemsJson());
+        if (request.replace()) foodLogs.deleteAll(foodLogs.findByUserAndLogDate(user, date));
+        for (DayPresetItemRequest item : items) {
+            if (item.itemType() == MealItemType.AI_ESTIMATE) {
+                FoodLog log = new FoodLog();
+                log.setUser(user);
+                log.setItemType(MealItemType.AI_ESTIMATE);
+                log.setMealType(item.mealType());
+                log.setQuantity(item.quantity());
+                log.setUnit(item.unit());
+                log.setLogDate(date);
+                log.setCalories(item.calories());
+                log.setProteinGrams(item.proteinGrams());
+                log.setCarbsGrams(item.carbsGrams());
+                log.setFatGrams(item.fatGrams());
+                log.setAiEstimateName(item.displayName());
+                log.setAiEstimateConfidence(item.aiEstimateConfidence());
+                log.setAiEstimateDetails(item.aiEstimateDetails());
+                foodLogs.save(log);
+            } else {
+                addMealLog(user, new AddMealLogRequest(item.itemType(), item.itemId(), item.mealType(),
+                        item.quantity(), item.unit(), date));
+            }
+        }
+    }
+
+    private DayPreset ownedDayPreset(AppUser user, Long id) {
+        return dayPresets.findByIdAndUserAndDeletedAtIsNull(id, user)
+                .orElseThrow(() -> new NotFoundException("El preset no existe."));
+    }
+
+    private String normalizedPresetName(String value) {
+        String name = value == null ? "" : value.trim();
+        if (name.isBlank()) throw new BadRequestException("El nombre del preset es obligatorio.");
+        return name;
+    }
+
+    private void ensurePresetNameAvailable(AppUser user, String name, Long ignoredId) {
+        boolean taken = dayPresets.existsActiveName(user, name);
+        if (taken && (ignoredId == null || dayPresets.findByIdAndUserAndDeletedAtIsNull(ignoredId, user)
+                .map(preset -> !preset.getName().equalsIgnoreCase(name)).orElse(true))) {
+            throw new BadRequestException("Ya existe un preset con ese nombre.");
+        }
+    }
+
+    private List<DayPresetItemRequest> validatePresetItems(List<DayPresetItemRequest> items) {
+        if (items == null || items.isEmpty()) throw new BadRequestException("El día no tiene alimentos para guardar.");
+        for (DayPresetItemRequest item : items) {
+            if (item.itemType() == MealItemType.AI_ESTIMATE) {
+                if (item.itemId() != null) throw new BadRequestException("La estimación no puede tener alimento asociado.");
+            } else if (item.itemId() == null || item.itemId() <= 0) {
+                throw new BadRequestException("El preset contiene un alimento inválido.");
+            }
+        }
+        return items;
+    }
+
+    private String writePresetItems(List<DayPresetItemRequest> items) {
+        try { return objectMapper.writeValueAsString(items); }
+        catch (JsonProcessingException error) { throw new BadRequestException("No se pudo guardar el contenido del preset."); }
+    }
+
+    private List<DayPresetItemRequest> readPresetItems(String json) {
+        try { return objectMapper.readValue(json, new TypeReference<List<DayPresetItemRequest>>() {}); }
+        catch (JsonProcessingException error) { throw new BadRequestException("El contenido del preset no es válido."); }
+    }
+
+    private DayPresetResponse toDayPresetResponse(DayPreset preset) {
+        List<DayPresetItemRequest> items = readPresetItems(preset.getItemsJson());
+        Map<String, Integer> mealCounts = items.stream().collect(Collectors.groupingBy(item -> item.mealType().name(),
+                LinkedHashMap::new, Collectors.collectingAndThen(Collectors.counting(), Long::intValue)));
+        return new DayPresetResponse(preset.getId(), preset.getName(), preset.getCreatedAt(), preset.getUpdatedAt(),
+                items, items.size(), mealCounts);
     }
 
     @Transactional

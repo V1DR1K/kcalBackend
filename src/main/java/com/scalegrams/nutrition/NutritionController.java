@@ -21,14 +21,18 @@ import com.scalegrams.common.CurrentUser;
 import com.scalegrams.nutrition.NutritionDtos.AddFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddWaterRequest;
+import com.scalegrams.nutrition.NutritionDtos.ApplyDayPresetRequest;
 import com.scalegrams.nutrition.NutritionDtos.BatchAddMealLogsRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddRecipeMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.DashboardResponse;
+import com.scalegrams.nutrition.NutritionDtos.CreateDayPresetRequest;
+import com.scalegrams.nutrition.NutritionDtos.DayPresetResponse;
 import com.scalegrams.nutrition.NutritionDtos.FoodLogResponse;
 import com.scalegrams.nutrition.NutritionDtos.HistoryResponse;
 import com.scalegrams.nutrition.NutritionDtos.MealTypeResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecentMealResponse;
 import com.scalegrams.nutrition.NutritionDtos.UpdateFoodLogRequest;
+import com.scalegrams.nutrition.NutritionDtos.UpdateDayPresetRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeLogIngredientsRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateResponse;
@@ -63,6 +67,35 @@ public class NutritionController {
     @GetMapping("/meal-types")
     List<MealTypeResponse> mealTypes() {
         return nutritionService.mealTypes();
+    }
+
+    @GetMapping("/day-presets")
+    List<DayPresetResponse> dayPresets(Authentication authentication) {
+        return nutritionService.dayPresets(currentUser.from(authentication));
+    }
+
+    @PostMapping("/day-presets")
+    DayPresetResponse createDayPreset(Authentication authentication, @Valid @RequestBody CreateDayPresetRequest request) {
+        return nutritionService.createDayPreset(currentUser.from(authentication), request);
+    }
+
+    @PutMapping("/day-presets/{id}")
+    DayPresetResponse updateDayPreset(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody UpdateDayPresetRequest request) {
+        return nutritionService.updateDayPreset(currentUser.from(authentication), id, request);
+    }
+
+    @DeleteMapping("/day-presets/{id}")
+    ResponseEntity<Void> deleteDayPreset(Authentication authentication, @PathVariable Long id) {
+        nutritionService.deleteDayPreset(currentUser.from(authentication), id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/day-presets/{id}/apply")
+    ResponseEntity<Void> applyDayPreset(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody ApplyDayPresetRequest request) {
+        nutritionService.applyDayPreset(currentUser.from(authentication), id, request);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/food-logs/{id}/nutrients")
