@@ -45,7 +45,7 @@ Variables utiles:
 - `FOOD_LOOKUP_ENABLED=true`
 - `FOOD_LOOKUP_TIMEOUT=3s`
 - `OPEN_FOOD_FACTS_BASE_URL=https://world.openfoodfacts.org`
-- `OPEN_FOOD_FACTS_USER_AGENT=ScaleGrams/0.1 (development; alex@scalegrams.local)`
+- `OPEN_FOOD_FACTS_USER_AGENT=ScaleGrams/0.1`
 - `USDA_FOOD_DATA_API_KEY=`
 - `APP_CATALOG_IMPORT_ENABLED=false`
 - `APP_CATALOG_IMPORT_BRANDS=Coca-Cola,Mogul,Milka,Fantoche,Ciudad del Lago,Arcor`
@@ -82,7 +82,7 @@ Los tests usan H2 en memoria y no necesitan Docker:
 
 ## Producción
 
-El perfil `prod` carga el catálogo base pero desactiva usuarios/datos demo y Swagger, valida el esquema y aplica las migraciones Flyway antes de iniciar. El HTTPS debe terminarse en el proxy o balanceador de la plataforma.
+El perfil `prod` carga el catálogo base y Swagger queda desactivado; valida el esquema y aplica las migraciones Flyway antes de iniciar. El HTTPS debe terminarse en el proxy o balanceador de la plataforma.
 
 Variables obligatorias:
 
@@ -90,7 +90,9 @@ Variables obligatorias:
 SPRING_DATASOURCE_URL=jdbc:postgresql://HOST:5432/DB
 SPRING_DATASOURCE_USERNAME=...
 SPRING_DATASOURCE_PASSWORD=...
-JWT_SECRET=una-clave-aleatoria-de-al-menos-32-bytes
+AUTH_SERVICE_URL=https://auth.ejemplo.com
+AUTH_PUBLIC_KEY_PEM="-----BEGIN PUBLIC KEY-----...-----END PUBLIC KEY-----"
+AUTH_DEFAULT_ROLE=USER
 CORS_ALLOWED_ORIGINS=https://app.ejemplo.com
 ```
 
@@ -110,13 +112,8 @@ java -jar target/scalegrams-backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=
 
 No se versionan claves TLS ni credenciales de producción. Las credenciales de `docker-compose.yml` son únicamente para desarrollo local.
 
-## Usuario demo
-
-- Email: `alex@scalegrams.local`
-- Password: `password123`
-
 ## Flujo base
 
-1. `POST /api/auth/register` o `POST /api/auth/login`
+1. `POST /api/auth/login` con `username` y `password`
 2. Usar `Authorization: Bearer <token>`
 3. Consultar dashboard, alimentos, historial y perfil.

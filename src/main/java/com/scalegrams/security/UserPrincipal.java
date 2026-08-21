@@ -22,6 +22,6 @@ public record UserPrincipal(AppUser user) implements UserDetails {
 
     @Override
     public String getUsername() {
-        return user.getEmail();
+        return user.getAuthUserId().toString();
     }
 }

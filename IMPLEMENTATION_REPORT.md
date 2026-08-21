@@ -7,7 +7,7 @@ El cliente frontend contiene prototipos HTML estaticos generados desde Google St
 ## Decisiones tecnicas
 
 - Spring Boot 3.5 + Java 21 para mantener el backend moderno y compatible con Jakarta.
-- Spring Security stateless con JWT Bearer para login, registro y consumo desde Vite.
+- Spring Security stateless con JWT RS256 de Auth central para login y consumo desde Vite.
 - Hibernate/JPA con PostgreSQL persistente por defecto; H2 queda solo para tests automatizados.
 - Enums para estados de dominio: `Gender`, `ActivityLevel`, `FitnessGoal`, `Role`, `FoodCategory`, `FoodUnit`, `MealType`.
 - OpenAPI en `/swagger-ui.html` para validar request/response desde navegador.
@@ -17,20 +17,11 @@ El cliente frontend contiene prototipos HTML estaticos generados desde Google St
 
 ### Iniciar sesion
 
-Necesita email y password.
+Necesita usuario y password gestionados por Auth central.
 
 - `POST /api/auth/login`
-- Request: `{ "email": "alex@scalegrams.local", "password": "password123" }`
-- Response: JWT Bearer y resumen del usuario.
-
-### Registro de usuario
-
-La pantalla tiene tres pasos: cuenta, datos fisicos y objetivo.
-
-- `POST /api/auth/register`
-- Request: `fullName`, `email`, `password`, `weightKg`, `heightCm`, `birthDate`, `gender`, `goal`, `activityLevel`.
-- Response: JWT Bearer y resumen del usuario.
-- El backend calcula metas iniciales de calorias y macros con Mifflin-St Jeor ajustado por actividad y objetivo.
+- Request: `{ "username": "tomas", "password": "..." }`
+- Response: JWT central Bearer, refresh token central y resumen del perfil local.
 
 ### Dashboard diario
 
@@ -92,14 +83,9 @@ El dashboard muestra litros consumidos contra meta.
 
 Se crean alimentos usados por las pantallas en cada arranque del modo mock: pechuga de pollo, arroz blanco, palta, yogur griego, atun en lata y banana.
 
-Tambien se crea usuario demo:
-
-- Email: `alex@scalegrams.local`
-- Password: `password123`
-
 ## Pendientes recomendados
 
 - Conectar el frontend HTML a estos endpoints o migrarlo a componentes reales.
-- Agregar refresh token si la app requiere sesiones largas.
+- Mantener configurados `AUTH_SERVICE_URL`, `AUTH_PUBLIC_KEY_PEM` y `AUTH_DEFAULT_ROLE` en cada entorno.
 - Agregar tests de controllers con Spring Security.
 - Mejorar unidades no basadas en gramos cuando el frontend defina equivalencias reales para porciones/unidades.

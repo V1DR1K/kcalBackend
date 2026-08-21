@@ -18,12 +18,11 @@ app:
   security:
     public-prometheus: false
   auth:
-    registration-enabled: false
+    service-url: ${AUTH_SERVICE_URL}
+    public-key-pem: ${AUTH_PUBLIC_KEY_PEM}
+    default-role: ${AUTH_DEFAULT_ROLE:USER}
   seed:
     catalog-enabled: true
-    demo-users-enabled: false
-  jwt:
-    secret: ${JWT_SECRET}
   ai-nutrition:
     daily-limit: ${AI_NUTRITION_DAILY_LIMIT:10}
   cors:

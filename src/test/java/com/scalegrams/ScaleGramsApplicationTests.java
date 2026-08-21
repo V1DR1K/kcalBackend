@@ -1,6 +1,7 @@
 package com.scalegrams;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +31,8 @@ import com.scalegrams.catalog.FoodCategory;
 import com.scalegrams.catalog.FoodPreparation;
 import com.scalegrams.catalog.FoodRepository;
 import com.scalegrams.catalog.FoodUnit;
+import com.scalegrams.auth.CentralAuthClient;
+import com.scalegrams.auth.CentralJwtService;
 import com.scalegrams.externalfood.ExternalFoodCandidate;
 import com.scalegrams.externalfood.ExternalFoodLookupService;
 import com.scalegrams.nutrition.FoodLog;
@@ -46,6 +50,12 @@ class ScaleGramsApplicationTests {
 	@MockBean
 	ExternalFoodLookupService externalFoodLookup;
 
+	@MockBean
+	CentralAuthClient centralAuth;
+
+	@MockBean
+	CentralJwtService centralJwt;
+
 	@Autowired
 	FoodLogRepository foodLogs;
 
@@ -59,6 +69,15 @@ class ScaleGramsApplicationTests {
 	void resetMocks() {
 		reset(externalFoodLookup);
 		when(externalFoodLookup.lookupByBarcode(anyString())).thenReturn(Optional.empty());
+		when(centralAuth.login(anyString(), anyString())).thenAnswer(invocation -> centralToken(invocation.getArgument(0, String.class)));
+		when(centralAuth.refresh(anyString())).thenReturn(centralToken("alex"));
+		when(centralJwt.subject(anyString())).thenAnswer(invocation -> UUID.nameUUIDFromBytes(invocation.getArgument(0, String.class).getBytes()));
+	}
+
+	private CentralAuthClient.TokenResponse centralToken(String username) {
+		String token = "central-token-" + username;
+		return new CentralAuthClient.TokenResponse(token, "central-refresh-" + username, "Bearer",
+				new CentralAuthClient.CentralUser(UUID.nameUUIDFromBytes(token.getBytes()), username, false));
 	}
 
 	@Test
@@ -145,75 +164,8 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
-	void seedsAdminUser() {
-		ResponseEntity<LoginResponse> login = rest.postForEntity("/api/auth/login",
-				new LoginRequest("admin@gmail.com", "admin"), LoginResponse.class);
-
-		assertThat(login.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(login.getBody().token()).isNotBlank();
-	}
-
-	@Test
-	void refreshTokenRotatesAndLogoutRevokes() {
-		ResponseEntity<LoginResponse> login = rest.postForEntity("/api/auth/login",
-				new LoginRequest("admin@gmail.com", "admin"), LoginResponse.class);
-		assertThat(login.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(login.getBody().refreshToken()).isNotBlank();
-
-		ResponseEntity<LoginResponse> rotated = rest.postForEntity("/api/auth/refresh",
-				new RefreshRequest(login.getBody().refreshToken()), LoginResponse.class);
-		assertThat(rotated.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(rotated.getBody().token()).isNotBlank();
-		assertThat(rotated.getBody().refreshToken()).isNotBlank();
-
-		rest.postForEntity("/api/auth/logout", new RefreshRequest(rotated.getBody().refreshToken()), Void.class);
-		ResponseEntity<String> reused = rest.postForEntity("/api/auth/refresh",
-				new RefreshRequest(rotated.getBody().refreshToken()), String.class);
-		assertThat(reused.getStatusCode().is4xxClientError()).isTrue();
-	}
-
-	@Test
-	void changePasswordRequiresCurrentPasswordAndIssuesNewSession() {
-		String email = "cambio@ejemplo.com";
-		ResponseEntity<LoginResponse> registered = rest.postForEntity("/api/auth/register",
-				new RegisterRequest("Cambio", email, "claveOriginal", 75, 175, "1995-01-01", "MALE", "MAINTAIN",
-						"MODERATELY_ACTIVE"),
-				LoginResponse.class);
-		assertThat(registered.getStatusCode().is2xxSuccessful()).isTrue();
-
-		HttpHeaders headers = new HttpHeaders();
-		headers.setBearerAuth(registered.getBody().token());
-
-		ResponseEntity<LoginResponse> changed = rest.exchange("/api/auth/change-password", HttpMethod.PUT,
-				new HttpEntity<>(new ChangePasswordRequest("claveOriginal", "nuevaClave123"), headers), LoginResponse.class);
-		assertThat(changed.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(changed.getBody().refreshToken()).isNotBlank();
-
-		ResponseEntity<LoginResponse> oldLogin = rest.postForEntity("/api/auth/login",
-				new LoginRequest(email, "claveOriginal"), LoginResponse.class);
-		assertThat(oldLogin.getStatusCode().is4xxClientError()).isTrue();
-
-		ResponseEntity<String> wrongPassword = rest.postForEntity("/api/auth/change-password",
-				new HttpEntity<>(new ChangePasswordRequest("mal", "otraClave"), headers), String.class);
-		assertThat(wrongPassword.getStatusCode().is4xxClientError()).isTrue();
-
-		ResponseEntity<LoginResponse> newLogin = rest.postForEntity("/api/auth/login",
-				new LoginRequest(email, "nuevaClave123"), LoginResponse.class);
-		assertThat(newLogin.getStatusCode().is2xxSuccessful()).isTrue();
-		rest.postForEntity("/api/auth/logout", new RefreshRequest(newLogin.getBody().refreshToken()), Void.class);
-	}
-
-	@Test
 	void weightHistoryUpsertsAndDeletesAndProfileWeightCreatesTodaysEntry() {
-		String email = "peso@ejemplo.com";
-		ResponseEntity<LoginResponse> registered = rest.postForEntity("/api/auth/register",
-				new RegisterRequest("Peso", email, "claveOriginal", 82, 175, "1995-01-01", "MALE", "MAINTAIN",
-						"MODERATELY_ACTIVE"),
-				LoginResponse.class);
-		assertThat(registered.getStatusCode().is2xxSuccessful()).isTrue();
-
-		HttpHeaders headers = new HttpHeaders();
-		headers.setBearerAuth(registered.getBody().token());
+		HttpHeaders headers = authHeaders();
 
 		ResponseEntity<List> empty = rest.exchange("/api/profile/weight-entries", HttpMethod.GET,
 				new HttpEntity<>(headers), List.class);
@@ -379,21 +331,10 @@ class ScaleGramsApplicationTests {
 
 	@Test
 	void usersCanExploreAndCopyRecipesWithoutTakingOwnershipOfTheOriginal() {
-		HttpHeaders alexHeaders = authHeaders();
-		Map<String, Object> registration = Map.of(
-				"fullName", "Recetas Compartidas",
-				"email", "recipes-share@example.com",
-				"password", "password123",
-				"weightKg", 70,
-				"heightCm", 170,
-				"birthDate", "1995-05-10",
-				"gender", "FEMALE",
-				"goal", "MAINTAIN",
-				"activityLevel", "MODERATELY_ACTIVE");
-		ResponseEntity<LoginResponse> registered = rest.postForEntity("/api/auth/register", new HttpEntity<>(registration), LoginResponse.class);
-		assertThat(registered.getStatusCode().is2xxSuccessful()).isTrue();
-		HttpHeaders ownerHeaders = new HttpHeaders();
-		ownerHeaders.setBearerAuth(registered.getBody().token());
+		HttpHeaders alexHeaders = authHeaders("alex");
+		HttpHeaders ownerHeaders = authHeaders("Recetas Compartidas");
+		Long ownerId = users.findAll().stream().filter(user -> "Recetas Compartidas".equals(user.getFullName()))
+				.findFirst().orElseThrow().getId();
 
 		Map<String, Object> recipe = Map.of(
 				"name", "Receta para compartir",
@@ -405,7 +346,7 @@ class ScaleGramsApplicationTests {
 
 		ResponseEntity<String> authors = rest.exchange("/api/recipes/explore/users", HttpMethod.GET,
 				new HttpEntity<>(alexHeaders), String.class);
-		ResponseEntity<String> sharedRecipes = rest.exchange("/api/recipes/explore/users/" + registered.getBody().user().id() + "?size=5",
+		ResponseEntity<String> sharedRecipes = rest.exchange("/api/recipes/explore/users/" + ownerId + "?size=5",
 				HttpMethod.GET, new HttpEntity<>(alexHeaders), String.class);
 		ResponseEntity<Map> copied = rest.exchange("/api/recipes/" + sharedId + "/copy", HttpMethod.POST,
 				new HttpEntity<>(alexHeaders), Map.class);
@@ -516,7 +457,7 @@ class ScaleGramsApplicationTests {
 	void userCanEditHistoricalAiEstimateAndSaveOneItemAsApprovedGlobalFood() {
 		HttpHeaders headers = authHeaders();
 		FoodLog log = new FoodLog();
-		log.setUser(users.findByEmailIgnoreCase("alex@scalegrams.local").orElseThrow());
+		log.setUser(users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow());
 		log.setItemType(MealItemType.AI_ESTIMATE);
 		log.setMealType(MealType.DINNER);
 		log.setLogDate(java.time.LocalDate.parse("2031-02-12"));
@@ -666,30 +607,29 @@ class ScaleGramsApplicationTests {
 
 	private HttpHeaders authHeaders() {
 		ResponseEntity<LoginResponse> login = rest.postForEntity("/api/auth/login",
-				new LoginRequest("alex@scalegrams.local", "password123"), LoginResponse.class);
+				new LoginRequest("alex", "central-password"), LoginResponse.class);
 		assertThat(login.getStatusCode().is2xxSuccessful()).isTrue();
 		HttpHeaders headers = new HttpHeaders();
-		headers.setBearerAuth(login.getBody().token());
+		headers.setBearerAuth(login.getBody().accessToken());
 		return headers;
 	}
 
-	record LoginRequest(String email, String password) {
+	private HttpHeaders authHeaders(String username) {
+		ResponseEntity<LoginResponse> login = rest.postForEntity("/api/auth/login",
+				new LoginRequest(username, "central-password"), LoginResponse.class);
+		assertThat(login.getStatusCode().is2xxSuccessful()).isTrue();
+		HttpHeaders headers = new HttpHeaders();
+		headers.setBearerAuth(login.getBody().accessToken());
+		return headers;
 	}
 
-	record LoginResponse(String token, String refreshToken, UserSummary user) {
+	record LoginRequest(String username, String password) {
+	}
+
+	record LoginResponse(String accessToken, String refreshToken, UserSummary user) {
 	}
 
 	record UserSummary(Long id) {
-	}
-
-	record RefreshRequest(String refreshToken) {
-	}
-
-	record ChangePasswordRequest(String currentPassword, String newPassword) {
-	}
-
-	record RegisterRequest(String fullName, String email, String password, Integer weightKg, Integer heightCm,
-			String birthDate, String gender, String goal, String activityLevel) {
 	}
 
 	record NutritionPlanRequest(String name, Integer dailyCalories, Integer proteinPercent, Integer carbsPercent,

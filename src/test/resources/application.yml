@@ -15,13 +15,11 @@ app:
   security:
     public-prometheus: true
   auth:
-    registration-enabled: true
+    service-url: http://localhost:8080
+    public-key-pem:
+    default-role: USER
   seed:
     catalog-enabled: true
-    demo-users-enabled: true
-  jwt:
-    secret: TestSecretKeyForJwtTokenSigningThatIsLongEnough123456789
-    expiration-minutes: 60
   storage:
     endpoint: http://localhost:7480
     public-base-url: http://localhost:7480

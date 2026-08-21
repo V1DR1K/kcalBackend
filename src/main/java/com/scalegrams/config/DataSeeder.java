@@ -1,41 +1,24 @@
 package com.scalegrams.config;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.Set;
 
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.scalegrams.catalog.Food;
 import com.scalegrams.catalog.FoodCategory;
 import com.scalegrams.catalog.FoodPreparation;
 import com.scalegrams.catalog.FoodRepository;
 import com.scalegrams.catalog.FoodUnit;
-import com.scalegrams.nutrition.FoodLog;
-import com.scalegrams.nutrition.FoodLogRepository;
-import com.scalegrams.nutrition.MealType;
-import com.scalegrams.nutrition.WaterLog;
-import com.scalegrams.nutrition.WaterLogRepository;
-import com.scalegrams.profile.NutritionPlan;
-import com.scalegrams.profile.NutritionPlanRepository;
-import com.scalegrams.user.ActivityLevel;
-import com.scalegrams.user.AppUser;
-import com.scalegrams.user.FitnessGoal;
-import com.scalegrams.user.Gender;
-import com.scalegrams.user.Role;
-import com.scalegrams.user.UserRepository;
 
 @Configuration
 public class DataSeeder {
     @Bean
-    CommandLineRunner seed(UserRepository users, FoodRepository foods, FoodLogRepository foodLogs,
-            WaterLogRepository waterLogs, NutritionPlanRepository nutritionPlans, PasswordEncoder passwordEncoder,
-            @Value("${app.seed.catalog-enabled:true}") boolean catalogEnabled,
-            @Value("${app.seed.demo-users-enabled:true}") boolean demoUsersEnabled) {
+    CommandLineRunner seed(FoodRepository foods,
+            @Value("${app.seed.catalog-enabled:true}") boolean catalogEnabled) {
         return args -> {
             if (catalogEnabled) {
             ensureFood(foods, "Pechuga de Pollo", "ScaleGrams Premium Select", "7790000000011", FoodCategory.PROTEIN,
@@ -373,64 +356,7 @@ public class DataSeeder {
             setServing(foods, "7790000001056", "Taza", 20);
             }
 
-            if (!demoUsersEnabled) return;
-            ensureAdmin(users, passwordEncoder);
-
-            if (!users.existsByEmailIgnoreCase("alex@scalegrams.local")) {
-                AppUser user = new AppUser();
-                user.setFullName("Alex Rivera");
-                user.setEmail("alex@scalegrams.local");
-                user.setPasswordHash(passwordEncoder.encode("password123"));
-                user.setWeightKg(BigDecimal.valueOf(75));
-                user.setHeightCm(BigDecimal.valueOf(180));
-                user.setTargetWeightKg(BigDecimal.valueOf(72));
-                user.setBirthDate(LocalDate.now().minusYears(28));
-                user.setGender(Gender.MALE);
-                user.setActivityLevel(ActivityLevel.VERY_ACTIVE);
-                user.setGoal(FitnessGoal.LOSE);
-                user.setNutritionStyle("Keto");
-                users.save(user);
-                if (nutritionPlans.findByUserAndActiveTrueOrderByStartDateDescIdDesc(user).isEmpty()) {
-                    NutritionPlan plan = new NutritionPlan();
-                    plan.setUser(user);
-                    plan.setName("Balanceado");
-                    plan.setDailyCalories(user.getDailyCalorieGoal());
-                    plan.setProteinPercent(BigDecimal.valueOf(30));
-                    plan.setCarbsPercent(BigDecimal.valueOf(40));
-                    plan.setFatPercent(BigDecimal.valueOf(30));
-                    plan.setProteinGoalGrams(user.getProteinGoalGrams());
-                    plan.setCarbsGoalGrams(user.getCarbsGoalGrams());
-                    plan.setFatGoalGrams(user.getFatGoalGrams());
-                    plan.setStartDate(LocalDate.now().minusYears(1));
-                    nutritionPlans.save(plan);
-                }
-
-                Food chicken = foods.findByBarcode("7790000000011").orElseThrow();
-                Food rice = foods.findByBarcode("7790000000028").orElseThrow();
-                Food yogurt = foods.findByBarcode("7790000000042").orElseThrow();
-                addLog(foodLogs, user, chicken, MealType.LUNCH, 150);
-                addLog(foodLogs, user, rice, MealType.LUNCH, 100);
-                addLog(foodLogs, user, yogurt, MealType.AFTERNOON_SNACK, 200);
-                WaterLog water = new WaterLog();
-                water.setUser(user);
-                water.setLogDate(LocalDate.now());
-                water.setLiters(BigDecimal.valueOf(1.5));
-                waterLogs.save(water);
-            }
         };
-    }
-
-    private static void ensureAdmin(UserRepository users, PasswordEncoder passwordEncoder) {
-        if (users.existsByEmailIgnoreCase("admin@gmail.com")) {
-            return;
-        }
-        AppUser admin = new AppUser();
-        admin.setFullName("Admin");
-        admin.setEmail("admin@gmail.com");
-        admin.setPasswordHash(passwordEncoder.encode("admin"));
-        admin.setRole(Role.ADMIN);
-        admin.setNutritionStyle("Balanceado");
-        users.save(admin);
     }
 
     private static void ensureFood(FoodRepository foods, String name, String brand, String barcode, FoodCategory category,
@@ -493,19 +419,4 @@ public class DataSeeder {
         }
     }
 
-    private static void addLog(FoodLogRepository foodLogs, AppUser user, Food food, MealType mealType, int quantity) {
-        BigDecimal ratio = BigDecimal.valueOf(quantity).divide(BigDecimal.valueOf(100));
-        FoodLog log = new FoodLog();
-        log.setUser(user);
-        log.setFood(food);
-        log.setMealType(mealType);
-        log.setLogDate(LocalDate.now());
-        log.setQuantity(BigDecimal.valueOf(quantity));
-        log.setUnit(FoodUnit.GRAM);
-        log.setCalories(BigDecimal.valueOf(food.getCalories()).multiply(ratio).intValue());
-        log.setProteinGrams(food.getProteinGrams().multiply(ratio));
-        log.setCarbsGrams(food.getCarbsGrams().multiply(ratio));
-        log.setFatGrams(food.getFatGrams().multiply(ratio));
-        foodLogs.save(log);
-    }
 }

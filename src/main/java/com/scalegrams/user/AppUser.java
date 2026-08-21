@@ -3,6 +3,7 @@ package com.scalegrams.user;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -29,11 +30,14 @@ public class AppUser {
     @Column(nullable = false)
     private String fullName;
 
-    @Column(nullable = false, unique = true)
+    @Column(unique = true)
     private String email;
 
-    @Column(nullable = false)
+    @Column
     private String passwordHash;
+
+    @Column(name = "auth_user_id", unique = true)
+    private UUID authUserId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

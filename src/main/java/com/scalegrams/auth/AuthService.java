@@ -1,138 +1,93 @@
 package com.scalegrams.auth;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.time.OffsetDateTime;
-import java.util.Base64;
+import java.util.Map;
+import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.scalegrams.auth.AuthDtos.AuthResponse;
 import com.scalegrams.auth.AuthDtos.LoginRequest;
-import com.scalegrams.auth.AuthDtos.RegisterRequest;
 import com.scalegrams.auth.AuthDtos.UserSummary;
 import com.scalegrams.common.BadRequestException;
-import com.scalegrams.security.JwtService;
 import com.scalegrams.user.AppUser;
+import com.scalegrams.user.Role;
 import com.scalegrams.user.UserRepository;
 
 @Service
 public class AuthService {
     private final UserRepository users;
-    private final PasswordEncoder passwordEncoder;
-    private final AuthenticationManager authenticationManager;
-    private final JwtService jwtService;
-    private final RefreshTokenRepository refreshTokens;
-    private final int refreshTokenDays;
-    private final SecureRandom secureRandom = new SecureRandom();
+    private final CentralAuthClient centralAuth;
+    private final CentralJwtService centralJwt;
+    private final Role defaultRole;
 
-    public AuthService(UserRepository users, PasswordEncoder passwordEncoder, AuthenticationManager authenticationManager,
-            JwtService jwtService, RefreshTokenRepository refreshTokens,
-            @Value("${app.jwt.refresh-token-days:30}") int refreshTokenDays) {
+    private static final Map<String, String> LEGACY_EMAIL_BY_USERNAME = Map.of(
+            "tomas", "tomicolombo20051@gmail.com",
+            "avril", "avril@ejemplo.com",
+            "balta", "balta@scalegrams.com");
+
+    public AuthService(UserRepository users, CentralAuthClient centralAuth, CentralJwtService centralJwt,
+            @org.springframework.beans.factory.annotation.Value("${app.auth.default-role:USER}") Role defaultRole) {
         this.users = users;
-        this.passwordEncoder = passwordEncoder;
-        this.authenticationManager = authenticationManager;
-        this.jwtService = jwtService;
-        this.refreshTokens = refreshTokens;
-        this.refreshTokenDays = refreshTokenDays;
-    }
-
-    @Transactional
-    public AuthResponse register(RegisterRequest request) {
-        if (users.existsByEmailIgnoreCase(request.email())) {
-            throw new BadRequestException("Ya existe una cuenta con ese email.");
-        }
-        AppUser user = new AppUser();
-        user.setFullName(request.fullName());
-        user.setEmail(request.email().toLowerCase());
-        user.setPasswordHash(passwordEncoder.encode(request.password()));
-        user.setWeightKg(request.weightKg());
-        user.setHeightCm(request.heightCm());
-        user.setBirthDate(request.birthDate());
-        user.setGender(request.gender());
-        user.setGoal(request.goal());
-        user.setActivityLevel(request.activityLevel());
-        NutritionGoalCalculator.apply(user);
-        users.save(user);
-        return createSession(user);
+        this.centralAuth = centralAuth;
+        this.centralJwt = centralJwt;
+        this.defaultRole = defaultRole;
     }
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
-        authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(request.email(), request.password()));
-        AppUser user = users.findByEmailIgnoreCase(request.email()).orElseThrow();
-        return createSession(user);
+        CentralAuthClient.TokenResponse central = centralAuth.login(request.username(), request.password());
+        return localSession(central);
     }
 
     @Transactional
-    public AuthResponse rotate(String rawRefreshToken) {
-        RefreshToken token = refreshTokens.findByTokenHash(hash(rawRefreshToken))
-                .orElseThrow(() -> new BadRequestException("Sesión inválida. Volvé a ingresar."));
-        if (token.getRevokedAt() != null || token.getExpiresAt().isBefore(OffsetDateTime.now())) {
-            revokeAll(token.getUser());
-            throw new BadRequestException("Sesión expirada. Volvé a ingresar.");
-        }
-        AppUser user = token.getUser();
-        if (refreshTokens.revokeIfActive(token.getId(), OffsetDateTime.now()) != 1) {
-            throw new BadRequestException("Sesión inválida. Volvé a ingresar.");
-        }
-        return createSession(user);
+    public AuthResponse refresh(String rawRefreshToken) {
+        return localSession(centralAuth.refresh(rawRefreshToken));
     }
 
-    @Transactional
-    public void revoke(String rawRefreshToken) {
+    public void logout(String rawRefreshToken) {
         if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
             return;
         }
-        refreshTokens.findByTokenHash(hash(rawRefreshToken)).ifPresent(token ->
-                refreshTokens.revokeIfActive(token.getId(), OffsetDateTime.now()));
+        centralAuth.logout(rawRefreshToken);
     }
 
     @Transactional
-    public void revokeAll(AppUser user) {
-        refreshTokens.revokeAllActive(user.getId(), OffsetDateTime.now());
+    public AuthResponse changePassword(AppUser user, String accessToken, String currentPassword, String newPassword) {
+        centralAuth.changePassword(accessToken, currentPassword, newPassword);
+        return new AuthResponse(null, "Bearer", null, null, false);
     }
 
-    @Transactional
-    public AuthResponse changePassword(AppUser user, String currentPassword, String newPassword) {
-        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
-            throw new BadRequestException("La contraseña actual es incorrecta.");
+    private AuthResponse localSession(CentralAuthClient.TokenResponse central) {
+        UUID authUserId = centralJwt.subject(central.accessToken());
+        if (!authUserId.equals(central.user().id())) {
+            throw new BadRequestException("El token central no coincide con el usuario autenticado.");
         }
-        user.setPasswordHash(passwordEncoder.encode(newPassword));
-        users.save(user);
-        revokeAll(user);
-        return createSession(user);
+        AppUser user = provision(authUserId, central.user().username());
+        return new AuthResponse(central.accessToken(), central.tokenType(), central.refreshToken(), summary(user, central.user().username()),
+                central.user().mustChangePassword());
     }
 
-    private AuthResponse createSession(AppUser user) {
-        byte[] raw = new byte[48];
-        secureRandom.nextBytes(raw);
-        String refreshValue = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
-
-        RefreshToken token = new RefreshToken();
-        token.setUser(user);
-        token.setTokenHash(hash(refreshValue));
-        token.setExpiresAt(OffsetDateTime.now().plusDays(refreshTokenDays));
-        refreshTokens.save(token);
-
-        return new AuthResponse(jwtService.generate(user), "Bearer", refreshValue,
-                new UserSummary(user.getId(), user.getFullName(), user.getEmail(), user.getPlanName(), user.getRole()));
-    }
-
-    private String hash(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 no está disponible", e);
+    private AppUser provision(UUID authUserId, String username) {
+        AppUser user = users.findByAuthUserId(authUserId).orElseGet(() -> {
+            String legacyEmail = LEGACY_EMAIL_BY_USERNAME.get(username.trim().toLowerCase());
+            return legacyEmail == null ? new AppUser() : users.findByEmailIgnoreCase(legacyEmail)
+                    .orElseGet(AppUser::new);
+        });
+        if (user.getAuthUserId() != null && !user.getAuthUserId().equals(authUserId)) {
+            throw new BadRequestException("La cuenta local ya está vinculada a otro usuario central.");
         }
+        boolean newUser = user.getId() == null;
+        user.setAuthUserId(authUserId);
+        user.setPasswordHash(null);
+        if (newUser) {
+            user.setFullName(username);
+            user.setRole(defaultRole);
+        }
+        return users.save(user);
+    }
+
+    private UserSummary summary(AppUser user, String username) {
+        return new UserSummary(user.getId(), username, user.getFullName(), user.getEmail(), user.getPlanName(), user.getRole());
     }
 }
