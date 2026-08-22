@@ -27,16 +27,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
+    protected boolean shouldNotFilterErrorDispatch() {
+        return false;
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         String header = request.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
+        if (header == null || !header.regionMatches(true, 0, "Bearer ", 0, 7)) {
             chain.doFilter(request, response);
             return;
         }
 
         try {
-            String token = header.substring(7);
+            String token = header.substring(7).trim();
+            if (token.isBlank()) throw new IllegalArgumentException("Bearer token is empty");
             UUID authUserId = jwtService.subject(token);
             if (SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserPrincipal userDetails = users.findByAuthUserId(authUserId)

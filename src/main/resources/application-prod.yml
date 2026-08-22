@@ -20,6 +20,7 @@ app:
   auth:
     service-url: ${AUTH_SERVICE_URL}
     public-key-pem: ${AUTH_PUBLIC_KEY_PEM}
+    issuer: ${AUTH_JWT_ISSUER:central-auth-service}
     default-role: ${AUTH_DEFAULT_ROLE:USER}
   seed:
     catalog-enabled: true

@@ -14,14 +14,17 @@ import io.jsonwebtoken.Jwts;
 @Service
 public class CentralJwtService {
     private final String publicKeyPem;
+    private final String issuer;
 
-    public CentralJwtService(@Value("${app.auth.public-key-pem:}") String publicKeyPem) {
+    public CentralJwtService(@Value("${app.auth.public-key-pem:}") String publicKeyPem,
+            @Value("${app.auth.issuer:central-auth-service}") String issuer) {
         this.publicKeyPem = publicKeyPem;
+        this.issuer = issuer;
     }
 
     public UUID subject(String token) {
         try {
-            var parsed = Jwts.parser().verifyWith(publicKey()).build().parseSignedClaims(token);
+            var parsed = Jwts.parser().verifyWith(publicKey()).requireIssuer(issuer).build().parseSignedClaims(token);
             if (!"RS256".equals(parsed.getHeader().getAlgorithm())) {
                 throw new IllegalArgumentException("El JWT central no usa RS256.");
             }
