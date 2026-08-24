@@ -36,13 +36,17 @@ public class GeminiNutritionClient {
     private static final List<String> FALLBACK_MODELS = List.of("gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.0-flash");
     private static final String PROMPT = """
             Analizá esta foto de comida para registrar un cheat meal. Respondé únicamente JSON válido.
-            Identificá los alimentos visibles y estimá por cada uno gramos, proteínas, carbohidratos y grasas.
+            Identificá los alimentos de la foto y del contexto declarado por la persona, y estimá por cada uno gramos, proteínas, carbohidratos y grasas.
+            El contexto declarado por la persona es información factual adicional, no una sugerencia: si menciona un alimento, ingrediente, bebida, salsa o cantidad aunque no sea visible, incluilo igualmente.
+            Para decidir si un alimento estaba presente, ausente o fue indicado con una cantidad explícita, priorizá la declaración de la persona sobre lo que pueda o no verse en la foto.
+            Usá la foto para estimar los alimentos visibles y las porciones que la persona no haya indicado; no descartes un alimento mencionado solo porque esté oculto, fuera del encuadre o no se distinga.
+            No agregues alimentos que no estén ni en la foto ni en el contexto declarado.
             Si no se puede asociar con una base nutricional confiable, incluí también nutrientes estimados en el objeto nutrients;
             no inventes valores para nutrientes desconocidos y omitilos. La aplicación marcará esos valores como ESTIMATED.
             Clasificá cada alimento con una categoría y preparación de esta lista exacta: categorías PROTEIN, MEAT, DAIRY, FRUIT, VEGETABLE, LEGUME, CEREAL, BAKERY, BEVERAGE, SWEET, SNACK, FAT, OTHER; preparaciones RAW, COOKED, AS_SOLD, UNSPECIFIED.
-            No inventes precisión: usá estimaciones conservadoras, incluí aceite, queso o salsas solo si son visibles,
-            y anotá las suposiciones. confidence debe ser un entero entre 0 y 100. Máximo 12 items.
-            Incluí una descripción breve de lo que se observa en la foto, sin afirmar ingredientes que no sean visibles.
+            No inventes precisión: usá estimaciones conservadoras, incluí aceite, queso o salsas si son visibles o fueron mencionados explícitamente,
+            y anotá las suposiciones, incluyendo cuando un alimento proviene del contexto y no es visible. confidence debe ser un entero entre 0 y 100. Máximo 12 items.
+            Incluí una descripción breve de lo observado y de los alimentos declarados por la persona, diferenciando ambos cuando corresponda.
             Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"category":"OTHER","preparation":"UNSPECIFIED","proteinGrams":0,"carbsGrams":0,"fatGrams":0,"nutrients":{"FIBER":0,"SODIUM":0}}]}
             """;
     private static final String TRANSCRIPTION_PROMPT = """
@@ -51,10 +55,12 @@ public class GeminiNutritionClient {
             """;
     private static final String REFINEMENT_PROMPT = """
             Revisá una estimación nutricional de una foto de comida. Respondé únicamente JSON válido con el mismo esquema indicado.
-            La foto es la evidencia principal. El contexto original y la corrección de la persona tienen prioridad sobre el borrador;
-            el borrador actual puede incluir cambios manuales y debe usarse como base, no como una fuente nutricional definitiva.
-            Aplicá la corrección a una lista completa de alimentos: agregá, quitá o ajustá ítems según corresponda.
-            No inventes precisión: usá estimaciones conservadoras, anotá las suposiciones y devolvé como máximo 12 ítems.
+            La observación original y la corrección de la persona son declaraciones explícitas sobre la comida y tienen prioridad para decidir qué alimentos están presentes, ausentes o deben modificarse;
+            no descartes un alimento mencionado solo porque no sea visible en la foto. La foto se usa para validar lo visible y estimar porciones no indicadas.
+            El borrador actual puede incluir cambios manuales y debe usarse como base, no como una fuente nutricional definitiva.
+            Aplicá la corrección a una lista completa de alimentos: agregá aunque no sean visibles, quitá o ajustá ítems según corresponda.
+            No agregues alimentos que no estén en la foto, la observación original, la corrección o el borrador. No inventes precisión: usá estimaciones conservadoras,
+            anotá las suposiciones, incluyendo cuando un alimento fue declarado por la persona pero no es visible, y devolvé como máximo 12 ítems.
             Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"category":"OTHER","preparation":"UNSPECIFIED","proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
             """;
 
@@ -208,8 +214,8 @@ public class GeminiNutritionClient {
 
     private static String nutritionPrompt(String context) {
         if (context == null || context.isBlank()) return PROMPT;
-        return PROMPT + "\nContexto opcional declarado por la persona: \"" + context
-                + "\". Usalo solo para identificar la comida; la foto sigue siendo la fuente principal.";
+        return PROMPT + "\nContexto declarado por la persona (información factual adicional): \"" + context
+                + "\". Incluí los alimentos, ingredientes, bebidas, salsas y cantidades mencionados aunque no aparezcan en la foto; no los descartes por falta de evidencia visual.";
     }
 
     private String refinementPrompt(String context, AiEstimateDraft currentEstimate, String correction) {
