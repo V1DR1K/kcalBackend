@@ -33,6 +33,8 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 
     java.util.List<Food> findByCreatedByIdAndDeletedAtIsNullOrderByCreatedAtDesc(Long createdById);
 
+    java.util.List<Food> findByCreatedByIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(Long createdById);
+
     Page<Food> findByNameContainingIgnoreCaseAndCategory(String name, FoodCategory category, Pageable pageable);
 
     @Query("select f from Food f where f.deletedAt is null and f.moderationStatus = :status and (" +

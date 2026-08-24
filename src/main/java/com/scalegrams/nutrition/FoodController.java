@@ -55,6 +55,11 @@ public class FoodController {
         return nutritionService.findFoodsCreatedBy(currentUser.from(authentication));
     }
 
+    @GetMapping("/mine/deleted")
+    List<FoodResponse> deleted(Authentication authentication) {
+        return nutritionService.findDeletedFoodsCreatedBy(currentUser.from(authentication));
+    }
+
     @PutMapping("/{id}")
     FoodResponse update(Authentication authentication, @PathVariable Long id, @Valid @RequestBody CreateFoodRequest request) {
         return nutritionService.updateOwnedFood(id, request, currentUser.from(authentication));
@@ -64,6 +69,11 @@ public class FoodController {
     ResponseEntity<Void> delete(Authentication authentication, @PathVariable Long id) {
         nutritionService.deleteOwnedFood(id, currentUser.from(authentication));
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/restore")
+    FoodResponse restore(Authentication authentication, @PathVariable Long id) {
+        return nutritionService.restoreOwnedFood(id, currentUser.from(authentication));
     }
 
     @GetMapping("/{id}")

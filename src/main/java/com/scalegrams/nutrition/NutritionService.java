@@ -296,6 +296,11 @@ public class NutritionService {
         return foods.findByCreatedByIdAndDeletedAtIsNullOrderByCreatedAtDesc(creator.getId()).stream().map(this::toFoodResponse).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<FoodResponse> findDeletedFoodsCreatedBy(com.scalegrams.user.AppUser creator) {
+        return foods.findByCreatedByIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(creator.getId()).stream().map(this::toFoodResponse).toList();
+    }
+
     @Transactional
     public FoodResponse updateOwnedFood(Long id, CreateFoodRequest request, com.scalegrams.user.AppUser creator) {
         Food food = getFood(id);
@@ -339,6 +344,16 @@ public class NutritionService {
         }
         if (food.getDeletedAt() == null) food.setDeletedAt(OffsetDateTime.now());
         foods.save(food);
+    }
+
+    @Transactional
+    public FoodResponse restoreOwnedFood(Long id, com.scalegrams.user.AppUser creator) {
+        Food food = getFood(id);
+        if (food.getCreatedBy() == null || !food.getCreatedBy().getId().equals(creator.getId())) {
+            throw new BadRequestException("Solo podés recuperar alimentos creados por vos.");
+        }
+        food.setDeletedAt(null);
+        return toFoodResponse(foods.save(food));
     }
 
     @Transactional(readOnly = true)

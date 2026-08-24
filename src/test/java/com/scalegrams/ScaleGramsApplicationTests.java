@@ -540,6 +540,10 @@ class ScaleGramsApplicationTests {
 
 		ResponseEntity<Void> deleted = rest.exchange("/api/foods/" + foodId, HttpMethod.DELETE,
 				new HttpEntity<>(headers), Void.class);
+		ResponseEntity<String> deletedMine = rest.exchange("/api/foods/mine/deleted", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> forbiddenRestore = rest.exchange("/api/foods/" + foodId + "/restore", HttpMethod.POST,
+				new HttpEntity<>(authHeaders("Recetas Compartidas")), String.class);
 		ResponseEntity<String> mine = rest.exchange("/api/foods/mine", HttpMethod.GET,
 				new HttpEntity<>(headers), String.class);
 		ResponseEntity<String> search = rest.exchange("/api/foods?q=lógico&page=0&size=20", HttpMethod.GET,
@@ -549,11 +553,30 @@ class ScaleGramsApplicationTests {
 		ResponseEntity<String> newRecipe = rest.postForEntity("/api/recipes", new HttpEntity<>(recipe, headers), String.class);
 
 		assertThat(deleted.getStatusCode().value()).isEqualTo(204);
+		assertThat(deletedMine.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(deletedMine.getBody()).contains("Alimento lógico para borrar");
+		assertThat(forbiddenRestore.getStatusCode().value()).isEqualTo(400);
 		assertThat(search.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(mine.getBody()).doesNotContain("Alimento lógico para borrar");
 		assertThat(search.getBody()).doesNotContain("Alimento lógico para borrar");
 		assertThat(newRecipe.getStatusCode().value()).isEqualTo(404);
 		assertThat(foods.findById(((Number) foodId).longValue()).orElseThrow().getDeletedAt()).isNotNull();
+
+		ResponseEntity<String> restored = rest.exchange("/api/foods/" + foodId + "/restore", HttpMethod.POST,
+				new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> restoredMine = rest.exchange("/api/foods/mine", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> restoredSearch = rest.exchange("/api/foods?q=lógico&page=0&size=20",
+				HttpMethod.GET, new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> deletedMineAfterRestore = rest.exchange("/api/foods/mine/deleted", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+
+		assertThat(restored.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(restored.getBody()).contains("Alimento lógico para borrar");
+		assertThat(restoredMine.getBody()).contains("Alimento lógico para borrar");
+		assertThat(restoredSearch.getBody()).contains("Alimento lógico para borrar");
+		assertThat(deletedMineAfterRestore.getBody()).doesNotContain("Alimento lógico para borrar");
+		assertThat(foods.findById(((Number) foodId).longValue()).orElseThrow().getDeletedAt()).isNull();
 	}
 
 	@Test
