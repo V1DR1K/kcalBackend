@@ -119,6 +119,25 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void updatingCurrentNutritionPlanRefreshesProfileAndDashboardValues() {
+		HttpHeaders headers = authHeaders();
+		String date = java.time.LocalDate.now().toString();
+		ResponseEntity<NutritionPlanResponse> created = rest.postForEntity("/api/profile/nutrition-plans",
+				new HttpEntity<>(new NutritionPlanRequest("Plan vigente", 2200, 25, 50, 25, date, null), headers), NutritionPlanResponse.class);
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+
+		ResponseEntity<String> updated = rest.exchange("/api/profile/nutrition-plans/" + created.getBody().id(), HttpMethod.PUT,
+				new HttpEntity<>(new NutritionPlanRequest("Plan vigente ajustado", 2400, 30, 45, 25, date, null), headers), String.class);
+		assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
+
+		ResponseEntity<String> profile = rest.exchange("/api/profile", HttpMethod.GET, new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard?date=" + date, HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		assertThat(profile.getBody()).contains("\"dailyCalorieGoal\":2400", "\"proteinGoalGrams\":180", "\"carbsGoalGrams\":270");
+		assertThat(dashboard.getBody()).contains("\"calorieGoal\":2400", "\"name\":\"Plan vigente ajustado\"");
+	}
+
+	@Test
 	void creatingPlanOnSameDayReplacesActivePlan() {
 		HttpHeaders headers = authHeaders();
 		NutritionPlanRequest first = new NutritionPlanRequest("Plan A", 2200, 25, 50, 25, "2026-09-01", null);
