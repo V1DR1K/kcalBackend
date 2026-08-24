@@ -719,12 +719,16 @@ public class NutritionService {
 
     @Transactional
     public FoodLogResponse addMealLog(AppUser user, AddMealLogRequest request) {
+        return addMealLog(user, request, false);
+    }
+
+    private FoodLogResponse addMealLog(AppUser user, AddMealLogRequest request, boolean allowDeletedFoods) {
         NutritionPreviewResponse preview;
         FoodLog log = new FoodLog();
         log.setUser(user);
         log.setItemType(request.itemType());
         if (request.itemType() == MealItemType.FOOD) {
-            Food food = getActiveFood(request.itemId());
+            Food food = allowDeletedFoods ? getFood(request.itemId()) : getActiveFood(request.itemId());
             preview = preview(food, request.quantity(), request.unit());
             log.setFood(food);
         } else if (request.itemType() == MealItemType.RECIPE) {
@@ -747,7 +751,7 @@ public class NutritionService {
 
     @Transactional
     public List<FoodLogResponse> addMealLogs(AppUser user, BatchAddMealLogsRequest request) {
-        return request.logs().stream().map(item -> addMealLog(user, item)).toList();
+        return request.logs().stream().map(item -> addMealLog(user, item, true)).toList();
     }
 
     @Transactional(readOnly = true)

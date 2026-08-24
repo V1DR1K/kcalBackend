@@ -551,6 +551,13 @@ class ScaleGramsApplicationTests {
 		Map<String, Object> recipe = Map.of("name", "No usa alimento borrado", "description", "",
 				"ingredients", List.of(Map.of("foodId", foodId, "quantity", 100, "unit", "GRAM")));
 		ResponseEntity<String> newRecipe = rest.postForEntity("/api/recipes", new HttpEntity<>(recipe, headers), String.class);
+		Map<String, Object> copiedDeletedFood = Map.of("logs", List.of(
+				Map.of("itemType", "FOOD", "itemId", foodId, "mealType", "DINNER", "quantity", 100, "unit", "GRAM", "logDate", "2032-03-11")));
+		ResponseEntity<String> copiedDeleted = rest.postForEntity("/api/nutrition/meal-logs/batch",
+				new HttpEntity<>(copiedDeletedFood, headers), String.class);
+		ResponseEntity<String> directNewLog = rest.postForEntity("/api/nutrition/meal-logs",
+				new HttpEntity<>(Map.of("itemType", "FOOD", "itemId", foodId, "mealType", "DINNER", "quantity", 100,
+						"unit", "GRAM", "logDate", "2032-03-12"), headers), String.class);
 
 		assertThat(deleted.getStatusCode().value()).isEqualTo(204);
 		assertThat(deletedMine.getStatusCode().is2xxSuccessful()).isTrue();
@@ -560,6 +567,9 @@ class ScaleGramsApplicationTests {
 		assertThat(mine.getBody()).doesNotContain("Alimento lógico para borrar");
 		assertThat(search.getBody()).doesNotContain("Alimento lógico para borrar");
 		assertThat(newRecipe.getStatusCode().value()).isEqualTo(404);
+		assertThat(copiedDeleted.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(copiedDeleted.getBody()).contains("\"itemType\":\"FOOD\"");
+		assertThat(directNewLog.getStatusCode().value()).isEqualTo(404);
 		assertThat(foods.findById(((Number) foodId).longValue()).orElseThrow().getDeletedAt()).isNotNull();
 
 		ResponseEntity<String> restored = rest.exchange("/api/foods/" + foodId + "/restore", HttpMethod.POST,
