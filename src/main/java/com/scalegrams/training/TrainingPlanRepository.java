@@ -16,7 +16,7 @@ public interface TrainingPlanRepository extends JpaRepository<TrainingPlan, Long
             select preset from TrainingPlan preset
             where preset.owner = :owner
               and preset.deletedAt is null
-              and (:module is null or preset.module = :module)
+              and preset.module = coalesce(:module, preset.module)
               and (:includeInactive = true or preset.active = true)
             """)
     Page<TrainingPlan> search(@Param("owner") AppUser owner, @Param("module") TrainingModule module,
@@ -41,7 +41,7 @@ public interface TrainingPlanRepository extends JpaRepository<TrainingPlan, Long
               and preset.module = :module
               and lower(preset.name) = lower(:name)
               and preset.deletedAt is null
-              and (:excludedId is null or preset.id <> :excludedId)
+              and preset.id <> coalesce(:excludedId, 0)
             """)
     boolean existsLiveName(@Param("owner") AppUser owner, @Param("module") TrainingModule module,
             @Param("name") String name, @Param("excludedId") Long excludedId);

@@ -23,14 +23,16 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
     @EntityGraph(attributePaths = {"sourcePlan", "sourcePlanDay"})
     @Query("""
             select session from TrainingSession session
+            left join session.sourcePlan sourcePlan
+            left join session.sourcePlanDay sourcePlanDay
             where session.user = :user
-              and (:fromDate is null or session.sessionDate >= :fromDate)
-              and (:toDate is null or session.sessionDate <= :toDate)
-              and (:date is null or session.sessionDate = :date)
-              and (:module is null or session.module = :module)
-              and (:status is null or session.status = :status)
-              and (:presetId is null or session.sourcePlan.id = :presetId)
-              and (:trainingDayId is null or session.sourcePlanDay.id = :trainingDayId)
+              and session.sessionDate >= coalesce(:fromDate, session.sessionDate)
+              and session.sessionDate <= coalesce(:toDate, session.sessionDate)
+              and session.sessionDate = coalesce(:date, session.sessionDate)
+              and session.module = coalesce(:module, session.module)
+              and session.status = coalesce(:status, session.status)
+              and coalesce(sourcePlan.id, 0) = coalesce(:presetId, coalesce(sourcePlan.id, 0))
+              and coalesce(sourcePlanDay.id, 0) = coalesce(:trainingDayId, coalesce(sourcePlanDay.id, 0))
             """)
     Page<TrainingSession> search(@Param("user") AppUser user, @Param("fromDate") LocalDate fromDate,
             @Param("toDate") LocalDate toDate, @Param("date") LocalDate date,
