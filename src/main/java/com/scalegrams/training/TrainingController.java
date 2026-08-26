@@ -24,7 +24,7 @@ import com.scalegrams.training.TrainingDtos.ReorderRequest;
 import com.scalegrams.training.TrainingDtos.TrainingCalendarDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingDashboardResponse;
 import com.scalegrams.training.TrainingDtos.TrainingDayResponse;
-import com.scalegrams.training.TrainingDots.TrainingExerciseResponse;
+import com.scalegrams.training.TrainingDtos.TrainingExerciseResponse;
 import com.scalegrams.training.TrainingDtos.TrainingModuleResponse;
 import com.scalegrams.training.TrainingDtos.TrainingPresetDetailResponse;
 import com.scalegrams.training.TrainingDtos.TrainingPresetExerciseResponse;
