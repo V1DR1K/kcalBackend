@@ -63,6 +63,13 @@ public class GeminiNutritionClient {
             anotá las suposiciones, incluyendo cuando un alimento fue declarado por la persona pero no es visible, y devolvé como máximo 12 ítems.
             Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"category":"OTHER","preparation":"UNSPECIFIED","proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
             """;
+    private static final String COOKED_YIELD_PROMPT = """
+            Estimá el rendimiento de cocción de un alimento para una receta casera. Respondé únicamente JSON válido.
+            El factor es peso cocido dividido por peso crudo comestible. Considerá una preparación doméstica estándar,
+            sin aceite, salsas ni agua agregados, y sin descartar partes comestibles. No cambies ni estimes macronutrientes.
+            Devolvé un factor realista entre 0.05 y 10 y un supuesto breve en español.
+            Esquema: {"cookedYieldFactor":0.0,"assumption":"..."}
+            """;
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -157,6 +164,43 @@ public class GeminiNutritionClient {
         }
     }
 
+    /** This administrative path deliberately bypasses per-user meal-estimation quotas. */
+    public CookedYieldEstimate estimateCookedYield(String foodName, FoodCategory category, FoodPreparation preparation) {
+        if (!properties.isEnabled() || properties.getGeminiApiKey() == null || properties.getGeminiApiKey().isBlank()) {
+            throw new AiProviderException("AI_PROVIDER_CONFIGURATION", HttpStatus.SERVICE_UNAVAILABLE,
+                    "Gemini no está configurado para completar rendimientos de cocción.");
+        }
+        try {
+            String context = "Alimento: \"" + foodName + "\". Categoría: " + category
+                    + ". Estado informado: " + preparation + ".";
+            String text = responseText(generateContent(List.of(Map.of("text", COOKED_YIELD_PROMPT + "\n" + context)), true));
+            if (text == null || text.isBlank()) throw invalidCookedYieldResponse();
+            JsonNode result = objectMapper.readTree(stripCodeFence(text));
+            BigDecimal factor = strictDecimal(result, "cookedYieldFactor");
+            if (factor.compareTo(new BigDecimal("0.05")) < 0 || factor.compareTo(BigDecimal.TEN) > 0) {
+                throw invalidCookedYieldResponse();
+            }
+            String assumption = result.path("assumption").asText("").trim();
+            if (assumption.isBlank()) throw invalidCookedYieldResponse();
+            return new CookedYieldEstimate(factor.setScale(4, java.math.RoundingMode.HALF_UP),
+                    assumption.substring(0, Math.min(assumption.length(), 240)));
+        } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            log.warn("Gemini cooked-yield estimation failed with upstream status {} ({})", status, upstreamReason(ex));
+            if (status == 401 || status == 403) {
+                throw new AiProviderException("AI_PROVIDER_CONFIGURATION", HttpStatus.SERVICE_UNAVAILABLE,
+                        "Gemini no está configurado para completar rendimientos de cocción.");
+            }
+            throw new AiProviderException("AI_PROVIDER_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE,
+                    "Gemini no está disponible para completar rendimientos de cocción.");
+        } catch (AiProviderException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.warn("Gemini cooked-yield estimation did not return valid JSON: {}", ex.getClass().getSimpleName());
+            throw invalidCookedYieldResponse();
+        }
+    }
+
     public String transcribe(byte[] audio, String contentType) {
         try {
             String transcript = responseText(generateContent(List.of(
@@ -239,6 +283,11 @@ public class GeminiNutritionClient {
                 "No pudimos identificar alimentos en esta foto. Elegí una imagen más clara o probá con otra.");
     }
 
+    private static AiProviderException invalidCookedYieldResponse() {
+        return new AiProviderException("AI_PROVIDER_INVALID_RESPONSE", HttpStatus.SERVICE_UNAVAILABLE,
+                "Gemini devolvió un rendimiento de cocción no válido.");
+    }
+
     private String upstreamReason(RestClientResponseException ex) {
         try {
             return objectMapper.readTree(ex.getResponseBodyAsString()).path("error").path("status").asText("unknown");
@@ -253,6 +302,16 @@ public class GeminiNutritionClient {
             return value.max(BigDecimal.ZERO).setScale(1, java.math.RoundingMode.HALF_UP);
         } catch (NumberFormatException ex) {
             return BigDecimal.ZERO;
+        }
+    }
+
+    private static BigDecimal strictDecimal(JsonNode node, String field) {
+        try {
+            BigDecimal value = new BigDecimal(node.path(field).asText());
+            if (value.signum() <= 0) throw new NumberFormatException();
+            return value;
+        } catch (NumberFormatException ex) {
+            throw invalidCookedYieldResponse();
         }
     }
 
@@ -289,5 +348,8 @@ public class GeminiNutritionClient {
     public record AiNutritionItem(String name, BigDecimal estimatedGrams, FoodCategory category,
             FoodPreparation preparation, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
             Map<String, BigDecimal> nutrients) {
+    }
+
+    public record CookedYieldEstimate(BigDecimal factor, String assumption) {
     }
 }

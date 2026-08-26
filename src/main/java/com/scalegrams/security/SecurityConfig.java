@@ -43,6 +43,7 @@ public class SecurityConfig {
                         auth.requestMatchers("/actuator/prometheus").hasRole("ADMIN");
                     }
                     auth.requestMatchers("/actuator/**").hasRole("ADMIN")
+                            .requestMatchers("/api/admin/**").hasRole("ADMIN")
                             .requestMatchers(HttpMethod.POST, "/api/foods", "/api/foods/*/image").authenticated()
                             .anyRequest().authenticated();
                 })

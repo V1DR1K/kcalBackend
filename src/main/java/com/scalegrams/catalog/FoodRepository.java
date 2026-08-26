@@ -31,6 +31,10 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 
     Page<Food> findByModerationStatusAndCategoryAndDeletedAtIsNull(ModerationStatus status, FoodCategory category, Pageable pageable);
 
+    Page<Food> findByDeletedAtIsNullAndCookedYieldFactorIsNull(Pageable pageable);
+
+    long countByDeletedAtIsNullAndCookedYieldFactorIsNull();
+
     java.util.List<Food> findByCreatedByIdAndDeletedAtIsNullOrderByCreatedAtDesc(Long createdById);
 
     java.util.List<Food> findByCreatedByIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(Long createdById);

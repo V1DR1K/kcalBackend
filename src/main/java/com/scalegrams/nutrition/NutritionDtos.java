@@ -10,6 +10,7 @@ import java.util.Map;
 import com.scalegrams.catalog.FoodCategory;
 import com.scalegrams.catalog.FoodUnit;
 import com.scalegrams.catalog.FoodPreparation;
+import com.scalegrams.catalog.CookedYieldSource;
 import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
 
 import jakarta.validation.Valid;
@@ -36,7 +37,8 @@ public class NutritionDtos {
             BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
             FoodPreparation preparation, String preparationSource, String preparationGroup, String servingName, BigDecimal servingWeightGrams,
             String imageUrl, String source, String sourceId, OffsetDateTime lastSyncedAt, Set<String> tags,
-            Long createdById, OffsetDateTime createdAt, ModerationStatus moderationStatus, List<NutrientValueResponse> nutrients) {
+            Long createdById, OffsetDateTime createdAt, ModerationStatus moderationStatus, List<NutrientValueResponse> nutrients,
+            BigDecimal cookedYieldFactor, CookedYieldSource cookedYieldSource, String cookedYieldAssumption) {
         public FoodResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
                 BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
                 FoodPreparation preparation, String preparationSource, String preparationGroup, String servingName, BigDecimal servingWeightGrams,
@@ -44,20 +46,21 @@ public class NutritionDtos {
                 Long createdById, OffsetDateTime createdAt, ModerationStatus moderationStatus) {
             this(id, name, brand, barcode, category, baseUnit, baseQuantity, calories, proteinGrams, carbsGrams, fatGrams,
                     preparation, preparationSource, preparationGroup, servingName, servingWeightGrams, imageUrl, source, sourceId,
-                    lastSyncedAt, tags, createdById, createdAt, moderationStatus, List.of());
+                    lastSyncedAt, tags, createdById, createdAt, moderationStatus, List.of(), null, null, null);
         }
     }
 
     public record FoodSummaryResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
             BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams,
             BigDecimal fatGrams, FoodPreparation preparation, String preparationGroup, String servingName,
-            BigDecimal servingWeightGrams, String imageUrl, List<NutrientValueResponse> nutrients) {
+            BigDecimal servingWeightGrams, String imageUrl, List<NutrientValueResponse> nutrients,
+            BigDecimal cookedYieldFactor, CookedYieldSource cookedYieldSource, String cookedYieldAssumption) {
         public FoodSummaryResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
                 BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams,
                 BigDecimal fatGrams, FoodPreparation preparation, String preparationGroup, String servingName,
                 BigDecimal servingWeightGrams, String imageUrl) {
             this(id, name, brand, barcode, category, baseUnit, baseQuantity, calories, proteinGrams, carbsGrams, fatGrams,
-                    preparation, preparationGroup, servingName, servingWeightGrams, imageUrl, List.of());
+                    preparation, preparationGroup, servingName, servingWeightGrams, imageUrl, List.of(), null, null, null);
         }
     }
 
@@ -78,7 +81,13 @@ public class NutritionDtos {
             FoodPreparation preparation,
             @Size(max = 80) String servingName,
             @Positive BigDecimal servingWeightGrams,
-            @Size(max = 10) Set<@Size(max = 40) String> tags) {
+            @Size(max = 10) Set<@Size(max = 40) String> tags,
+            @Positive @DecimalMax("10") BigDecimal cookedYieldFactor,
+            @Size(max = 240) String cookedYieldAssumption) {
+        @AssertTrue(message = "El supuesto de rendimiento requiere un factor manual.")
+        public boolean hasFactorWhenCookedYieldAssumptionIsProvided() {
+            return cookedYieldAssumption == null || cookedYieldAssumption.isBlank() || cookedYieldFactor != null;
+        }
     }
 
     public record NutritionPreviewRequest(@NotNull Long foodId, @Positive BigDecimal quantity, @NotNull FoodUnit unit) {
@@ -122,14 +131,15 @@ public class NutritionDtos {
 
     public record FoodLogResponse(Long id, LocalDate logDate, MealType mealType, MealItemType itemType, FoodResponse food,
             RecipeResponse recipe, BigDecimal quantity,
-            FoodUnit unit, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
+            FoodUnit unit, BigDecimal recipeRawTotalWeightGrams, BigDecimal recipeCookedTotalWeightGrams,
+            Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
             boolean recipeAdjusted, String displayName, Integer aiEstimateConfidence, String aiEstimateDetails,
             List<NutrientValueResponse> nutrients) {
         public FoodLogResponse(Long id, LocalDate logDate, MealType mealType, MealItemType itemType, FoodResponse food,
                 RecipeResponse recipe, BigDecimal quantity, FoodUnit unit, Integer calories, BigDecimal proteinGrams,
                 BigDecimal carbsGrams, BigDecimal fatGrams, boolean recipeAdjusted, String displayName,
                 Integer aiEstimateConfidence, String aiEstimateDetails) {
-            this(id, logDate, mealType, itemType, food, recipe, quantity, unit, calories, proteinGrams, carbsGrams, fatGrams,
+            this(id, logDate, mealType, itemType, food, recipe, quantity, unit, null, null, calories, proteinGrams, carbsGrams, fatGrams,
                     recipeAdjusted, displayName, aiEstimateConfidence, aiEstimateDetails, List.of());
         }
     }
@@ -298,19 +308,27 @@ public class NutritionDtos {
             @NotBlank @Size(min = 2, max = 120) String name,
             @Size(max = 500) String description,
             BigDecimal totalWeightGrams,
+            @Positive BigDecimal cookedTotalWeightGrams,
+            boolean clearCookedTotalWeight,
             @NotEmpty @Size(max = 50) List<@NotNull RecipeIngredientRequest> ingredients) {
+        @AssertTrue(message = "No se puede informar y borrar el peso cocido al mismo tiempo.")
+        public boolean hasConsistentCookedWeightInstruction() {
+            return !clearCookedTotalWeight || cookedTotalWeightGrams == null;
+        }
     }
 
     public record RecipeIngredientResponse(FoodResponse food, BigDecimal quantity, FoodUnit unit) {
     }
 
-    public record RecipeResponse(Long id, String name, String description, BigDecimal totalWeightGrams, Integer calories,
+    public record RecipeResponse(Long id, String name, String description, BigDecimal totalWeightGrams,
+            BigDecimal rawTotalWeightGrams, BigDecimal cookedTotalWeightGrams, Integer calories,
             BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
             List<RecipeIngredientResponse> ingredients, List<NutrientValueResponse> nutrients) {
         public RecipeResponse(Long id, String name, String description, BigDecimal totalWeightGrams, Integer calories,
                 BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
                 List<RecipeIngredientResponse> ingredients) {
-            this(id, name, description, totalWeightGrams, calories, proteinGrams, carbsGrams, fatGrams, ingredients, List.of());
+            this(id, name, description, totalWeightGrams, totalWeightGrams, null, calories, proteinGrams, carbsGrams, fatGrams,
+                    ingredients, List.of());
         }
     }
 

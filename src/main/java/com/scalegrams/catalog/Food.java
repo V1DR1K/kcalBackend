@@ -64,6 +64,11 @@ public class Food {
     private String preparationGroup;
     private String servingName;
     private BigDecimal servingWeightGrams;
+    private BigDecimal cookedYieldFactor;
+    @Enumerated(EnumType.STRING)
+    private CookedYieldSource cookedYieldSource;
+    @Column(length = 240)
+    private String cookedYieldAssumption;
     @Column(length = 500)
     private String imageUrl;
     @Column(length = 500)

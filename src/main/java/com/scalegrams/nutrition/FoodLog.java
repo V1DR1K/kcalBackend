@@ -60,6 +60,10 @@ public class FoodLog {
 
     private LocalDate logDate;
     private BigDecimal quantity;
+    @Column(name = "recipe_raw_total_weight_grams")
+    private BigDecimal recipeRawTotalWeightGrams;
+    @Column(name = "recipe_cooked_total_weight_grams")
+    private BigDecimal recipeCookedTotalWeightGrams;
     private Integer calories;
     private BigDecimal proteinGrams;
     private BigDecimal carbsGrams;

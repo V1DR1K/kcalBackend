@@ -41,6 +41,11 @@ public class Recipe {
     @Column(nullable = false)
     private BigDecimal totalWeightGrams;
 
+    @Column(nullable = false)
+    private BigDecimal rawTotalWeightGrams;
+
+    private BigDecimal cookedTotalWeightGrams;
+
     private Integer calories;
     private BigDecimal proteinGrams;
     private BigDecimal carbsGrams;

@@ -647,6 +647,90 @@ class ScaleGramsApplicationTests {
 		assertThat(reset.getStatusCode().is2xxSuccessful()).isTrue();
 	}
 
+	@Test
+	void recipeCookedGramsUseTheCapturedCookedWeightAndRejectAdjustedIngredients() {
+		HttpHeaders headers = authHeaders();
+		Map<String, Object> recipe = Map.of("name", "Pollo al horno", "cookedTotalWeightGrams", 80,
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM")));
+		ResponseEntity<Map> created = rest.postForEntity("/api/recipes", new HttpEntity<>(recipe, headers), Map.class);
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(created.getBody().get("totalWeightGrams")).hasToString("100.0");
+		assertThat(created.getBody().get("rawTotalWeightGrams")).hasToString("100.0");
+		assertThat(created.getBody().get("cookedTotalWeightGrams")).hasToString("80.0");
+
+		Map<String, Object> gramLog = Map.of("itemType", "RECIPE", "itemId", created.getBody().get("id"),
+				"mealType", "LUNCH", "quantity", 40, "unit", "GRAM", "logDate", "2033-04-10");
+		ResponseEntity<Map> logged = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(gramLog, headers), Map.class);
+		assertThat(logged.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(logged.getBody().get("proteinGrams")).hasToString("15.5");
+		assertThat(logged.getBody().get("recipeRawTotalWeightGrams")).hasToString("100.0");
+		assertThat(logged.getBody().get("recipeCookedTotalWeightGrams")).hasToString("80.0");
+
+		Map<String, Object> changedYield = Map.of("name", "Pollo al horno", "cookedTotalWeightGrams", 50,
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM")));
+		rest.exchange("/api/recipes/" + created.getBody().get("id"), HttpMethod.PUT,
+				new HttpEntity<>(changedYield, headers), String.class);
+		ResponseEntity<String> clearedYield = rest.exchange("/api/recipes/" + created.getBody().get("id"), HttpMethod.PUT,
+				new HttpEntity<>(Map.of("name", "Pollo al horno", "clearCookedTotalWeight", true,
+						"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM"))), headers), String.class);
+		ResponseEntity<String> updatedLog = rest.exchange("/api/nutrition/food-logs/" + logged.getBody().get("id"), HttpMethod.PUT,
+				new HttpEntity<>(Map.of("mealType", "DINNER", "quantity", 40, "unit", "GRAM", "logDate", "2033-04-10"), headers), String.class);
+		ResponseEntity<String> adjusted = rest.exchange("/api/nutrition/food-logs/" + logged.getBody().get("id") + "/recipe-ingredients",
+				HttpMethod.PUT, new HttpEntity<>(Map.of("ingredients", List.of(Map.of("foodId", 1, "quantity", 120, "unit", "GRAM"))), headers), String.class);
+
+		assertThat(updatedLog.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(updatedLog.getBody()).contains("\"proteinGrams\":15.5", "\"recipeCookedTotalWeightGrams\":80.0");
+		assertThat(clearedYield.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(clearedYield.getBody()).contains("\"cookedTotalWeightGrams\":null");
+		assertThat(adjusted.getStatusCode().is4xxClientError()).isTrue();
+	}
+
+	@Test
+	void recipePortionsStayCompatibleAndGramsRequireACookedWeight() {
+		HttpHeaders headers = authHeaders();
+		Map<String, Object> recipe = Map.of("name", "Pollo en porciones", "cookedTotalWeightGrams", 80,
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM")));
+		ResponseEntity<Map> cooked = rest.postForEntity("/api/recipes", new HttpEntity<>(recipe, headers), Map.class);
+		ResponseEntity<String> portions = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(Map.of(
+				"itemType", "RECIPE", "itemId", cooked.getBody().get("id"), "mealType", "DINNER", "quantity", 2,
+				"unit", "PORTION", "logDate", "2033-04-11"), headers), String.class);
+		ResponseEntity<Map> rawOnly = rest.postForEntity("/api/recipes", new HttpEntity<>(Map.of("name", "Pollo crudo",
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM"))), headers), Map.class);
+		ResponseEntity<String> invalidGrams = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(Map.of(
+				"itemType", "RECIPE", "itemId", rawOnly.getBody().get("id"), "mealType", "DINNER", "quantity", 40,
+				"unit", "GRAM", "logDate", "2033-04-11"), headers), String.class);
+
+		assertThat(portions.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(portions.getBody()).contains("\"proteinGrams\":62.0", "\"unit\":\"PORTION\"");
+		assertThat(invalidGrams.getStatusCode().is4xxClientError()).isTrue();
+		assertThat(invalidGrams.getBody()).contains("peso total cocido");
+	}
+
+	@Test
+	void recipeIngredientChangesClearCookedWeightAndMillilitersDoNotInflateRawGrams() {
+		HttpHeaders headers = authHeaders();
+		ResponseEntity<Map> liquid = rest.postForEntity("/api/foods", new HttpEntity<>(Map.of(
+				"name", "Caldo de prueba", "category", "BEVERAGE", "baseUnit", "MILLILITER", "baseQuantity", 100,
+				"proteinGrams", 0, "carbsGrams", 1, "fatGrams", 0, "preparation", "AS_SOLD"), headers), Map.class);
+		assertThat(liquid.getStatusCode().is2xxSuccessful()).isTrue();
+		Map<String, Object> recipe = Map.of("name", "Pollo con caldo", "cookedTotalWeightGrams", 180,
+				"ingredients", List.of(
+						Map.of("foodId", 1, "quantity", 100, "unit", "GRAM"),
+						Map.of("foodId", liquid.getBody().get("id"), "quantity", 100, "unit", "MILLILITER")));
+		ResponseEntity<Map> created = rest.postForEntity("/api/recipes", new HttpEntity<>(recipe, headers), Map.class);
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(created.getBody().get("rawTotalWeightGrams")).hasToString("100.0");
+
+		ResponseEntity<String> updated = rest.exchange("/api/recipes/" + created.getBody().get("id"), HttpMethod.PUT,
+				new HttpEntity<>(Map.of("name", "Pollo con caldo", "ingredients", List.of(
+						Map.of("foodId", 1, "quantity", 200, "unit", "GRAM"),
+						Map.of("foodId", liquid.getBody().get("id"), "quantity", 100, "unit", "MILLILITER"))), headers), String.class);
+
+		assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(updated.getBody()).contains("\"totalWeightGrams\":200.0", "\"rawTotalWeightGrams\":200.0",
+				"\"cookedTotalWeightGrams\":null");
+	}
+
 	private static int countOccurrences(String value, String needle) {
 		int count = 0;
 		int index = 0;
