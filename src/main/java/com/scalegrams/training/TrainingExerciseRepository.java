@@ -13,7 +13,7 @@ import com.scalegrams.user.AppUser;
 public interface TrainingExerciseRepository extends JpaRepository<TrainingExercise, Long> {
     @Query("""
             select exercise from TrainingExercise exercise
-            where exercise.owner = :owner
+            where (exercise.owner = :owner or exercise.globalExercise = true)
               and exercise.deletedAt is null
               and (:module is null or exercise.module = :module)
               and (:query is null or lower(exercise.name) like lower(concat('%', :query, '%')))
@@ -24,6 +24,14 @@ public interface TrainingExerciseRepository extends JpaRepository<TrainingExerci
     Page<TrainingExercise> findByOwnerAndActiveTrueAndDeletedAtIsNull(AppUser owner, Pageable pageable);
 
     Optional<TrainingExercise> findByIdAndOwnerAndDeletedAtIsNull(Long id, AppUser owner);
+
+    @Query("""
+            select exercise from TrainingExercise exercise
+            where exercise.id = :id
+              and exercise.deletedAt is null
+              and (exercise.owner = :owner or exercise.globalExercise = true)
+            """)
+    Optional<TrainingExercise> findSelectable(@Param("id") Long id, @Param("owner") AppUser owner);
 
     Optional<TrainingExercise> findByOwnerAndModuleAndNameIgnoreCaseAndDeletedAtIsNull(AppUser owner,
             TrainingModule module, String name);

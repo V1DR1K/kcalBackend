@@ -29,7 +29,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class TrainingPreset {
+public class TrainingPlan {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -48,6 +48,19 @@ public class TrainingPreset {
     @Column(nullable = false, length = 30)
     private TrainingModule module;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "frequency_mode", nullable = false, length = 12)
+    private TrainingFrequencyMode frequencyMode = TrainingFrequencyMode.FIXED;
+
+    @Column(name = "target_sessions_per_week", nullable = false)
+    private int targetSessionsPerWeek;
+
+    @Column(name = "start_date")
+    private java.time.LocalDate startDate;
+
+    @Column(name = "end_date")
+    private java.time.LocalDate endDate;
+
     @Column(nullable = false)
     private boolean active = true;
 
@@ -59,7 +72,7 @@ public class TrainingPreset {
 
     private OffsetDateTime deletedAt;
 
-    @OneToMany(mappedBy = "preset", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "plan", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC, id ASC")
-    private List<TrainingDay> days = new ArrayList<>();
+    private List<TrainingPlanDay> days = new ArrayList<>();
 }

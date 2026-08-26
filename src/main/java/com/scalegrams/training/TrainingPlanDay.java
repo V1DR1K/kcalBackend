@@ -28,14 +28,14 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class TrainingDay {
+public class TrainingPlanDay {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "preset_id", nullable = false)
-    private TrainingPreset preset;
+    private TrainingPlan plan;
 
     @Column(nullable = false, length = 120)
     private String name;
@@ -61,7 +61,7 @@ public class TrainingDay {
 
     private OffsetDateTime deletedAt;
 
-    @OneToMany(mappedBy = "trainingDay", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "planDay", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC, id ASC")
-    private List<TrainingPresetExercise> exercises = new ArrayList<>();
+    private List<TrainingPlanExercise> exercises = new ArrayList<>();
 }

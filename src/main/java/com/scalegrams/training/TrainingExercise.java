@@ -30,8 +30,11 @@ public class TrainingExercise {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "owner_id", nullable = false)
+    @JoinColumn(name = "owner_id")
     private AppUser owner;
+
+    @Column(name = "global_exercise", nullable = false)
+    private boolean globalExercise;
 
     @Column(nullable = false, length = 120)
     private String name;

@@ -2,6 +2,7 @@ package com.scalegrams.training;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
@@ -24,18 +25,18 @@ import com.scalegrams.common.BadRequestException;
 import com.scalegrams.common.NotFoundException;
 import com.scalegrams.training.TrainingDtos.CompleteTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.CreateTrainingSessionRequest;
-import com.scalegrams.training.TrainingDtos.DuplicatePresetRequest;
+import com.scalegrams.training.TrainingDtos.DuplicateTrainingPlanRequest;
 import com.scalegrams.training.TrainingDtos.PageResponse;
 import com.scalegrams.training.TrainingDtos.ReorderRequest;
 import com.scalegrams.training.TrainingDtos.TrainingCalendarDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingCalendarSessionResponse;
 import com.scalegrams.training.TrainingDtos.TrainingDashboardResponse;
-import com.scalegrams.training.TrainingDtos.TrainingDayResponse;
+import com.scalegrams.training.TrainingDtos.LegacyPlanDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingExerciseResponse;
 import com.scalegrams.training.TrainingDtos.TrainingModuleResponse;
-import com.scalegrams.training.TrainingDtos.TrainingPresetDetailResponse;
-import com.scalegrams.training.TrainingDtos.TrainingPresetExerciseResponse;
-import com.scalegrams.training.TrainingDtos.TrainingPresetResponse;
+import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseResponse;
+import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanDetailResponse;
+import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanResponse;
 import com.scalegrams.training.TrainingDtos.TrainingSessionExerciseRequest;
 import com.scalegrams.training.TrainingDtos.TrainingSessionExerciseResponse;
 import com.scalegrams.training.TrainingDtos.TrainingSessionResponse;
@@ -44,23 +45,33 @@ import com.scalegrams.training.TrainingDtos.TrainingSetRequest;
 import com.scalegrams.training.TrainingDtos.TrainingSetResponse;
 import com.scalegrams.training.TrainingDtos.UpdateTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.UpsertExerciseRequest;
-import com.scalegrams.training.TrainingDtos.UpsertPresetExerciseRequest;
-import com.scalegrams.training.TrainingDtos.UpsertPresetRequest;
-import com.scalegrams.training.TrainingDtos.UpsertTrainingDayRequest;
+import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseRequest;
+import com.scalegrams.training.TrainingDtos.LegacyPlanRequest;
+import com.scalegrams.training.TrainingDtos.LegacyPlanDayRequest;
+import com.scalegrams.training.TrainingDtos.PlanDayRequest;
+import com.scalegrams.training.TrainingDtos.PlanExerciseRequest;
+import com.scalegrams.training.TrainingDtos.SkipTrainingPlanSessionRequest;
+import com.scalegrams.training.TrainingDtos.TrainingPlanDetailResponse;
+import com.scalegrams.training.TrainingDtos.TrainingPlanDayResponse;
+import com.scalegrams.training.TrainingDtos.TrainingPlanExerciseResponse;
+import com.scalegrams.training.TrainingDtos.TrainingPlanResolutionResponse;
+import com.scalegrams.training.TrainingDtos.TrainingPlanResponse;
+import com.scalegrams.training.TrainingDtos.TrainingPlanScheduleResponse;
+import com.scalegrams.training.TrainingDtos.UpsertTrainingPlanRequest;
 import com.scalegrams.training.TrainingDtos.WeeklyTrainingSummaryResponse;
 import com.scalegrams.user.AppUser;
 
 @Service
 public class TrainingService {
     private final TrainingExerciseRepository exercises;
-    private final TrainingPresetRepository presets;
-    private final TrainingDayRepository days;
-    private final TrainingPresetExerciseRepository presetExercises;
+    private final TrainingPlanRepository presets;
+    private final TrainingPlanDayRepository days;
+    private final TrainingPlanExerciseRepository presetExercises;
     private final TrainingSessionRepository sessions;
     private final TrainingSessionExerciseRepository sessionExercises;
 
-    public TrainingService(TrainingExerciseRepository exercises, TrainingPresetRepository presets,
-            TrainingDayRepository days, TrainingPresetExerciseRepository presetExercises,
+    public TrainingService(TrainingExerciseRepository exercises, TrainingPlanRepository presets,
+            TrainingPlanDayRepository days, TrainingPlanExerciseRepository presetExercises,
             TrainingSessionRepository sessions, TrainingSessionExerciseRepository sessionExercises) {
         this.exercises = exercises;
         this.presets = presets;
@@ -97,6 +108,9 @@ public class TrainingService {
         exercise.setOwner(user);
         exercise.setName(name);
         exercise.setModule(request.module());
+        exercise.setDescription(blankToNull(request.description()));
+        exercise.setCategory(blankToNull(request.category()));
+        exercise.setGlobalExercise(false);
         exercise.setActive(request.active() == null || request.active());
         return toExerciseResponse(exercises.save(exercise));
     }
@@ -104,6 +118,9 @@ public class TrainingService {
     @Transactional
     public TrainingExerciseResponse updateExercise(AppUser user, Long id, UpsertExerciseRequest request) {
         TrainingExercise exercise = requireExercise(user, id);
+        if (exercise.isGlobalExercise()) {
+            throw new NotFoundException("El ejercicio global es de solo lectura.");
+        }
         String name = normalized(request.name());
         if (exercises.existsLiveName(user, request.module(), name, exercise.getId())) {
             throw new BadRequestException("Ya existe un ejercicio con ese nombre para este módulo.");
@@ -113,6 +130,8 @@ public class TrainingService {
         }
         exercise.setName(name);
         exercise.setModule(request.module());
+        exercise.setDescription(blankToNull(request.description()));
+        exercise.setCategory(blankToNull(request.category()));
         if (request.active() != null) exercise.setActive(request.active());
         exercise.setUpdatedAt(OffsetDateTime.now());
         return toExerciseResponse(exercise);
@@ -121,6 +140,9 @@ public class TrainingService {
     @Transactional
     public void deleteExercise(AppUser user, Long id) {
         TrainingExercise exercise = requireExercise(user, id);
+        if (exercise.isGlobalExercise()) {
+            throw new NotFoundException("El ejercicio global es de solo lectura.");
+        }
         OffsetDateTime now = OffsetDateTime.now();
         exercise.setActive(false);
         exercise.setDeletedAt(now);
@@ -128,44 +150,46 @@ public class TrainingService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<TrainingPresetResponse> presets(AppUser user, TrainingModule module, boolean includeInactive,
+    public PageResponse<LegacyTrainingPlanResponse> presets(AppUser user, TrainingModule module, boolean includeInactive,
             int page, int size) {
-        Page<TrainingPreset> result = presets.search(user, module, includeInactive,
+        Page<TrainingPlan> result = presets.search(user, module, includeInactive,
                 page(page, size, Sort.by(Sort.Order.desc("updatedAt"), Sort.Order.desc("id"))));
         return page(result, this::toPresetResponse);
     }
 
     @Transactional(readOnly = true)
-    public TrainingPresetDetailResponse preset(AppUser user, Long id) {
+    public LegacyTrainingPlanDetailResponse preset(AppUser user, Long id) {
         return toPresetDetailResponse(requirePresetDetail(user, id));
     }
 
     @Transactional
-    public TrainingPresetDetailResponse createPreset(AppUser user, UpsertPresetRequest request) {
+    public LegacyTrainingPlanDetailResponse createPreset(AppUser user, LegacyPlanRequest request) {
         String name = normalized(request.name());
         ensurePresetNameAvailable(user, request.module(), name, null);
-        TrainingPreset preset = new TrainingPreset();
+        TrainingPlan preset = new TrainingPlan();
         preset.setOwner(user);
         applyPreset(preset, request, name);
+        if (preset.isActive()) closeActivePlans(user, preset.getModule(), null, LocalDate.now());
         presets.save(preset);
         return toPresetDetailResponse(preset);
     }
 
     @Transactional
-    public TrainingPresetDetailResponse updatePreset(AppUser user, Long id, UpsertPresetRequest request) {
-        TrainingPreset preset = requirePresetDetail(user, id);
+    public LegacyTrainingPlanDetailResponse updatePreset(AppUser user, Long id, LegacyPlanRequest request) {
+        TrainingPlan preset = requirePresetDetail(user, id);
         if (preset.getModule() != request.module() && !livePresetExercises(preset).isEmpty()) {
             throw new BadRequestException("No podés cambiar el módulo de una rutina que tiene ejercicios.");
         }
         String name = normalized(request.name());
         ensurePresetNameAvailable(user, request.module(), name, preset.getId());
         applyPreset(preset, request, name);
+        if (preset.isActive()) closeActivePlans(user, preset.getModule(), preset.getId(), LocalDate.now());
         return toPresetDetailResponse(preset);
     }
 
     @Transactional
     public void deletePreset(AppUser user, Long id) {
-        TrainingPreset preset = requirePreset(user, id);
+        TrainingPlan preset = requirePreset(user, id);
         OffsetDateTime now = OffsetDateTime.now();
         preset.setActive(false);
         preset.setDeletedAt(now);
@@ -173,31 +197,38 @@ public class TrainingService {
     }
 
     @Transactional
-    public TrainingPresetDetailResponse duplicatePreset(AppUser user, Long id, DuplicatePresetRequest request) {
-        TrainingPreset source = requirePresetDetail(user, id);
+    public LegacyTrainingPlanDetailResponse duplicatePreset(AppUser user, Long id, DuplicateTrainingPlanRequest request) {
+        TrainingPlan source = requirePresetDetail(user, id);
         String name = normalized(request.name());
         ensurePresetNameAvailable(user, source.getModule(), name, null);
 
-        TrainingPreset copy = new TrainingPreset();
+        TrainingPlan copy = new TrainingPlan();
         copy.setOwner(user);
         copy.setName(name);
         copy.setDescription(source.getDescription());
         copy.setModule(source.getModule());
+        copy.setFrequencyMode(source.getFrequencyMode());
+        copy.setTargetSessionsPerWeek(source.getTargetSessionsPerWeek());
+        copy.setStartDate(LocalDate.now());
+        copy.setEndDate(null);
         copy.setActive(true);
+        closeActivePlans(user, copy.getModule(), null, LocalDate.now());
 
         int dayPosition = 0;
-        for (TrainingDay sourceDay : liveDays(source)) {
-            TrainingDay dayCopy = new TrainingDay();
-            dayCopy.setPreset(copy);
+        for (TrainingPlanDay sourceDay : liveDays(source)) {
+            TrainingPlanDay dayCopy = new TrainingPlanDay();
+            dayCopy.setPlan(copy);
+            dayCopy.setName(sourceDay.getName());
+            dayCopy.setDescription(sourceDay.getDescription());
             dayCopy.setDayOfWeek(sourceDay.getDayOfWeek());
             dayCopy.setPosition(dayPosition++);
             dayCopy.setActive(sourceDay.isActive());
             copy.getDays().add(dayCopy);
 
             int exercisePosition = 0;
-            for (TrainingPresetExercise sourceExercise : livePresetExercises(sourceDay)) {
-                TrainingPresetExercise exerciseCopy = new TrainingPresetExercise();
-                exerciseCopy.setTrainingDay(dayCopy);
+            for (TrainingPlanExercise sourceExercise : livePresetExercises(sourceDay)) {
+                TrainingPlanExercise exerciseCopy = new TrainingPlanExercise();
+                exerciseCopy.setPlanDay(dayCopy);
                 exerciseCopy.setExercise(sourceExercise.getExercise());
                 exerciseCopy.setTargetSets(sourceExercise.getTargetSets());
                 exerciseCopy.setTargetRepetitions(sourceExercise.getTargetRepetitions());
@@ -213,43 +244,50 @@ public class TrainingService {
     }
 
     @Transactional
-    public TrainingDayResponse createDay(AppUser user, Long presetId, UpsertTrainingDayRequest request) {
-        TrainingPreset preset = requirePresetDetail(user, presetId);
-        TrainingDay day = new TrainingDay();
-        day.setPreset(preset);
+    public LegacyPlanDayResponse createDay(AppUser user, Long presetId, LegacyPlanDayRequest request) {
+        TrainingPlan preset = requirePresetDetail(user, presetId);
+        validateLegacyDayMode(preset, request.dayOfWeek(), null);
+        TrainingPlanDay day = new TrainingPlanDay();
+        day.setPlan(preset);
+        day.setName(request.name() == null || request.name().isBlank() ? "Día " + (day.getPosition() + 1) : normalized(request.name()));
+        day.setDescription(blankToNull(request.description()));
         day.setDayOfWeek(request.dayOfWeek());
         day.setActive(request.active() == null || request.active());
         day.setPosition(liveDays(preset).size());
         preset.getDays().add(day);
         touch(preset);
+        days.saveAndFlush(day);
         presets.save(preset);
         return toDayResponse(day);
     }
 
     @Transactional
-    public TrainingDayResponse updateDay(AppUser user, Long presetId, Long dayId, UpsertTrainingDayRequest request) {
-        TrainingDay day = requireDay(user, presetId, dayId);
+    public LegacyPlanDayResponse updateDay(AppUser user, Long presetId, Long dayId, LegacyPlanDayRequest request) {
+        TrainingPlanDay day = requireDay(user, presetId, dayId);
+        validateLegacyDayMode(day.getPlan(), request.dayOfWeek(), day.getId());
+        day.setName(request.name() == null || request.name().isBlank() ? day.getName() : normalized(request.name()));
+        day.setDescription(blankToNull(request.description()));
         day.setDayOfWeek(request.dayOfWeek());
         if (request.active() != null) day.setActive(request.active());
         day.setUpdatedAt(OffsetDateTime.now());
-        touch(day.getPreset());
+        touch(day.getPlan());
         return toDayResponse(day);
     }
 
     @Transactional
     public void deleteDay(AppUser user, Long presetId, Long dayId) {
-        TrainingDay day = requireDay(user, presetId, dayId);
+        TrainingPlanDay day = requireDay(user, presetId, dayId);
         OffsetDateTime now = OffsetDateTime.now();
         day.setActive(false);
         day.setDeletedAt(now);
         day.setUpdatedAt(now);
-        touch(day.getPreset());
+        touch(day.getPlan());
     }
 
     @Transactional
-    public List<TrainingDayResponse> reorderDays(AppUser user, Long presetId, ReorderRequest request) {
-        TrainingPreset preset = requirePresetDetail(user, presetId);
-        List<TrainingDay> ordered = ordered(liveDays(preset), request.ids(), "días de la rutina");
+    public List<LegacyPlanDayResponse> reorderDays(AppUser user, Long presetId, ReorderRequest request) {
+        TrainingPlan preset = requirePresetDetail(user, presetId);
+        List<TrainingPlanDay> ordered = ordered(liveDays(preset), request.ids(), "días de la rutina");
         OffsetDateTime now = OffsetDateTime.now();
         for (int index = 0; index < ordered.size(); index++) {
             ordered.get(index).setPosition(index);
@@ -260,61 +298,231 @@ public class TrainingService {
     }
 
     @Transactional
-    public TrainingPresetExerciseResponse createPresetExercise(AppUser user, Long presetId, Long dayId,
-            UpsertPresetExerciseRequest request) {
-        TrainingDay day = requireDay(user, presetId, dayId);
+    public LegacyPlanExerciseResponse createPresetExercise(AppUser user, Long presetId, Long dayId,
+            LegacyPlanExerciseRequest request) {
+        TrainingPlanDay day = requireDay(user, presetId, dayId);
         TrainingExercise exercise = requireSelectableExercise(user, request.exerciseId());
-        validateExerciseModule(day.getPreset().getModule(), exercise);
+        validateExerciseModule(day.getPlan().getModule(), exercise);
         ensureDayExerciseAvailable(day, exercise, null);
 
-        TrainingPresetExercise presetExercise = new TrainingPresetExercise();
-        presetExercise.setTrainingDay(day);
+        TrainingPlanExercise presetExercise = new TrainingPlanExercise();
+        presetExercise.setPlanDay(day);
         presetExercise.setExercise(exercise);
         presetExercise.setPosition(livePresetExercises(day).size());
-        applyPresetExercise(presetExercise, day.getPreset().getModule(), request);
+        applyPresetExercise(presetExercise, day.getPlan().getModule(), request);
         day.getExercises().add(presetExercise);
-        touch(day.getPreset());
+        touch(day.getPlan());
         days.save(day);
         return toPresetExerciseResponse(presetExercise);
     }
 
     @Transactional
-    public TrainingPresetExerciseResponse updatePresetExercise(AppUser user, Long presetId, Long dayId,
-            Long presetExerciseId, UpsertPresetExerciseRequest request) {
-        TrainingDay day = requireDay(user, presetId, dayId);
-        TrainingPresetExercise presetExercise = requirePresetExercise(day, presetExerciseId);
+    public LegacyPlanExerciseResponse updatePresetExercise(AppUser user, Long presetId, Long dayId,
+            Long presetExerciseId, LegacyPlanExerciseRequest request) {
+        TrainingPlanDay day = requireDay(user, presetId, dayId);
+        TrainingPlanExercise presetExercise = requirePresetExercise(day, presetExerciseId);
         TrainingExercise exercise = requireSelectableExercise(user, request.exerciseId());
-        validateExerciseModule(day.getPreset().getModule(), exercise);
+        validateExerciseModule(day.getPlan().getModule(), exercise);
         ensureDayExerciseAvailable(day, exercise, presetExercise.getId());
         presetExercise.setExercise(exercise);
-        applyPresetExercise(presetExercise, day.getPreset().getModule(), request);
-        touch(day.getPreset());
+        applyPresetExercise(presetExercise, day.getPlan().getModule(), request);
+        touch(day.getPlan());
         return toPresetExerciseResponse(presetExercise);
     }
 
     @Transactional
     public void deletePresetExercise(AppUser user, Long presetId, Long dayId, Long presetExerciseId) {
-        TrainingDay day = requireDay(user, presetId, dayId);
-        TrainingPresetExercise presetExercise = requirePresetExercise(day, presetExerciseId);
+        TrainingPlanDay day = requireDay(user, presetId, dayId);
+        TrainingPlanExercise presetExercise = requirePresetExercise(day, presetExerciseId);
         OffsetDateTime now = OffsetDateTime.now();
         presetExercise.setActive(false);
         presetExercise.setDeletedAt(now);
         presetExercise.setUpdatedAt(now);
-        touch(day.getPreset());
+        touch(day.getPlan());
     }
 
     @Transactional
-    public List<TrainingPresetExerciseResponse> reorderPresetExercises(AppUser user, Long presetId, Long dayId,
+    public List<LegacyPlanExerciseResponse> reorderPresetExercises(AppUser user, Long presetId, Long dayId,
             ReorderRequest request) {
-        TrainingDay day = requireDay(user, presetId, dayId);
-        List<TrainingPresetExercise> ordered = ordered(livePresetExercises(day), request.ids(), "ejercicios del día");
+        TrainingPlanDay day = requireDay(user, presetId, dayId);
+        List<TrainingPlanExercise> ordered = ordered(livePresetExercises(day), request.ids(), "ejercicios del día");
         OffsetDateTime now = OffsetDateTime.now();
         for (int index = 0; index < ordered.size(); index++) {
             ordered.get(index).setPosition(index);
             ordered.get(index).setUpdatedAt(now);
         }
-        touch(day.getPreset());
+        touch(day.getPlan());
         return ordered.stream().map(this::toPresetExerciseResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<TrainingPlanResponse> plans(AppUser user, TrainingModule module, boolean includeInactive,
+            int page, int size) {
+        Page<TrainingPlan> result = presets.search(user, module, includeInactive,
+                page(page, size, Sort.by(Sort.Order.desc("updatedAt"), Sort.Order.desc("id"))));
+        return page(result, this::toPlanResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public TrainingPlanDetailResponse plan(AppUser user, Long id) {
+        return toPlanDetailResponse(requirePresetDetail(user, id));
+    }
+
+    @Transactional
+    public TrainingPlanDetailResponse createPlan(AppUser user, UpsertTrainingPlanRequest request) {
+        validatePlanRequest(user, request);
+        String name = normalized(request.name());
+        ensurePresetNameAvailable(user, request.module(), name, null);
+        TrainingPlan plan = new TrainingPlan();
+        plan.setOwner(user);
+        applyPlan(plan, request, name);
+        if (plan.isActive()) closeActivePlans(user, plan.getModule(), null, plan.getStartDate());
+        addPlanStructure(user, plan, request.days());
+        return toPlanDetailResponse(presets.save(plan));
+    }
+
+    @Transactional
+    public TrainingPlanDetailResponse updatePlan(AppUser user, Long id, UpsertTrainingPlanRequest request) {
+        TrainingPlan plan = requirePresetDetail(user, id);
+        validatePlanRequest(user, request);
+        String name = normalized(request.name());
+        ensurePresetNameAvailable(user, request.module(), name, id);
+        OffsetDateTime now = OffsetDateTime.now();
+        for (TrainingPlanDay oldDay : liveDays(plan)) {
+            oldDay.setActive(false);
+            oldDay.setDeletedAt(now);
+            oldDay.setUpdatedAt(now);
+            for (TrainingPlanExercise oldExercise : livePresetExercises(oldDay)) {
+                oldExercise.setActive(false);
+                oldExercise.setDeletedAt(now);
+                oldExercise.setUpdatedAt(now);
+            }
+        }
+        applyPlan(plan, request, name);
+        if (plan.isActive()) closeActivePlans(user, plan.getModule(), plan.getId(), plan.getStartDate());
+        addPlanStructure(user, plan, request.days());
+        return toPlanDetailResponse(plan);
+    }
+
+    @Transactional
+    public TrainingPlanDetailResponse duplicatePlan(AppUser user, Long id, DuplicateTrainingPlanRequest request) {
+        LegacyTrainingPlanDetailResponse copy = duplicatePreset(user, id, request);
+        return plan(user, copy.id());
+    }
+
+    @Transactional(readOnly = true)
+    public TrainingPlanResolutionResponse resolvePlan(AppUser user, Long id, LocalDate date) {
+        TrainingPlan plan = requirePresetDetail(user, id);
+        TrainingPlanDay day = resolvePlanDay(user, plan, date);
+        TrainingSessionSummaryResponse session = sessions.search(user, date, date, date, plan.getModule(), null,
+                id, day == null ? null : day.getId(), page(0, 1, Sort.unsorted())).stream().findFirst()
+                .map(this::toSessionSummaryResponse).orElse(null);
+        return new TrainingPlanResolutionResponse(date, day != null, plan.getId(), idOf(day),
+                day == null ? null : day.getName(), plan.getModule(), plan.getFrequencyMode(), session);
+    }
+
+    @Transactional
+    public TrainingSessionResponse skipPlanSession(AppUser user, Long planId, SkipTrainingPlanSessionRequest request) {
+        TrainingPlan plan = requirePreset(user, planId);
+        if (plan.getFrequencyMode() != TrainingFrequencyMode.DYNAMIC) {
+            throw new BadRequestException("Solo se pueden omitir sesiones de planes dinámicos.");
+        }
+        TrainingPlanDay day = resolvePlanDay(user, plan, request.date());
+        if (day == null) {
+            throw new BadRequestException("La fecha está fuera de la vigencia del plan.");
+        }
+        if (request.planDayId() != null && !Objects.equals(request.planDayId(), day.getId())) {
+            throw new BadRequestException("La sesión no corresponde al siguiente día dinámico.");
+        }
+        TrainingSession existing = sessions.search(user, request.date(), request.date(), request.date(), plan.getModule(),
+                null, planId, day.getId(), page(0, 10, Sort.unsorted())).stream()
+                .filter(item -> item.getStatus() == TrainingSessionStatus.COMPLETED
+                        || item.getStatus() == TrainingSessionStatus.SKIPPED)
+                .findFirst().orElse(null);
+        if (existing != null) return toSessionResponse(existing);
+
+        TrainingSession skipped = new TrainingSession();
+        skipped.setUser(user);
+        skipped.setSessionDate(request.date());
+        skipped.setModule(plan.getModule());
+        skipped.setSourcePlan(plan);
+        skipped.setSourcePlanDay(day);
+        skipped.setTitle(day.getName());
+        skipped.setStatus(TrainingSessionStatus.SKIPPED);
+        skipped.setNotes(blankToNull(request.notes()));
+        skipped.setStartedAt(null);
+        skipped.setFinishedAt(OffsetDateTime.now());
+        return toSessionResponse(sessions.save(skipped));
+    }
+
+    private void validatePlanRequest(AppUser user, UpsertTrainingPlanRequest request) {
+        if (request.startDate() != null && request.endDate() != null && request.endDate().isBefore(request.startDate())) {
+            throw new BadRequestException("La fecha final no puede ser anterior a la inicial.");
+        }
+        Set<DayOfWeek> fixedDays = EnumSet.noneOf(DayOfWeek.class);
+        Set<Integer> positions = new java.util.HashSet<>();
+        for (int index = 0; index < request.days().size(); index++) {
+            PlanDayRequest day = request.days().get(index);
+            if (!positions.add(day.position() == null ? index : day.position())) {
+                throw new BadRequestException("Las posiciones de los días deben ser únicas.");
+            }
+            if (request.frequencyMode() == TrainingFrequencyMode.FIXED) {
+                if (day.dayOfWeek() == null || !fixedDays.add(day.dayOfWeek())) {
+                    throw new BadRequestException("Un plan fijo requiere días de semana únicos.");
+                }
+            } else if (day.dayOfWeek() != null) {
+                throw new BadRequestException("Un plan dinámico usa posiciones únicas y no admite día de semana.");
+            }
+            Set<Long> exerciseIds = new java.util.HashSet<>();
+            for (PlanExerciseRequest exerciseRequest : day.exercises()) {
+                if (!exerciseIds.add(exerciseRequest.exerciseId())) {
+                    throw new BadRequestException("No puede haber ejercicios repetidos en un día.");
+                }
+                TrainingExercise exercise = requireSelectableExercise(user, exerciseRequest.exerciseId());
+                validateExerciseModule(request.module(), exercise);
+                validateWeight(request.module(), exerciseRequest.targetWeightKg());
+            }
+        }
+    }
+
+    private void applyPlan(TrainingPlan plan, UpsertTrainingPlanRequest request, String name) {
+        plan.setName(name);
+        plan.setDescription(blankToNull(request.description()));
+        plan.setModule(request.module());
+        plan.setFrequencyMode(request.frequencyMode());
+        plan.setTargetSessionsPerWeek(request.targetSessionsPerWeek());
+        plan.setStartDate(request.startDate());
+        plan.setEndDate(request.endDate());
+        if (request.active() != null) plan.setActive(request.active());
+        else if (plan.getId() == null) plan.setActive(true);
+        plan.setUpdatedAt(OffsetDateTime.now());
+    }
+
+    private void addPlanStructure(AppUser user, TrainingPlan plan, List<PlanDayRequest> dayRequests) {
+        for (int index = 0; index < dayRequests.size(); index++) {
+            PlanDayRequest request = dayRequests.get(index);
+            TrainingPlanDay day = new TrainingPlanDay();
+            day.setPlan(plan);
+            day.setName(normalized(request.name()));
+            day.setDescription(blankToNull(request.description()));
+            day.setDayOfWeek(request.dayOfWeek());
+            day.setPosition(request.position() == null ? index : request.position());
+            day.setActive(true);
+            for (int exerciseIndex = 0; exerciseIndex < request.exercises().size(); exerciseIndex++) {
+                PlanExerciseRequest requestExercise = request.exercises().get(exerciseIndex);
+                TrainingPlanExercise exercise = new TrainingPlanExercise();
+                exercise.setPlanDay(day);
+                exercise.setExercise(requireSelectableExercise(user, requestExercise.exerciseId()));
+                exercise.setTargetSets(requestExercise.targetSets());
+                exercise.setTargetRepetitions(requestExercise.targetRepetitions());
+                exercise.setTargetWeightKg(requestExercise.targetWeightKg());
+                exercise.setNotes(blankToNull(requestExercise.notes()));
+                exercise.setPosition(requestExercise.position() == null ? exerciseIndex : requestExercise.position());
+                exercise.setActive(true);
+                day.getExercises().add(exercise);
+            }
+            plan.getDays().add(day);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -336,15 +544,16 @@ public class TrainingService {
 
     @Transactional
     public TrainingSessionResponse createSession(AppUser user, CreateTrainingSessionRequest request) {
-        SessionSource source = resolveSource(user, request.module(), request.presetId(), request.trainingDayId());
+        SessionSource source = resolveSource(user, request.module(), request.planId(), request.planDayId());
+        validateScheduledSession(user, source, request.date());
         TrainingSession session = new TrainingSession();
         session.setUser(user);
         applySession(session, request.date(), request.module(), source, request.title(),
                 request.status() == null ? TrainingSessionStatus.STARTED : request.status(), request.startedAt(),
                 request.finishedAt(), request.durationMinutes(), request.notes());
 
-        if (source.trainingDay() != null) {
-            for (TrainingPresetExercise presetExercise : livePresetExercises(source.trainingDay())) {
+        if (source.planDay() != null) {
+            for (TrainingPlanExercise presetExercise : livePresetExercises(source.planDay())) {
                 if (!presetExercise.isActive()) continue;
                 addSessionExerciseSnapshot(session, presetExercise, session.getExercises().size());
             }
@@ -361,7 +570,11 @@ public class TrainingService {
     @Transactional
     public TrainingSessionResponse updateSession(AppUser user, Long id, UpdateTrainingSessionRequest request) {
         TrainingSession session = requireSession(user, id);
-        SessionSource source = resolveSource(user, request.module(), request.presetId(), request.trainingDayId());
+        if (session.getStatus() == TrainingSessionStatus.COMPLETED) {
+            throw new BadRequestException("Las sesiones completadas son históricas y no se pueden modificar.");
+        }
+        SessionSource source = resolveSource(user, request.module(), request.planId(), request.planDayId());
+        validateScheduledSession(user, source, request.date());
         applySession(session, request.date(), request.module(), source, request.title(), request.status(), request.startedAt(),
                 request.finishedAt(), request.durationMinutes(), request.notes());
         session.getExercises().clear();
@@ -374,8 +587,8 @@ public class TrainingService {
     @Transactional
     public TrainingSessionResponse completeSession(AppUser user, Long id, CompleteTrainingSessionRequest request) {
         TrainingSession session = requireSession(user, id);
-        if (session.getStatus() == TrainingSessionStatus.CANCELLED) {
-            throw new BadRequestException("No podés completar una sesión cancelada.");
+        if (session.getStatus() == TrainingSessionStatus.CANCELLED || session.getStatus() == TrainingSessionStatus.SKIPPED) {
+            throw new BadRequestException("No podés completar una sesión cancelada u omitida.");
         }
         OffsetDateTime finishedAt = request != null && request.finishedAt() != null
                 ? request.finishedAt() : OffsetDateTime.now();
@@ -390,7 +603,11 @@ public class TrainingService {
 
     @Transactional
     public void deleteSession(AppUser user, Long id) {
-        sessions.delete(requireSession(user, id));
+        TrainingSession session = requireSession(user, id);
+        if (session.getStatus() == TrainingSessionStatus.COMPLETED) {
+            throw new BadRequestException("Las sesiones completadas son históricas y no se pueden borrar.");
+        }
+        sessions.delete(session);
     }
 
     @Transactional(readOnly = true)
@@ -398,47 +615,56 @@ public class TrainingService {
         validateDateRange(from, to);
         Map<LocalDate, List<TrainingSession>> byDate = sessions.findForCalendar(user, from, to).stream()
                 .collect(Collectors.groupingBy(TrainingSession::getSessionDate, LinkedHashMap::new, Collectors.toList()));
-        return byDate.entrySet().stream().map(entry -> toCalendarDay(entry.getKey(), entry.getValue())).toList();
+        List<TrainingCalendarDayResponse> calendar = new java.util.ArrayList<>();
+        for (LocalDate date = from; !date.isAfter(to); date = date.plusDays(1)) {
+            calendar.add(toCalendarDay(user, date, byDate.getOrDefault(date, List.of())));
+        }
+        return calendar;
     }
 
     @Transactional(readOnly = true)
     public TrainingDashboardResponse dashboard(AppUser user, LocalDate date) {
-        List<TrainingPresetResponse> routines = presets.search(user, null, true, 0, 5)
+        date = date == null ? LocalDate.now() : date;
+        List<TrainingPlanResponse> routines = presets.search(user, null, true, page(0, 5, Sort.unsorted()))
                 .stream()
                 .limit(4)
-                .map(this::toPresetResponse)
+                .map(this::toPlanResponse)
                 .toList();
 
-        TrainingSessionSummaryResponse recentSession = sessions.search(user, date, date, date, null, null, null, null, 0, 1)
+        TrainingSessionSummaryResponse recentSession = sessions.search(user, date, date, date, null, null, null, null,
+                page(0, 1, Sort.by(Sort.Order.desc("sessionDate"), Sort.Order.desc("id"))))
                 .stream()
                 .findFirst()
                 .map(this::toSessionSummaryResponse)
                 .orElse(null);
 
-        long sessionCount = sessions.search(user, date, date, date, null, null, null, null, 0, 50)
-                .getTotalElements();
-        long totalMinutes = sessions.search(user, date, date, date, null, null, null, null, 0, 50)
-                .stream()
-                .filter(s -> s.getDurationMinutes() != null)
+        LocalDate weekStart = date.with(DayOfWeek.MONDAY);
+        LocalDate weekEnd = weekStart.plusDays(6);
+        List<TrainingSession> weekSessions = sessions.search(user, weekStart, weekEnd, null, null, null, null, null,
+                page(0, 50, Sort.by(Sort.Order.desc("sessionDate"), Sort.Order.desc("id")))).getContent();
+        long sessionCount = weekSessions.stream()
+                .filter(s -> s.getStatus() == TrainingSessionStatus.COMPLETED).count();
+        long totalMinutes = weekSessions.stream()
+                .filter(s -> s.getStatus() == TrainingSessionStatus.COMPLETED && s.getDurationMinutes() != null)
                 .mapToLong(s -> s.getDurationMinutes())
                 .sum();
-        long totalSets = sessions.search(user, date, date, date, null, null, null, null, 0, 50)
+        long totalSets = weekSessions.stream()
+                .filter(s -> s.getStatus() == TrainingSessionStatus.COMPLETED)
                 .flatMap(s -> s.getExercises().stream())
                 .flatMap(e -> e.getSets().stream())
-                .filter(s -> s.getRepetitions() != null)
                 .count();
 
         List<TrainingExerciseResponse> exercises = exercises(user, "", null, 0, 50)
-                .getContent()
+                .items()
                 .stream()
                 .limit(50)
-                .map(this::toExerciseResponse)
                 .toList();
 
         WeeklyTrainingSummaryResponse weeklySummary = new WeeklyTrainingSummaryResponse(
                 sessionCount, totalMinutes, totalSets);
 
-        return new TrainingDashboardResponse(date, routines, recentSession, weeklySummary, exercises);
+        return new TrainingDashboardResponse(date, routines, recentSession, weeklySummary,
+                exercises, schedulesForDate(user, date));
     }
 
     private TrainingExercise requireExercise(AppUser user, Long id) {
@@ -447,47 +673,48 @@ public class TrainingService {
     }
 
     private TrainingExercise requireSelectableExercise(AppUser user, Long id) {
-        TrainingExercise exercise = requireExercise(user, id);
+        TrainingExercise exercise = exercises.findSelectable(id, user)
+                .orElseThrow(() -> new NotFoundException("Ejercicio no encontrado."));
         if (!exercise.isActive()) {
             throw new BadRequestException("El ejercicio está archivado.");
         }
         return exercise;
     }
 
-    private TrainingPreset requirePreset(AppUser user, Long id) {
+    private TrainingPlan requirePreset(AppUser user, Long id) {
         return presets.findByIdAndOwnerAndDeletedAtIsNull(id, user)
                 .orElseThrow(() -> new NotFoundException("Rutina no encontrada."));
     }
 
-    private TrainingPreset requirePresetDetail(AppUser user, Long id) {
+    private TrainingPlan requirePresetDetail(AppUser user, Long id) {
         return presets.findDetailByIdAndOwner(id, user)
                 .orElseThrow(() -> new NotFoundException("Rutina no encontrada."));
     }
 
-    private TrainingPreset requirePresetReference(AppUser user, Long id) {
+    private TrainingPlan requirePresetReference(AppUser user, Long id) {
         return presets.findByIdAndOwner(id, user)
                 .orElseThrow(() -> new NotFoundException("Rutina no encontrada."));
     }
 
-    private TrainingDay requireDay(AppUser user, Long presetId, Long dayId) {
-        TrainingDay day = requireDayForUser(user, dayId);
-        if (!Objects.equals(day.getPreset().getId(), presetId)) {
+    private TrainingPlanDay requireDay(AppUser user, Long presetId, Long dayId) {
+        TrainingPlanDay day = requireDayForUser(user, dayId);
+        if (!Objects.equals(day.getPlan().getId(), presetId)) {
             throw new NotFoundException("Día de rutina no encontrado.");
         }
         return day;
     }
 
-    private TrainingDay requireDayForUser(AppUser user, Long dayId) {
+    private TrainingPlanDay requireDayForUser(AppUser user, Long dayId) {
         return days.findDetailByIdAndOwner(dayId, user)
                 .orElseThrow(() -> new NotFoundException("Día de rutina no encontrado."));
     }
 
-    private TrainingDay requireDayReference(AppUser user, Long dayId) {
+    private TrainingPlanDay requireDayReference(AppUser user, Long dayId) {
         return days.findByIdAndOwner(dayId, user)
                 .orElseThrow(() -> new NotFoundException("Día de rutina no encontrado."));
     }
 
-    private TrainingPresetExercise requirePresetExercise(TrainingDay day, Long id) {
+    private TrainingPlanExercise requirePresetExercise(TrainingPlanDay day, Long id) {
         return day.getExercises().stream()
                 .filter(item -> item.getDeletedAt() == null && Objects.equals(item.getId(), id))
                 .findFirst()
@@ -507,17 +734,32 @@ public class TrainingService {
         }
     }
 
-    private void applyPreset(TrainingPreset preset, UpsertPresetRequest request, String name) {
+    private void applyPreset(TrainingPlan preset, LegacyPlanRequest request, String name) {
         preset.setName(name);
         preset.setDescription(blankToNull(request.description()));
         preset.setModule(request.module());
+        if (preset.getTargetSessionsPerWeek() <= 0) {
+            preset.setTargetSessionsPerWeek(1);
+        }
         if (request.active() != null) preset.setActive(request.active());
         else if (preset.getId() == null) preset.setActive(true);
         preset.setUpdatedAt(OffsetDateTime.now());
     }
 
-    private void applyPresetExercise(TrainingPresetExercise presetExercise, TrainingModule module,
-            UpsertPresetExerciseRequest request) {
+    private void closeActivePlans(AppUser user, TrainingModule module, Long excludedId, LocalDate newStartDate) {
+        LocalDate closeDate = newStartDate == null ? LocalDate.now() : newStartDate.minusDays(1);
+        for (TrainingPlan previous : presets.findByOwnerAndModuleAndActiveTrueAndDeletedAtIsNull(user, module)) {
+            if (Objects.equals(previous.getId(), excludedId)) continue;
+            previous.setActive(false);
+            if (previous.getStartDate() == null || !closeDate.isBefore(previous.getStartDate())) {
+                previous.setEndDate(closeDate);
+            }
+            previous.setUpdatedAt(OffsetDateTime.now());
+        }
+    }
+
+    private void applyPresetExercise(TrainingPlanExercise presetExercise, TrainingModule module,
+            LegacyPlanExerciseRequest request) {
         validateWeight(module, request.targetWeightKg());
         presetExercise.setTargetSets(request.targetSets());
         presetExercise.setTargetRepetitions(request.targetRepetitions());
@@ -528,7 +770,7 @@ public class TrainingService {
         presetExercise.setUpdatedAt(OffsetDateTime.now());
     }
 
-    private void ensureDayExerciseAvailable(TrainingDay day, TrainingExercise exercise, Long excludedId) {
+    private void ensureDayExerciseAvailable(TrainingPlanDay day, TrainingExercise exercise, Long excludedId) {
         boolean duplicate = day.getExercises().stream()
                 .filter(item -> item.getDeletedAt() == null)
                 .anyMatch(item -> Objects.equals(item.getExercise().getId(), exercise.getId())
@@ -542,8 +784,8 @@ public class TrainingService {
         if (trainingDayId == null && presetId == null) return new SessionSource(null, null);
 
         if (trainingDayId != null) {
-            TrainingDay day = requireDayForUser(user, trainingDayId);
-            TrainingPreset preset = day.getPreset();
+            TrainingPlanDay day = requireDayForUser(user, trainingDayId);
+            TrainingPlan preset = day.getPlan();
             if (presetId != null && !Objects.equals(preset.getId(), presetId)) {
                 throw new BadRequestException("El día no pertenece a la rutina indicada.");
             }
@@ -551,7 +793,7 @@ public class TrainingService {
             return new SessionSource(preset, day);
         }
 
-        TrainingPreset preset = requirePreset(user, presetId);
+        TrainingPlan preset = requirePreset(user, presetId);
         if (!preset.isActive()) {
             throw new BadRequestException("La rutina está archivada.");
         }
@@ -561,7 +803,7 @@ public class TrainingService {
         return new SessionSource(preset, null);
     }
 
-    private void validateSource(TrainingModule module, TrainingPreset preset, TrainingDay day) {
+    private void validateSource(TrainingModule module, TrainingPlan preset, TrainingPlanDay day) {
         if (!preset.isActive() || !day.isActive()) {
             throw new BadRequestException("La rutina o el día de origen está archivado.");
         }
@@ -570,14 +812,70 @@ public class TrainingService {
         }
     }
 
+    private void validateLegacyDayMode(TrainingPlan plan, DayOfWeek dayOfWeek, Long excludedId) {
+        if (plan.getFrequencyMode() == TrainingFrequencyMode.DYNAMIC && dayOfWeek != null) {
+            throw new BadRequestException("Un plan dinámico no admite día de semana.");
+        }
+        if (plan.getFrequencyMode() == TrainingFrequencyMode.FIXED && dayOfWeek == null) {
+            throw new BadRequestException("Un plan fijo requiere día de semana.");
+        }
+        if (dayOfWeek != null && plan.getDays().stream().anyMatch(day -> day.getDeletedAt() == null
+                && day.getDayOfWeek() == dayOfWeek && !Objects.equals(day.getId(), excludedId))) {
+            throw new BadRequestException("El día de semana ya está asignado a este plan.");
+        }
+    }
+
+    private void validateScheduledSession(AppUser user, SessionSource source, LocalDate date) {
+        if (source.plan() == null) return;
+        if (source.planDay() == null) {
+            throw new BadRequestException("Una sesión asociada a un plan requiere planDayId.");
+        }
+        TrainingPlan plan = source.plan();
+        if ((plan.getStartDate() != null && date.isBefore(plan.getStartDate()))
+                || (plan.getEndDate() != null && date.isAfter(plan.getEndDate()))) {
+            throw new BadRequestException("La fecha está fuera de la vigencia del plan.");
+        }
+        TrainingPlanDay expected = resolvePlanDay(user, plan, date);
+        if (expected == null || !Objects.equals(expected.getId(), source.planDay().getId())) {
+            throw new BadRequestException(plan.getFrequencyMode() == TrainingFrequencyMode.FIXED
+                    ? "La sesión solo puede registrarse en el día fijo asignado."
+                    : "La sesión no corresponde al siguiente día del plan dinámico.");
+        }
+    }
+
+    private TrainingPlanDay resolvePlanDay(AppUser user, TrainingPlan plan, LocalDate date) {
+        if (!plan.isActive() || (plan.getStartDate() != null && date.isBefore(plan.getStartDate()))
+                || (plan.getEndDate() != null && date.isAfter(plan.getEndDate()))) return null;
+        List<TrainingPlanDay> live = liveDays(plan);
+        if (live.isEmpty()) return null;
+        if (plan.getFrequencyMode() == TrainingFrequencyMode.FIXED) {
+            return live.stream().filter(day -> day.getDayOfWeek() == date.getDayOfWeek()).findFirst().orElse(null);
+        }
+        long completedOrSkipped = sessions.countAdvancingSessions(user, plan.getId(), date);
+        return live.get((int) (completedOrSkipped % live.size()));
+    }
+
+    private List<TrainingPlanScheduleResponse> schedulesForDate(AppUser user, LocalDate date) {
+        return presets.search(user, null, false, page(0, 50, Sort.unsorted())).stream()
+                .map(plan -> {
+                    if (plan.getFrequencyMode() == TrainingFrequencyMode.DYNAMIC && !date.equals(LocalDate.now())) {
+                        return null;
+                    }
+                    TrainingPlanDay day = resolvePlanDay(user, plan, date);
+                    return day == null ? null : new TrainingPlanScheduleResponse(plan.getId(), day.getId(), day.getName(),
+                            plan.getModule(), true);
+                })
+                .filter(Objects::nonNull).toList();
+    }
+
     private void applySession(TrainingSession session, LocalDate date, TrainingModule module, SessionSource source,
             String title, TrainingSessionStatus status, OffsetDateTime startedAt, OffsetDateTime finishedAt,
             Integer durationMinutes, String notes) {
         validateTimes(startedAt, finishedAt);
         session.setSessionDate(date);
         session.setModule(module);
-        session.setSourcePreset(source.preset());
-        session.setSourceTrainingDay(source.trainingDay());
+        session.setSourcePlan(source.plan());
+        session.setSourcePlanDay(source.planDay());
         session.setTitle(blankToNull(title));
         session.setStatus(status);
         session.setStartedAt(startedAt);
@@ -587,7 +885,8 @@ public class TrainingService {
         session.setUpdatedAt(OffsetDateTime.now());
     }
 
-    private void addSessionExerciseSnapshot(TrainingSession session, TrainingPresetExercise source, int position) {
+    private void addSessionExerciseSnapshot(TrainingSession session, TrainingPlanExercise source, int position) {
+        validateWeight(session.getModule(), source.getTargetWeightKg());
         TrainingSessionExercise snapshot = new TrainingSessionExercise();
         snapshot.setSession(session);
         snapshot.setSourceExercise(source.getExercise());
@@ -623,6 +922,7 @@ public class TrainingService {
                 trainingSet.setSetNumber(setRequest.setNumber());
                 trainingSet.setRepetitions(setRequest.repetitions());
                 trainingSet.setWeightKg(setRequest.weightKg());
+                trainingSet.setCompleted(setRequest.completed());
                 sessionExercise.getSets().add(trainingSet);
             }
         }
@@ -677,30 +977,50 @@ public class TrainingService {
 
     private TrainingExerciseResponse toExerciseResponse(TrainingExercise exercise) {
         return new TrainingExerciseResponse(exercise.getId(), exercise.getName(), exercise.getDescription(),
-                exercise.getCategory(), exercise.getModule(), exercise.isActive(),
+                exercise.getCategory(), exercise.getModule(), exercise.isGlobalExercise(),
+                !exercise.isGlobalExercise(), exercise.isActive(),
                 exercise.getCreatedAt(), exercise.getUpdatedAt());
     }
 
-    private TrainingPresetResponse toPresetResponse(TrainingPreset preset) {
-        return new TrainingPresetResponse(preset.getId(), preset.getName(), preset.getDescription(), preset.getModule(),
+    private LegacyTrainingPlanResponse toPresetResponse(TrainingPlan preset) {
+        return new LegacyTrainingPlanResponse(preset.getId(), preset.getName(), preset.getDescription(), preset.getModule(),
                 preset.isActive(), preset.getCreatedAt(), preset.getUpdatedAt());
     }
 
-    private TrainingPresetDetailResponse toPresetDetailResponse(TrainingPreset preset) {
-        return new TrainingPresetDetailResponse(preset.getId(), preset.getName(), preset.getDescription(), preset.getModule(),
+    private TrainingPlanResponse toPlanResponse(TrainingPlan plan) {
+        return new TrainingPlanResponse(plan.getId(), plan.getName(), plan.getDescription(), plan.getModule(),
+                plan.getFrequencyMode(), plan.getTargetSessionsPerWeek(), plan.getStartDate(), plan.getEndDate(),
+                plan.isActive(), plan.getCreatedAt(), plan.getUpdatedAt());
+    }
+
+    private TrainingPlanDetailResponse toPlanDetailResponse(TrainingPlan plan) {
+        return new TrainingPlanDetailResponse(plan.getId(), plan.getName(), plan.getDescription(), plan.getModule(),
+                plan.getFrequencyMode(), plan.getTargetSessionsPerWeek(), plan.getStartDate(), plan.getEndDate(),
+                plan.isActive(), plan.getCreatedAt(), plan.getUpdatedAt(), liveDays(plan).stream()
+                        .map(day -> new TrainingPlanDayResponse(day.getId(), day.getName(), day.getDescription(),
+                                day.getDayOfWeek(), day.getPosition(), day.isActive(), livePresetExercises(day).stream()
+                                        .map(exercise -> new TrainingPlanExerciseResponse(exercise.getId(),
+                                                exercise.getExercise().getId(), exercise.getExercise().getName(),
+                                                exercise.getTargetSets(), exercise.getTargetRepetitions(),
+                                                exercise.getTargetWeightKg(), exercise.getNotes(), exercise.getPosition(),
+                                                exercise.isActive())).toList())).toList());
+    }
+
+    private LegacyTrainingPlanDetailResponse toPresetDetailResponse(TrainingPlan preset) {
+        return new LegacyTrainingPlanDetailResponse(preset.getId(), preset.getName(), preset.getDescription(), preset.getModule(),
                 preset.isActive(), preset.getCreatedAt(), preset.getUpdatedAt(),
                 liveDays(preset).stream().map(this::toDayResponse).toList());
     }
 
-    private TrainingDayResponse toDayResponse(TrainingDay day) {
-        return new TrainingDayResponse(day.getId(), day.getDayOfWeek(), day.getPosition(), day.isActive(),
+    private LegacyPlanDayResponse toDayResponse(TrainingPlanDay day) {
+        return new LegacyPlanDayResponse(day.getId(), day.getName(), day.getDescription(), day.getDayOfWeek(), day.getPosition(), day.isActive(),
                 day.getCreatedAt(), day.getUpdatedAt(),
                 livePresetExercises(day).stream().map(this::toPresetExerciseResponse).toList());
     }
 
-    private TrainingPresetExerciseResponse toPresetExerciseResponse(TrainingPresetExercise presetExercise) {
+    private LegacyPlanExerciseResponse toPresetExerciseResponse(TrainingPlanExercise presetExercise) {
         TrainingExercise exercise = presetExercise.getExercise();
-        return new TrainingPresetExerciseResponse(presetExercise.getId(), exercise.getId(), exercise.getName(),
+        return new LegacyPlanExerciseResponse(presetExercise.getId(), exercise.getId(), exercise.getName(),
                 presetExercise.getTargetSets(), presetExercise.getTargetRepetitions(), presetExercise.getTargetWeightKg(),
                 presetExercise.getNotes(), presetExercise.getPosition(), presetExercise.isActive(),
                 presetExercise.getCreatedAt(), presetExercise.getUpdatedAt());
@@ -708,7 +1028,7 @@ public class TrainingService {
 
     private TrainingSessionResponse toSessionResponse(TrainingSession session) {
         return new TrainingSessionResponse(session.getId(), session.getSessionDate(), session.getModule(),
-                idOf(session.getSourcePreset()), idOf(session.getSourceTrainingDay()), session.getTitle(), session.getStatus(),
+                idOf(session.getSourcePlan()), idOf(session.getSourcePlanDay()), session.getTitle(), session.getStatus(),
                 session.getStartedAt(), session.getFinishedAt(), session.getDurationMinutes(), session.getNotes(),
                 session.getCreatedAt(), session.getUpdatedAt(),
                 session.getExercises().stream().sorted(Comparator.comparingInt(TrainingSessionExercise::getPosition)
@@ -717,7 +1037,7 @@ public class TrainingService {
 
     private TrainingSessionSummaryResponse toSessionSummaryResponse(TrainingSession session) {
         return new TrainingSessionSummaryResponse(session.getId(), session.getSessionDate(), session.getModule(),
-                idOf(session.getSourcePreset()), idOf(session.getSourceTrainingDay()), session.getTitle(), session.getStatus(),
+                idOf(session.getSourcePlan()), idOf(session.getSourcePlanDay()), session.getTitle(), session.getStatus(),
                 session.getStartedAt(), session.getFinishedAt(), session.getDurationMinutes());
     }
 
@@ -731,11 +1051,11 @@ public class TrainingService {
 
     private TrainingSetResponse toSetResponse(TrainingSet trainingSet) {
         return new TrainingSetResponse(trainingSet.getId(), trainingSet.getSetNumber(), trainingSet.getRepetitions(),
-                trainingSet.getWeightKg(), trainingSet.getCompleted(), trainingSet.getNotes(),
+                trainingSet.getWeightKg(), trainingSet.isCompleted(), trainingSet.getNotes(),
                 trainingSet.getCreatedAt(), trainingSet.getUpdatedAt());
     }
 
-    private TrainingCalendarDayResponse toCalendarDay(LocalDate date, List<TrainingSession> daySessions) {
+    private TrainingCalendarDayResponse toCalendarDay(AppUser user, LocalDate date, List<TrainingSession> daySessions) {
         long started = daySessions.stream().filter(session -> session.getStatus() == TrainingSessionStatus.STARTED).count();
         long completed = daySessions.stream().filter(session -> session.getStatus() == TrainingSessionStatus.COMPLETED).count();
         long cancelled = daySessions.stream().filter(session -> session.getStatus() == TrainingSessionStatus.CANCELLED).count();
@@ -745,30 +1065,31 @@ public class TrainingService {
                 .collect(Collectors.toCollection(() -> EnumSet.noneOf(TrainingModule.class))).stream().sorted().toList();
         List<TrainingCalendarSessionResponse> sessions = daySessions.stream().map(session -> new TrainingCalendarSessionResponse(
                 session.getId(), session.getModule(), session.getTitle(), session.getStatus(),
-                idOf(session.getSourcePreset()), idOf(session.getSourceTrainingDay()))).toList();
-        return new TrainingCalendarDayResponse(date, daySessions.size(), started, completed, cancelled, duration, modules, sessions);
+                idOf(session.getSourcePlan()), idOf(session.getSourcePlanDay()))).toList();
+        return new TrainingCalendarDayResponse(date, daySessions.size(), started, completed, cancelled, duration, modules,
+                sessions, schedulesForDate(user, date));
     }
 
-    private List<TrainingDay> liveDays(TrainingPreset preset) {
+    private List<TrainingPlanDay> liveDays(TrainingPlan preset) {
         return preset.getDays().stream().filter(day -> day.getDeletedAt() == null)
-                .sorted(Comparator.comparingInt(TrainingDay::getPosition).thenComparing(TrainingDay::getId)).toList();
+                .sorted(Comparator.comparingInt(TrainingPlanDay::getPosition).thenComparing(TrainingPlanDay::getId)).toList();
     }
 
-    private List<TrainingPresetExercise> livePresetExercises(TrainingPreset preset) {
+    private List<TrainingPlanExercise> livePresetExercises(TrainingPlan preset) {
         return preset.getDays().stream().filter(day -> day.getDeletedAt() == null)
                 .flatMap(day -> livePresetExercises(day).stream()).toList();
     }
 
-    private List<TrainingPresetExercise> livePresetExercises(TrainingDay day) {
+    private List<TrainingPlanExercise> livePresetExercises(TrainingPlanDay day) {
         return day.getExercises().stream().filter(exercise -> exercise.getDeletedAt() == null)
-                .sorted(Comparator.comparingInt(TrainingPresetExercise::getPosition)
-                        .thenComparing(TrainingPresetExercise::getId)).toList();
+                .sorted(Comparator.comparingInt(TrainingPlanExercise::getPosition)
+                        .thenComparing(TrainingPlanExercise::getId)).toList();
     }
 
     private <T> List<T> ordered(List<T> current, List<Long> requestedIds, String label) {
         Map<Long, T> byId = new LinkedHashMap<>();
         for (T item : current) {
-            Long id = item instanceof TrainingDay day ? day.getId() : ((TrainingPresetExercise) item).getId();
+            Long id = item instanceof TrainingPlanDay day ? day.getId() : ((TrainingPlanExercise) item).getId();
             byId.put(id, item);
         }
         if (byId.size() != requestedIds.size() || requestedIds.stream().distinct().count() != requestedIds.size()
@@ -778,7 +1099,7 @@ public class TrainingService {
         return requestedIds.stream().map(byId::get).toList();
     }
 
-    private void touch(TrainingPreset preset) {
+    private void touch(TrainingPlan preset) {
         preset.setUpdatedAt(OffsetDateTime.now());
     }
 
@@ -793,8 +1114,8 @@ public class TrainingService {
 
     private static Long idOf(Object entity) {
         if (entity == null) return null;
-        if (entity instanceof TrainingPreset preset) return preset.getId();
-        if (entity instanceof TrainingDay day) return day.getId();
+        if (entity instanceof TrainingPlan preset) return preset.getId();
+        if (entity instanceof TrainingPlanDay day) return day.getId();
         return ((TrainingExercise) entity).getId();
     }
 
@@ -807,6 +1128,6 @@ public class TrainingService {
         return value.trim();
     }
 
-    private record SessionSource(TrainingPreset preset, TrainingDay trainingDay) {
+    private record SessionSource(TrainingPlan plan, TrainingPlanDay planDay) {
     }
 }

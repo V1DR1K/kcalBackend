@@ -93,6 +93,8 @@ class TrainingControllerIntegrationTests {
                 new HttpEntity<>(Map.of("dayOfWeek", "MONDAY"), headers), Map.class);
         ResponseEntity<Map> wednesday = rest.postForEntity("/api/training/presets/" + presetId + "/days",
                 new HttpEntity<>(Map.of("dayOfWeek", "WEDNESDAY"), headers), Map.class);
+        assertThat(monday.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(wednesday.getStatusCode().is2xxSuccessful()).isTrue();
         Object mondayId = monday.getBody().get("id");
         Object wednesdayId = wednesday.getBody().get("id");
 
@@ -113,7 +115,7 @@ class TrainingControllerIntegrationTests {
 
         ResponseEntity<Map> session = rest.postForEntity("/api/training/sessions",
                 new HttpEntity<>(Map.of(
-                        "date", "2040-03-04",
+                         "date", "2040-03-05",
                         "module", "GYM",
                         "presetId", presetId,
                         "trainingDayId", mondayId,
@@ -133,7 +135,63 @@ class TrainingControllerIntegrationTests {
         ResponseEntity<String> calendar = rest.exchange("/api/training/calendar?from=2040-03-01&to=2040-03-10",
                 HttpMethod.GET, new HttpEntity<>(headers), String.class);
         assertThat(calendar.getStatusCode().is2xxSuccessful()).isTrue();
-        assertThat(calendar.getBody()).contains("2040-03-04", "\"completedCount\":1", "\"durationMinutes\":45");
+        assertThat(calendar.getBody()).contains("2040-03-05", "\"completedCount\":1", "\"durationMinutes\":45");
+    }
+
+    @Test
+    void createsNestedDynamicPlanAndAdvancesOnlyAfterCompletionOrSkip() {
+        HttpHeaders headers = authHeaders("training-dynamic");
+        ResponseEntity<Map> exercise = rest.postForEntity("/api/training/exercises",
+                new HttpEntity<>(Map.of("name", "Sentadilla", "module", "GYM"), headers), Map.class);
+        Object exerciseId = exercise.getBody().get("id");
+
+        Map<String, Object> exerciseTarget = Map.of("exerciseId", exerciseId, "targetSets", 3,
+                "targetRepetitions", 8, "targetWeightKg", 60);
+        Map<String, Object> planRequest = Map.of(
+                "name", "Fuerza dinámica",
+                "description", "Secuencia semanal",
+                "module", "GYM",
+                "frequencyMode", "DYNAMIC",
+                "targetSessionsPerWeek", 2,
+                "startDate", "2040-01-01",
+                "days", List.of(
+                        Map.of("name", "Día A", "position", 0, "exercises", List.of(exerciseTarget)),
+                        Map.of("name", "Día B", "position", 1, "exercises", List.of(exerciseTarget))));
+        ResponseEntity<Map> plan = rest.postForEntity("/api/training/plans",
+                new HttpEntity<>(planRequest, headers), Map.class);
+        assertThat(plan.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(plan.getBody().get("frequencyMode")).isEqualTo("DYNAMIC");
+        List<?> planDays = (List<?>) plan.getBody().get("days");
+        Object firstDayId = ((Map<?, ?>) planDays.get(0)).get("id");
+        Object secondDayId = ((Map<?, ?>) planDays.get(1)).get("id");
+
+        Map<String, Object> sessionRequest = Map.of("date", "2040-01-01", "module", "GYM",
+                "planId", plan.getBody().get("id"), "planDayId", firstDayId);
+        ResponseEntity<Map> session = rest.postForEntity("/api/training/sessions",
+                new HttpEntity<>(sessionRequest, headers), Map.class);
+        assertThat(session.getStatusCode().is2xxSuccessful()).isTrue();
+        List<?> snapshots = (List<?>) session.getBody().get("exercises");
+        assertThat(((Map<?, ?>) snapshots.get(0)).get("targetWeightKg")).isEqualTo(60.0);
+
+        ResponseEntity<Map> completed = rest.postForEntity(
+                "/api/training/sessions/" + session.getBody().get("id") + "/complete",
+                new HttpEntity<>(Map.of(), headers), Map.class);
+        assertThat(completed.getBody().get("status")).isEqualTo("COMPLETED");
+
+        ResponseEntity<Map> next = rest.exchange(
+                "/api/training/plans/" + plan.getBody().get("id") + "/resolve?date=2040-01-02",
+                HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(next.getBody().get("planDayId")).isEqualTo(secondDayId);
+
+        ResponseEntity<Map> skipped = rest.postForEntity(
+                "/api/training/plans/" + plan.getBody().get("id") + "/skip",
+                new HttpEntity<>(Map.of("date", "2040-01-02", "planDayId", secondDayId), headers), Map.class);
+        assertThat(skipped.getBody().get("status")).isEqualTo("SKIPPED");
+
+        ResponseEntity<Map> continued = rest.exchange(
+                "/api/training/plans/" + plan.getBody().get("id") + "/resolve?date=2040-01-03",
+                HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(continued.getBody().get("planDayId")).isEqualTo(firstDayId);
     }
 
     private HttpHeaders authHeaders(String username) {

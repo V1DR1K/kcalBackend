@@ -20,8 +20,7 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
         long getTotalMinutes();
     }
 
-    @EntityGraph(attributePaths = {"sourcePreset", "sourceTrainingDay"})
-    @EntityGraph(attributePaths = {"sourcePreset", "sourceTrainingDay"})
+    @EntityGraph(attributePaths = {"sourcePlan", "sourcePlanDay"})
     @Query("""
             select session from TrainingSession session
             where session.user = :user
@@ -30,8 +29,8 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
               and (:date is null or session.sessionDate = :date)
               and (:module is null or session.module = :module)
               and (:status is null or session.status = :status)
-              and (:presetId is null or session.sourcePreset.id = :presetId)
-              and (:trainingDayId is null or session.sourceTrainingDay.id = :trainingDayId)
+              and (:presetId is null or session.sourcePlan.id = :presetId)
+              and (:trainingDayId is null or session.sourcePlanDay.id = :trainingDayId)
             """)
     Page<TrainingSession> search(@Param("user") AppUser user, @Param("fromDate") LocalDate fromDate,
             @Param("toDate") LocalDate toDate, @Param("date") LocalDate date,
@@ -40,8 +39,8 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
 
     @Query("""
             select distinct session from TrainingSession session
-            left join fetch session.sourcePreset
-            left join fetch session.sourceTrainingDay
+            left join fetch session.sourcePlan
+            left join fetch session.sourcePlanDay
             left join fetch session.exercises sessionExercise
             left join fetch sessionExercise.sourceExercise
             where session.id = :id
@@ -59,8 +58,19 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
     List<TrainingSession> findForCalendar(@Param("user") AppUser user, @Param("fromDate") LocalDate fromDate,
             @Param("toDate") LocalDate toDate);
 
-    @EntityGraph(attributePaths = {"sourcePreset", "sourceTrainingDay"})
+    @EntityGraph(attributePaths = {"sourcePlan", "sourcePlanDay"})
     Optional<TrainingSession> findFirstByUserOrderBySessionDateDescIdDesc(AppUser user);
+
+    @Query("""
+            select count(session) from TrainingSession session
+            where session.user = :user
+              and session.sourcePlan.id = :planId
+              and session.sessionDate < :date
+              and session.status in (com.scalegrams.training.TrainingSessionStatus.COMPLETED,
+                                     com.scalegrams.training.TrainingSessionStatus.SKIPPED)
+            """)
+    long countAdvancingSessions(@Param("user") AppUser user, @Param("planId") Long planId,
+            @Param("date") LocalDate date);
 
     @Query("""
             select count(session) as sessionCount, coalesce(sum(session.durationMinutes), 0) as totalMinutes

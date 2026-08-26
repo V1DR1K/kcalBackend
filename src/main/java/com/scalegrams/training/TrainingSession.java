@@ -48,11 +48,11 @@ public class TrainingSession {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_preset_id")
-    private TrainingPreset sourcePreset;
+    private TrainingPlan sourcePlan;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_training_day_id")
-    private TrainingDay sourceTrainingDay;
+    private TrainingPlanDay sourcePlanDay;
 
     @Column(length = 160)
     private String title;

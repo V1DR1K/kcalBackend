@@ -21,14 +21,14 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class TrainingPresetExercise {
+public class TrainingPlanExercise {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "training_day_id", nullable = false)
-    private TrainingDay trainingDay;
+    private TrainingPlanDay planDay;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "exercise_id", nullable = false)

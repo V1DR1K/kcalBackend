@@ -1,5 +1,6 @@
 package com.scalegrams.training;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -10,34 +11,32 @@ import org.springframework.data.repository.query.Param;
 
 import com.scalegrams.user.AppUser;
 
-public interface TrainingPresetRepository extends JpaRepository<TrainingPreset, Long> {
+public interface TrainingPlanRepository extends JpaRepository<TrainingPlan, Long> {
     @Query("""
-            select preset from TrainingPreset preset
+            select preset from TrainingPlan preset
             where preset.owner = :owner
               and preset.deletedAt is null
               and (:module is null or preset.module = :module)
               and (:includeInactive = true or preset.active = true)
             """)
-    Page<TrainingPreset> search(@Param("owner") AppUser owner, @Param("module") TrainingModule module,
+    Page<TrainingPlan> search(@Param("owner") AppUser owner, @Param("module") TrainingModule module,
             @Param("includeInactive") boolean includeInactive, Pageable pageable);
 
-    Optional<TrainingPreset> findByIdAndOwnerAndDeletedAtIsNull(Long id, AppUser owner);
+    Optional<TrainingPlan> findByIdAndOwnerAndDeletedAtIsNull(Long id, AppUser owner);
 
-    Optional<TrainingPreset> findByIdAndOwner(Long id, AppUser owner);
+    Optional<TrainingPlan> findByIdAndOwner(Long id, AppUser owner);
 
     @Query("""
-            select distinct preset from TrainingPreset preset
+            select distinct preset from TrainingPlan preset
             left join fetch preset.days day
-            left join fetch day.exercises presetExercise
-            left join fetch presetExercise.exercise
             where preset.id = :id
               and preset.owner = :owner
               and preset.deletedAt is null
             """)
-    Optional<TrainingPreset> findDetailByIdAndOwner(@Param("id") Long id, @Param("owner") AppUser owner);
+    Optional<TrainingPlan> findDetailByIdAndOwner(@Param("id") Long id, @Param("owner") AppUser owner);
 
     @Query("""
-            select count(preset) > 0 from TrainingPreset preset
+            select count(preset) > 0 from TrainingPlan preset
             where preset.owner = :owner
               and preset.module = :module
               and lower(preset.name) = lower(:name)
@@ -46,4 +45,6 @@ public interface TrainingPresetRepository extends JpaRepository<TrainingPreset, 
             """)
     boolean existsLiveName(@Param("owner") AppUser owner, @Param("module") TrainingModule module,
             @Param("name") String name, @Param("excludedId") Long excludedId);
+
+    List<TrainingPlan> findByOwnerAndModuleAndActiveTrueAndDeletedAtIsNull(AppUser owner, TrainingModule module);
 }

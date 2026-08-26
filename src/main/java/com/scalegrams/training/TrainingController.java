@@ -18,17 +18,21 @@ import org.springframework.web.bind.annotation.RestController;
 import com.scalegrams.common.CurrentUser;
 import com.scalegrams.training.TrainingDtos.CompleteTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.CreateTrainingSessionRequest;
-import com.scalegrams.training.TrainingDtos.DuplicatePresetRequest;
+import com.scalegrams.training.TrainingDtos.DuplicateTrainingPlanRequest;
 import com.scalegrams.training.TrainingDtos.PageResponse;
 import com.scalegrams.training.TrainingDtos.ReorderRequest;
 import com.scalegrams.training.TrainingDtos.TrainingCalendarDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingDashboardResponse;
-import com.scalegrams.training.TrainingDtos.TrainingDayResponse;
+import com.scalegrams.training.TrainingDtos.LegacyPlanDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingExerciseResponse;
 import com.scalegrams.training.TrainingDtos.TrainingModuleResponse;
-import com.scalegrams.training.TrainingDtos.TrainingPresetDetailResponse;
-import com.scalegrams.training.TrainingDtos.TrainingPresetExerciseResponse;
-import com.scalegrams.training.TrainingDtos.TrainingPresetResponse;
+import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseResponse;
+import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanDetailResponse;
+import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanResponse;
+import com.scalegrams.training.TrainingDtos.TrainingPlanDetailResponse;
+import com.scalegrams.training.TrainingDtos.TrainingPlanResolutionResponse;
+import com.scalegrams.training.TrainingDtos.TrainingPlanResponse;
+import com.scalegrams.training.TrainingDtos.SkipTrainingPlanSessionRequest;
 import com.scalegrams.training.TrainingDtos.TrainingSessionExerciseRequest;
 import com.scalegrams.training.TrainingDtos.TrainingSessionExerciseResponse;
 import com.scalegrams.training.TrainingDtos.TrainingSessionResponse;
@@ -37,9 +41,10 @@ import com.scalegrams.training.TrainingDtos.TrainingSetRequest;
 import com.scalegrams.training.TrainingDtos.TrainingSetResponse;
 import com.scalegrams.training.TrainingDtos.UpdateTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.UpsertExerciseRequest;
-import com.scalegrams.training.TrainingDtos.UpsertPresetExerciseRequest;
-import com.scalegrams.training.TrainingDtos.UpsertPresetRequest;
-import com.scalegrams.training.TrainingDtos.UpsertTrainingDayRequest;
+import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseRequest;
+import com.scalegrams.training.TrainingDtos.LegacyPlanRequest;
+import com.scalegrams.training.TrainingDtos.LegacyPlanDayRequest;
+import com.scalegrams.training.TrainingDtos.UpsertTrainingPlanRequest;
 
 import jakarta.validation.Valid;
 
@@ -85,26 +90,75 @@ public class TrainingController {
     }
 
     @GetMapping("/presets")
-    PageResponse<TrainingPresetResponse> presets(Authentication authentication,
+    PageResponse<LegacyTrainingPlanResponse> presets(Authentication authentication,
             @RequestParam(required = false) TrainingModule module,
             @RequestParam(defaultValue = "false") boolean includeInactive,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         return trainingService.presets(currentUser.from(authentication), module, includeInactive, page, size);
     }
 
+    @GetMapping("/plans")
+    PageResponse<TrainingPlanResponse> plans(Authentication authentication,
+            @RequestParam(required = false) TrainingModule module,
+            @RequestParam(defaultValue = "false") boolean includeInactive,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return trainingService.plans(currentUser.from(authentication), module, includeInactive, page, size);
+    }
+
+    @GetMapping("/plans/{id}")
+    TrainingPlanDetailResponse plan(Authentication authentication, @PathVariable Long id) {
+        return trainingService.plan(currentUser.from(authentication), id);
+    }
+
+    @PostMapping("/plans")
+    TrainingPlanDetailResponse createPlan(Authentication authentication,
+            @Valid @RequestBody UpsertTrainingPlanRequest request) {
+        return trainingService.createPlan(currentUser.from(authentication), request);
+    }
+
+    @PutMapping("/plans/{id}")
+    TrainingPlanDetailResponse updatePlan(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody UpsertTrainingPlanRequest request) {
+        return trainingService.updatePlan(currentUser.from(authentication), id, request);
+    }
+
+    @DeleteMapping("/plans/{id}")
+    ResponseEntity<Void> deletePlan(Authentication authentication, @PathVariable Long id) {
+        trainingService.deletePreset(currentUser.from(authentication), id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/plans/{id}/duplicate")
+    TrainingPlanDetailResponse duplicatePlan(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody DuplicateTrainingPlanRequest request) {
+        return trainingService.duplicatePlan(currentUser.from(authentication), id, request);
+    }
+
+    @GetMapping("/plans/{id}/resolve")
+    TrainingPlanResolutionResponse resolvePlan(Authentication authentication, @PathVariable Long id,
+            @RequestParam LocalDate date) {
+        return trainingService.resolvePlan(currentUser.from(authentication), id, date);
+    }
+
+    @PostMapping("/plans/{id}/skip")
+    TrainingSessionResponse skipPlanSession(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody SkipTrainingPlanSessionRequest request) {
+        return trainingService.skipPlanSession(currentUser.from(authentication), id, request);
+    }
+
     @GetMapping("/presets/{id}")
-    TrainingPresetDetailResponse preset(Authentication authentication, @PathVariable Long id) {
+    LegacyTrainingPlanDetailResponse preset(Authentication authentication, @PathVariable Long id) {
         return trainingService.preset(currentUser.from(authentication), id);
     }
 
     @PostMapping("/presets")
-    TrainingPresetDetailResponse createPreset(Authentication authentication, @Valid @RequestBody UpsertPresetRequest request) {
+    LegacyTrainingPlanDetailResponse createPreset(Authentication authentication, @Valid @RequestBody LegacyPlanRequest request) {
         return trainingService.createPreset(currentUser.from(authentication), request);
     }
 
     @PutMapping("/presets/{id}")
-    TrainingPresetDetailResponse updatePreset(Authentication authentication, @PathVariable Long id,
-            @Valid @RequestBody UpsertPresetRequest request) {
+    LegacyTrainingPlanDetailResponse updatePreset(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody LegacyPlanRequest request) {
         return trainingService.updatePreset(currentUser.from(authentication), id, request);
     }
 
@@ -115,20 +169,20 @@ public class TrainingController {
     }
 
     @PostMapping("/presets/{id}/duplicate")
-    TrainingPresetDetailResponse duplicatePreset(Authentication authentication, @PathVariable Long id,
-            @Valid @RequestBody DuplicatePresetRequest request) {
+    LegacyTrainingPlanDetailResponse duplicatePreset(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody DuplicateTrainingPlanRequest request) {
         return trainingService.duplicatePreset(currentUser.from(authentication), id, request);
     }
 
     @PostMapping("/presets/{presetId}/days")
-    TrainingDayResponse createDay(Authentication authentication, @PathVariable Long presetId,
-            @Valid @RequestBody UpsertTrainingDayRequest request) {
+    LegacyPlanDayResponse createDay(Authentication authentication, @PathVariable Long presetId,
+            @Valid @RequestBody LegacyPlanDayRequest request) {
         return trainingService.createDay(currentUser.from(authentication), presetId, request);
     }
 
     @PutMapping("/presets/{presetId}/days/{dayId}")
-    TrainingDayResponse updateDay(Authentication authentication, @PathVariable Long presetId, @PathVariable Long dayId,
-            @Valid @RequestBody UpsertTrainingDayRequest request) {
+    LegacyPlanDayResponse updateDay(Authentication authentication, @PathVariable Long presetId, @PathVariable Long dayId,
+            @Valid @RequestBody LegacyPlanDayRequest request) {
         return trainingService.updateDay(currentUser.from(authentication), presetId, dayId, request);
     }
 
@@ -139,21 +193,21 @@ public class TrainingController {
     }
 
     @PutMapping("/presets/{presetId}/days/reorder")
-    List<TrainingDayResponse> reorderDays(Authentication authentication, @PathVariable Long presetId,
+    List<LegacyPlanDayResponse> reorderDays(Authentication authentication, @PathVariable Long presetId,
             @Valid @RequestBody ReorderRequest request) {
         return trainingService.reorderDays(currentUser.from(authentication), presetId, request);
     }
 
     @PostMapping("/presets/{presetId}/days/{dayId}/exercises")
-    TrainingPresetExerciseResponse createPresetExercise(Authentication authentication, @PathVariable Long presetId,
-            @PathVariable Long dayId, @Valid @RequestBody UpsertPresetExerciseRequest request) {
+    LegacyPlanExerciseResponse createPresetExercise(Authentication authentication, @PathVariable Long presetId,
+            @PathVariable Long dayId, @Valid @RequestBody LegacyPlanExerciseRequest request) {
         return trainingService.createPresetExercise(currentUser.from(authentication), presetId, dayId, request);
     }
 
     @PutMapping("/presets/{presetId}/days/{dayId}/exercises/{presetExerciseId}")
-    TrainingPresetExerciseResponse updatePresetExercise(Authentication authentication, @PathVariable Long presetId,
+    LegacyPlanExerciseResponse updatePresetExercise(Authentication authentication, @PathVariable Long presetId,
             @PathVariable Long dayId, @PathVariable Long presetExerciseId,
-            @Valid @RequestBody UpsertPresetExerciseRequest request) {
+            @Valid @RequestBody LegacyPlanExerciseRequest request) {
         return trainingService.updatePresetExercise(currentUser.from(authentication), presetId, dayId,
                 presetExerciseId, request);
     }
@@ -166,7 +220,7 @@ public class TrainingController {
     }
 
     @PutMapping("/presets/{presetId}/days/{dayId}/exercises/reorder")
-    List<TrainingPresetExerciseResponse> reorderPresetExercises(Authentication authentication,
+    List<LegacyPlanExerciseResponse> reorderPresetExercises(Authentication authentication,
             @PathVariable Long presetId, @PathVariable Long dayId, @Valid @RequestBody ReorderRequest request) {
         return trainingService.reorderPresetExercises(currentUser.from(authentication), presetId, dayId, request);
     }
@@ -176,10 +230,11 @@ public class TrainingController {
             @RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to,
             @RequestParam(required = false) LocalDate date, @RequestParam(required = false) TrainingModule module,
             @RequestParam(required = false) TrainingSessionStatus status,
+            @RequestParam(required = false) Long planId, @RequestParam(required = false) Long planDayId,
             @RequestParam(required = false) Long presetId, @RequestParam(required = false) Long trainingDayId,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return trainingService.sessions(currentUser.from(authentication), from, to, date, module, status, presetId,
-                trainingDayId, page, size);
+        return trainingService.sessions(currentUser.from(authentication), from, to, date, module, status,
+                planId != null ? planId : presetId, planDayId != null ? planDayId : trainingDayId, page, size);
     }
 
     @GetMapping("/sessions/{id}")
