@@ -60,6 +60,19 @@ class TrainingControllerIntegrationTests {
     }
 
     @Test
+    void listsTrainingDataWithoutOptionalSearchParameters() {
+        HttpHeaders headers = authHeaders("training-listing");
+
+        ResponseEntity<Map> exercises = rest.exchange("/api/training/exercises?page=0&size=50", HttpMethod.GET,
+                new HttpEntity<>(headers), Map.class);
+        assertThat(exercises.getStatusCode().is2xxSuccessful()).isTrue();
+
+        ResponseEntity<Map> dashboard = rest.exchange("/api/training/dashboard?date=2040-01-01", HttpMethod.GET,
+                new HttpEntity<>(headers), Map.class);
+        assertThat(dashboard.getStatusCode().is2xxSuccessful()).isTrue();
+    }
+
+    @Test
     void rejectsWeightsForCalisthenicsSessions() {
         HttpHeaders headers = authHeaders("training-calisthenics");
         ResponseEntity<Map> exercise = rest.postForEntity("/api/training/exercises",

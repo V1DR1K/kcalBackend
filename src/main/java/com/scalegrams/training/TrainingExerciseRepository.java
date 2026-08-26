@@ -16,7 +16,7 @@ public interface TrainingExerciseRepository extends JpaRepository<TrainingExerci
             where (exercise.owner = :owner or exercise.globalExercise = true)
               and exercise.deletedAt is null
               and (:module is null or exercise.module = :module)
-              and (:query is null or lower(exercise.name) like lower(concat('%', :query, '%')))
+              and lower(exercise.name) like lower(concat('%', :query, '%'))
             """)
     Page<TrainingExercise> search(@Param("owner") AppUser owner, @Param("module") TrainingModule module,
             @Param("query") String query, Pageable pageable);

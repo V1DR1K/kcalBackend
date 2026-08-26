@@ -91,7 +91,7 @@ public class TrainingService {
     @Transactional(readOnly = true)
     public PageResponse<TrainingExerciseResponse> exercises(AppUser user, String query, TrainingModule module,
             int page, int size) {
-        Page<TrainingExercise> result = exercises.search(user, module, blankToNull(query),
+        Page<TrainingExercise> result = exercises.search(user, module, query == null ? "" : query.trim(),
                 page(page, size, Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id"))));
         return page(result, this::toExerciseResponse);
     }
