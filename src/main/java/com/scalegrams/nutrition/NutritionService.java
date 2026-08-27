@@ -1319,18 +1319,28 @@ public class NutritionService {
         log.setProteinGrams(preview.proteinGrams());
         log.setCarbsGrams(preview.carbsGrams());
         log.setFatGrams(preview.fatGrams());
-        log.getNutrientSnapshot().clear();
+        Map<String, FoodLogNutrient> existing = log.getNutrientSnapshot().stream()
+                .filter(item -> item.getDefinition() != null)
+                .collect(Collectors.toMap(item -> item.getDefinition().getCode(), item -> item,
+                        (left, right) -> left, LinkedHashMap::new));
+        Set<String> retainedCodes = new LinkedHashSet<>();
         for (NutrientValueResponse value : preview.nutrients()) {
             nutrientDefinitions.findById(value.code()).ifPresent(definition -> {
-                FoodLogNutrient snapshot = new FoodLogNutrient();
-                snapshot.setFoodLog(log);
+                retainedCodes.add(definition.getCode());
+                FoodLogNutrient snapshot = existing.get(definition.getCode());
+                if (snapshot == null) {
+                    snapshot = new FoodLogNutrient();
+                    snapshot.setFoodLog(log);
+                    log.getNutrientSnapshot().add(snapshot);
+                }
                 snapshot.setDefinition(definition);
                 snapshot.setValue(value.value());
                 snapshot.setSource(parseSource(value.source()));
                 snapshot.setStatus(parseStatus(value.status()));
-                log.getNutrientSnapshot().add(snapshot);
             });
         }
+        log.getNutrientSnapshot().removeIf(item -> item.getDefinition() == null
+                || !retainedCodes.contains(item.getDefinition().getCode()));
     }
 
     private void applyRecipeTotals(Recipe recipe) {

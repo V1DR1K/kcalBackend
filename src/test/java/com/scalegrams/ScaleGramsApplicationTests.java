@@ -419,12 +419,13 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
-	void userCanEditFoodLogAndNutritionIsRecalculated() {
+	void userCanEditFoodLogAndNutritionIsRecalculatedWithoutDuplicateSnapshots() {
 		HttpHeaders headers = authHeaders();
 		String date = "2031-02-10";
 		Map<String, Object> meal = Map.of("itemType", "FOOD", "itemId", 1, "mealType", "LUNCH",
 				"quantity", 100, "unit", "GRAM", "logDate", date);
 		ResponseEntity<Map> created = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(meal, headers), Map.class);
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
 		Object logId = created.getBody().get("id");
 		Map<String, Object> update = Map.of("mealType", "DINNER", "quantity", 200, "unit", "GRAM", "logDate", date);
 
