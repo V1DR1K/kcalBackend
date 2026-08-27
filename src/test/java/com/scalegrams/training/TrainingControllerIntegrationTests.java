@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -279,7 +280,8 @@ class TrainingControllerIntegrationTests {
                 new LoginRequest(username, "central-password"), LoginResponse.class);
         assertThat(login.getStatusCode().is2xxSuccessful()).isTrue();
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(login.getBody().accessToken());
+        headers.add(HttpHeaders.COOKIE, login.getHeaders().get(HttpHeaders.SET_COOKIE).stream()
+                .map(cookie -> cookie.substring(0, cookie.indexOf(';'))).collect(Collectors.joining("; ")));
         return headers;
     }
 

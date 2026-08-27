@@ -42,6 +42,9 @@ public class AuthService {
 
     @Transactional
     public AuthResponse refresh(String rawRefreshToken) {
+        if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
+            throw new BadRequestException("La sesión de renovación no es válida.");
+        }
         return localSession(centralAuth.refresh(rawRefreshToken));
     }
 
@@ -89,5 +92,9 @@ public class AuthService {
 
     private UserSummary summary(AppUser user, String username) {
         return new UserSummary(user.getId(), username, user.getFullName(), user.getEmail(), user.getPlanName(), user.getRole());
+    }
+
+    public UserSummary summary(AppUser user) {
+        return summary(user, user.getAuthUserId() == null ? null : user.getAuthUserId().toString());
     }
 }

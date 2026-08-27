@@ -1,12 +1,15 @@
 package com.scalegrams.security;
 
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import jakarta.servlet.FilterChain;
@@ -20,23 +23,26 @@ import com.scalegrams.user.UserRepository;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final CentralJwtService jwtService;
     private final UserRepository users;
+    private final String accessCookieName;
 
-    public JwtAuthenticationFilter(CentralJwtService jwtService, UserRepository users) {
+    public JwtAuthenticationFilter(CentralJwtService jwtService, UserRepository users,
+            @Value("${app.auth.cookies.access-name:scalegrams_access}") String accessCookieName) {
         this.jwtService = jwtService;
         this.users = users;
+        this.accessCookieName = accessCookieName;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         String header = request.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
+        String token = header != null && header.startsWith("Bearer ") ? header.substring(7) : cookieToken(request);
+        if (token == null || token.isBlank()) {
             chain.doFilter(request, response);
             return;
         }
 
         try {
-            String token = header.substring(7);
             UUID authUserId = jwtService.subject(token);
             if (SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserPrincipal userDetails = users.findByAuthUserId(authUserId)
@@ -51,5 +57,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.clearContext();
         }
         chain.doFilter(request, response);
+    }
+
+    private String cookieToken(HttpServletRequest request) {
+        if (request.getCookies() == null) return null;
+        for (var cookie : request.getCookies()) {
+            if (accessCookieName.equals(cookie.getName())) return URLDecoder.decode(cookie.getValue(), StandardCharsets.UTF_8);
+        }
+        return null;
     }
 }

@@ -21,6 +21,8 @@ app:
     service-url: ${AUTH_SERVICE_URL}
     public-key-pem: ${AUTH_PUBLIC_KEY_PEM}
     default-role: ${AUTH_DEFAULT_ROLE:USER}
+    cookies:
+      secure: ${AUTH_COOKIE_SECURE:true}
   seed:
     catalog-enabled: true
   ai-nutrition:

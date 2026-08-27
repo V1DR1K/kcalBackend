@@ -11,6 +11,9 @@ public class AuthDtos {
 
     public record AuthResponse(String accessToken, String tokenType, String refreshToken, UserSummary user,
             boolean mustChangePassword) {
+        public AuthResponse withoutTokens() {
+            return new AuthResponse(null, null, null, user, mustChangePassword);
+        }
     }
 
     public record RefreshRequest(@NotBlank String refreshToken) {

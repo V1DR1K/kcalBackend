@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -82,6 +83,23 @@ class ScaleGramsApplicationTests {
 
 	@Test
 	void contextLoads() {
+	}
+
+	@Test
+	void centralSessionUsesHttpOnlyCookiesAndCanBeRestored() {
+		ResponseEntity<LoginResponse> login = rest.postForEntity("/api/auth/login",
+				new LoginRequest("alex", "central-password"), LoginResponse.class);
+
+		assertThat(login.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(login.getBody().accessToken()).isNull();
+		assertThat(login.getBody().refreshToken()).isNull();
+		assertThat(login.getHeaders().get(HttpHeaders.SET_COOKIE)).hasSize(2)
+				.allMatch(cookie -> cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict"));
+
+		ResponseEntity<UserSummary> session = rest.exchange("/api/auth/me", HttpMethod.GET,
+				new HttpEntity<>(cookieHeaders(login)), UserSummary.class);
+		assertThat(session.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(session.getBody().id()).isNotNull();
 	}
 
 	@Test
@@ -745,17 +763,20 @@ class ScaleGramsApplicationTests {
 		ResponseEntity<LoginResponse> login = rest.postForEntity("/api/auth/login",
 				new LoginRequest("alex", "central-password"), LoginResponse.class);
 		assertThat(login.getStatusCode().is2xxSuccessful()).isTrue();
-		HttpHeaders headers = new HttpHeaders();
-		headers.setBearerAuth(login.getBody().accessToken());
-		return headers;
+		return cookieHeaders(login);
 	}
 
 	private HttpHeaders authHeaders(String username) {
 		ResponseEntity<LoginResponse> login = rest.postForEntity("/api/auth/login",
 				new LoginRequest(username, "central-password"), LoginResponse.class);
 		assertThat(login.getStatusCode().is2xxSuccessful()).isTrue();
+		return cookieHeaders(login);
+	}
+
+	private HttpHeaders cookieHeaders(ResponseEntity<?> login) {
 		HttpHeaders headers = new HttpHeaders();
-		headers.setBearerAuth(login.getBody().accessToken());
+		headers.add(HttpHeaders.COOKIE, login.getHeaders().get(HttpHeaders.SET_COOKIE).stream()
+				.map(cookie -> cookie.substring(0, cookie.indexOf(';'))).collect(Collectors.joining("; ")));
 		return headers;
 	}
 
