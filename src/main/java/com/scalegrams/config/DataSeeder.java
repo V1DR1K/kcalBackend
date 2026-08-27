@@ -2,6 +2,7 @@ package com.scalegrams.config;
 
 import java.math.BigDecimal;
 import java.util.Set;
+import java.util.Locale;
 
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
@@ -13,13 +14,17 @@ import com.scalegrams.catalog.FoodCategory;
 import com.scalegrams.catalog.FoodPreparation;
 import com.scalegrams.catalog.FoodRepository;
 import com.scalegrams.catalog.FoodUnit;
+import com.scalegrams.training.TrainingCategory;
+import com.scalegrams.training.TrainingCategoryRepository;
+import com.scalegrams.training.TrainingModule;
 
 @Configuration
 public class DataSeeder {
     @Bean
-    CommandLineRunner seed(FoodRepository foods,
+    CommandLineRunner seed(FoodRepository foods, TrainingCategoryRepository trainingCategories,
             @Value("${app.seed.catalog-enabled:true}") boolean catalogEnabled) {
         return args -> {
+            ensureTrainingCategories(trainingCategories);
             if (catalogEnabled) {
             ensureFood(foods, "Pechuga de Pollo", "ScaleGrams Premium Select", "7790000000011", FoodCategory.PROTEIN,
                     165, 31, 0, 3.6, FoodPreparation.COOKED, "USDA FDC 171477", Set.of("Alta en Proteina", "Keto Friendly"));
@@ -357,6 +362,28 @@ public class DataSeeder {
             }
 
         };
+    }
+
+    private static void ensureTrainingCategories(TrainingCategoryRepository categories) {
+        ensureTrainingCategories(categories, TrainingModule.CALISTHENICS,
+                "EMPUJE", "TRACCION", "PIERNAS", "ABDOMEN", "HABILIDAD", "ACONDICIONAMIENTO", "MOVILIDAD");
+        ensureTrainingCategories(categories, TrainingModule.GYM,
+                "PECHO", "ESPALDA", "HOMBROS", "BICEPS", "TRICEPS", "CUADRICEPS", "ISQUIOTIBIALES",
+                "GLUTEOS", "PANTORRILLAS", "ABDOMEN", "CUERPO_COMPLETO", "ACONDICIONAMIENTO", "ANTEBRAZOS");
+    }
+
+    private static void ensureTrainingCategories(TrainingCategoryRepository categories, TrainingModule module,
+            String... names) {
+        for (String name : names) {
+            if (categories.findSystem(module, name.toLowerCase(Locale.ROOT)).isPresent()) continue;
+            TrainingCategory category = new TrainingCategory();
+            category.setModule(module);
+            category.setName(name);
+            category.setNormalizedName(name.toLowerCase(Locale.ROOT));
+            category.setSystemCategory(true);
+            category.setActive(true);
+            categories.save(category);
+        }
     }
 
     private static void ensureFood(FoodRepository foods, String name, String brand, String barcode, FoodCategory category,

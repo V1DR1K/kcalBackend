@@ -7,8 +7,10 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -33,6 +35,7 @@ import com.scalegrams.training.TrainingDtos.TrainingCalendarSessionResponse;
 import com.scalegrams.training.TrainingDtos.TrainingDashboardResponse;
 import com.scalegrams.training.TrainingDtos.LegacyPlanDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingExerciseResponse;
+import com.scalegrams.training.TrainingDtos.TrainingCategoryResponse;
 import com.scalegrams.training.TrainingDtos.TrainingModuleResponse;
 import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseResponse;
 import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanDetailResponse;
@@ -45,6 +48,7 @@ import com.scalegrams.training.TrainingDtos.TrainingSetRequest;
 import com.scalegrams.training.TrainingDtos.TrainingSetResponse;
 import com.scalegrams.training.TrainingDtos.UpdateTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.UpsertExerciseRequest;
+import com.scalegrams.training.TrainingDtos.UpsertTrainingCategoryRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanDayRequest;
@@ -64,16 +68,18 @@ import com.scalegrams.user.AppUser;
 @Service
 public class TrainingService {
     private final TrainingExerciseRepository exercises;
+    private final TrainingCategoryRepository categories;
     private final TrainingPlanRepository presets;
     private final TrainingPlanDayRepository days;
     private final TrainingPlanExerciseRepository presetExercises;
     private final TrainingSessionRepository sessions;
     private final TrainingSessionExerciseRepository sessionExercises;
 
-    public TrainingService(TrainingExerciseRepository exercises, TrainingPlanRepository presets,
+    public TrainingService(TrainingExerciseRepository exercises, TrainingCategoryRepository categories, TrainingPlanRepository presets,
             TrainingPlanDayRepository days, TrainingPlanExerciseRepository presetExercises,
             TrainingSessionRepository sessions, TrainingSessionExerciseRepository sessionExercises) {
         this.exercises = exercises;
+        this.categories = categories;
         this.presets = presets;
         this.days = days;
         this.presetExercises = presetExercises;
@@ -89,11 +95,80 @@ public class TrainingService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<TrainingCategoryResponse> categories(AppUser user, String query, TrainingModule module,
+            boolean includeInactive, int page, int size) {
+        Page<TrainingCategory> result = categories.search(user, module, query == null ? "" : query.trim(),
+                includeInactive, page(page, size, Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id"))));
+        return page(result, this::toCategoryResponse);
+    }
+
+    @Transactional
+    public TrainingCategoryResponse createCategory(AppUser user, UpsertTrainingCategoryRequest request) {
+        String name = normalized(request.name());
+        String normalizedName = normalizedKey(name);
+        if (categories.existsOwnedName(user, request.module(), normalizedName, null)
+                || categories.findSystem(request.module(), normalizedName).isPresent()) {
+            throw new BadRequestException("Ya existe una categoría con ese nombre para este módulo.");
+        }
+        TrainingCategory category = new TrainingCategory();
+        category.setOwner(user);
+        category.setModule(request.module());
+        category.setName(name);
+        category.setNormalizedName(normalizedName);
+        category.setSystemCategory(false);
+        category.setActive(request.active() == null || request.active());
+        return toCategoryResponse(categories.save(category));
+    }
+
+    @Transactional
+    public TrainingCategoryResponse updateCategory(AppUser user, Long id, UpsertTrainingCategoryRequest request) {
+        TrainingCategory category = categories.findByIdAndOwnerAndDeletedAtIsNull(id, user)
+                .orElseThrow(() -> new NotFoundException("Categoría no encontrada."));
+        String name = normalized(request.name());
+        String normalizedName = normalizedKey(name);
+        if (categories.existsOwnedName(user, request.module(), normalizedName, id)
+                || categories.findSystem(request.module(), normalizedName).isPresent()) {
+            throw new BadRequestException("Ya existe una categoría con ese nombre para este módulo.");
+        }
+        if (category.getModule() != request.module()) {
+            throw new BadRequestException("No podés cambiar el módulo de una categoría.");
+        }
+        category.setName(name);
+        category.setNormalizedName(normalizedName);
+        if (request.active() != null) category.setActive(request.active());
+        category.setUpdatedAt(OffsetDateTime.now());
+        return toCategoryResponse(category);
+    }
+
+    @Transactional
+    public void deleteCategory(AppUser user, Long id) {
+        TrainingCategory category = categories.findByIdAndOwnerAndDeletedAtIsNull(id, user)
+                .orElseThrow(() -> new NotFoundException("Categoría no encontrada."));
+        OffsetDateTime now = OffsetDateTime.now();
+        category.setActive(false);
+        category.setDeletedAt(now);
+        category.setUpdatedAt(now);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<TrainingExerciseResponse> exercises(AppUser user, String query, TrainingModule module,
+            Long categoryId, String categoryName, TrainingEquipment equipment, TrainingDifficulty difficulty,
+            TrainingRegistrationType registrationType, boolean includeInactive, int page, int size) {
+        Page<TrainingExercise> result = exercises.search(user, module, query == null ? "" : query.trim(), categoryId,
+                categoryName == null ? null : normalizedKey(categoryName), equipment, difficulty, registrationType,
+                includeInactive, page(page, size, Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id"))));
+        return page(result, this::toExerciseResponse);
+    }
+
     public PageResponse<TrainingExerciseResponse> exercises(AppUser user, String query, TrainingModule module,
             int page, int size) {
-        Page<TrainingExercise> result = exercises.search(user, module, query == null ? "" : query.trim(),
-                page(page, size, Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id"))));
-        return page(result, this::toExerciseResponse);
+        return exercises(user, query, module, null, null, null, null, null, false, page, size);
+    }
+
+    @Transactional(readOnly = true)
+    public TrainingExerciseResponse exercise(AppUser user, Long id) {
+        return toExerciseResponse(exercises.findSelectable(id, user)
+                .orElseThrow(() -> new NotFoundException("Ejercicio no encontrado.")));
     }
 
     @Transactional
@@ -107,10 +182,19 @@ public class TrainingService {
         TrainingExercise exercise = new TrainingExercise();
         exercise.setOwner(user);
         exercise.setName(name);
+        exercise.setNormalizedName(normalizedKey(name));
         exercise.setModule(request.module());
         exercise.setDescription(blankToNull(request.description()));
-        exercise.setCategory(blankToNull(request.category()));
+        exercise.setCategory(resolveCategory(user, request.module(), request.categoryId(), request.category()));
         exercise.setGlobalExercise(false);
+        exercise.setCode(resolveExerciseCode(user, request.module(), name, request.code(), null));
+        exercise.setPrimaryMuscles(normalizedValues(request.primaryMuscles()));
+        exercise.setSecondaryMuscles(normalizedValues(request.secondaryMuscles()));
+        exercise.setEquipment(request.equipment() == null ? defaultEquipment(request.module()) : request.equipment());
+        exercise.setDifficulty(request.difficulty() == null ? TrainingDifficulty.BEGINNER : request.difficulty());
+        exercise.setRegistrationType(request.registrationType() == null ? defaultRegistrationType(request.module()) : request.registrationType());
+        exercise.setUnilateral(Boolean.TRUE.equals(request.unilateral()));
+        exercise.setExternalLoad(request.externalLoad() == null ? request.module() == TrainingModule.GYM : request.externalLoad());
         exercise.setActive(request.active() == null || request.active());
         return toExerciseResponse(exercises.save(exercise));
     }
@@ -129,9 +213,18 @@ public class TrainingService {
             throw new BadRequestException("No podés cambiar el módulo de un ejercicio usado en una rutina.");
         }
         exercise.setName(name);
+        exercise.setNormalizedName(normalizedKey(name));
         exercise.setModule(request.module());
         exercise.setDescription(blankToNull(request.description()));
-        exercise.setCategory(blankToNull(request.category()));
+        exercise.setCategory(resolveCategory(user, request.module(), request.categoryId(), request.category()));
+        exercise.setCode(resolveExerciseCode(user, request.module(), name, request.code(), exercise.getId()));
+        exercise.setPrimaryMuscles(normalizedValues(request.primaryMuscles()));
+        exercise.setSecondaryMuscles(normalizedValues(request.secondaryMuscles()));
+        if (request.equipment() != null) exercise.setEquipment(request.equipment());
+        if (request.difficulty() != null) exercise.setDifficulty(request.difficulty());
+        if (request.registrationType() != null) exercise.setRegistrationType(request.registrationType());
+        if (request.unilateral() != null) exercise.setUnilateral(request.unilateral());
+        if (request.externalLoad() != null) exercise.setExternalLoad(request.externalLoad());
         if (request.active() != null) exercise.setActive(request.active());
         exercise.setUpdatedAt(OffsetDateTime.now());
         return toExerciseResponse(exercise);
@@ -233,6 +326,9 @@ public class TrainingService {
                 exerciseCopy.setTargetSets(sourceExercise.getTargetSets());
                 exerciseCopy.setTargetRepetitions(sourceExercise.getTargetRepetitions());
                 exerciseCopy.setTargetWeightKg(sourceExercise.getTargetWeightKg());
+                exerciseCopy.setRegistrationType(sourceExercise.getRegistrationType());
+                exerciseCopy.setTargetSeconds(sourceExercise.getTargetSeconds());
+                exerciseCopy.setTargetDistanceMeters(sourceExercise.getTargetDistanceMeters());
                 exerciseCopy.setNotes(sourceExercise.getNotes());
                 exerciseCopy.setPosition(exercisePosition++);
                 exerciseCopy.setActive(sourceExercise.isActive());
@@ -309,7 +405,7 @@ public class TrainingService {
         presetExercise.setPlanDay(day);
         presetExercise.setExercise(exercise);
         presetExercise.setPosition(livePresetExercises(day).size());
-        applyPresetExercise(presetExercise, day.getPlan().getModule(), request);
+        applyPresetExercise(presetExercise, day.getPlan().getModule(), exercise, request);
         day.getExercises().add(presetExercise);
         touch(day.getPlan());
         days.save(day);
@@ -325,7 +421,7 @@ public class TrainingService {
         validateExerciseModule(day.getPlan().getModule(), exercise);
         ensureDayExerciseAvailable(day, exercise, presetExercise.getId());
         presetExercise.setExercise(exercise);
-        applyPresetExercise(presetExercise, day.getPlan().getModule(), request);
+        applyPresetExercise(presetExercise, day.getPlan().getModule(), exercise, request);
         touch(day.getPlan());
         return toPresetExerciseResponse(presetExercise);
     }
@@ -480,7 +576,10 @@ public class TrainingService {
                 }
                 TrainingExercise exercise = requireSelectableExercise(user, exerciseRequest.exerciseId());
                 validateExerciseModule(request.module(), exercise);
-                validateWeight(request.module(), exerciseRequest.targetWeightKg());
+                TrainingRegistrationType type = validateRegistrationType(exercise, exerciseRequest.registrationType());
+                validateMetrics(request.module(), type, exerciseRequest.targetRepetitions(),
+                        exerciseRequest.targetWeightKg(), exerciseRequest.targetSeconds(),
+                        exerciseRequest.targetDistanceMeters());
             }
         }
     }
@@ -514,8 +613,11 @@ public class TrainingService {
                 exercise.setPlanDay(day);
                 exercise.setExercise(requireSelectableExercise(user, requestExercise.exerciseId()));
                 exercise.setTargetSets(requestExercise.targetSets());
-                exercise.setTargetRepetitions(requestExercise.targetRepetitions());
+                exercise.setTargetRepetitions(requestExercise.targetRepetitions() == null ? 0 : requestExercise.targetRepetitions());
                 exercise.setTargetWeightKg(requestExercise.targetWeightKg());
+                exercise.setRegistrationType(effectiveRegistrationType(exercise.getExercise(), requestExercise.registrationType()));
+                exercise.setTargetSeconds(requestExercise.targetSeconds());
+                exercise.setTargetDistanceMeters(requestExercise.targetDistanceMeters());
                 exercise.setNotes(blankToNull(requestExercise.notes()));
                 exercise.setPosition(requestExercise.position() == null ? exerciseIndex : requestExercise.position());
                 exercise.setActive(true);
@@ -759,11 +861,16 @@ public class TrainingService {
     }
 
     private void applyPresetExercise(TrainingPlanExercise presetExercise, TrainingModule module,
-            LegacyPlanExerciseRequest request) {
-        validateWeight(module, request.targetWeightKg());
+            TrainingExercise exercise, LegacyPlanExerciseRequest request) {
+        TrainingRegistrationType type = validateRegistrationType(exercise, request.registrationType());
+        validateMetrics(module, type, request.targetRepetitions(), request.targetWeightKg(), request.targetSeconds(),
+                request.targetDistanceMeters());
         presetExercise.setTargetSets(request.targetSets());
-        presetExercise.setTargetRepetitions(request.targetRepetitions());
+        presetExercise.setTargetRepetitions(request.targetRepetitions() == null ? 0 : request.targetRepetitions());
         presetExercise.setTargetWeightKg(request.targetWeightKg());
+        presetExercise.setRegistrationType(type);
+        presetExercise.setTargetSeconds(request.targetSeconds());
+        presetExercise.setTargetDistanceMeters(request.targetDistanceMeters());
         presetExercise.setNotes(blankToNull(request.notes()));
         if (request.active() != null) presetExercise.setActive(request.active());
         else if (presetExercise.getId() == null) presetExercise.setActive(true);
@@ -886,7 +993,8 @@ public class TrainingService {
     }
 
     private void addSessionExerciseSnapshot(TrainingSession session, TrainingPlanExercise source, int position) {
-        validateWeight(session.getModule(), source.getTargetWeightKg());
+        validateMetrics(session.getModule(), source.getRegistrationType(), source.getTargetRepetitions(),
+                source.getTargetWeightKg(), source.getTargetSeconds(), source.getTargetDistanceMeters());
         TrainingSessionExercise snapshot = new TrainingSessionExercise();
         snapshot.setSession(session);
         snapshot.setSourceExercise(source.getExercise());
@@ -894,6 +1002,9 @@ public class TrainingService {
         snapshot.setTargetSets(source.getTargetSets());
         snapshot.setTargetRepetitions(source.getTargetRepetitions());
         snapshot.setTargetWeightKg(source.getTargetWeightKg());
+        snapshot.setRegistrationType(source.getRegistrationType());
+        snapshot.setTargetSeconds(source.getTargetSeconds());
+        snapshot.setTargetDistanceMeters(source.getTargetDistanceMeters());
         snapshot.setNotes(source.getNotes());
         snapshot.setPosition(position);
         session.getExercises().add(snapshot);
@@ -903,8 +1014,10 @@ public class TrainingService {
             int position) {
         TrainingExercise exercise = requireSelectableExercise(user, request.exerciseId());
         validateExerciseModule(session.getModule(), exercise);
-        validateWeight(session.getModule(), request.targetWeightKg());
-        validateSets(session.getModule(), request.sets());
+        TrainingRegistrationType type = validateRegistrationType(exercise, request.registrationType());
+        validateMetrics(session.getModule(), type, request.targetRepetitions(), request.targetWeightKg(),
+                request.targetSeconds(), request.targetDistanceMeters());
+        validateSets(session.getModule(), type, request.sets());
 
         TrainingSessionExercise sessionExercise = new TrainingSessionExercise();
         sessionExercise.setSession(session);
@@ -913,6 +1026,9 @@ public class TrainingService {
         sessionExercise.setTargetSets(request.targetSets());
         sessionExercise.setTargetRepetitions(request.targetRepetitions());
         sessionExercise.setTargetWeightKg(request.targetWeightKg());
+        sessionExercise.setRegistrationType(type);
+        sessionExercise.setTargetSeconds(request.targetSeconds());
+        sessionExercise.setTargetDistanceMeters(request.targetDistanceMeters());
         sessionExercise.setNotes(blankToNull(request.notes()));
         sessionExercise.setPosition(position);
         if (request.sets() != null) {
@@ -920,8 +1036,10 @@ public class TrainingService {
                 TrainingSet trainingSet = new TrainingSet();
                 trainingSet.setSessionExercise(sessionExercise);
                 trainingSet.setSetNumber(setRequest.setNumber());
-                trainingSet.setRepetitions(setRequest.repetitions());
+                trainingSet.setRepetitions(setRequest.repetitions() == null ? 0 : setRequest.repetitions());
                 trainingSet.setWeightKg(setRequest.weightKg());
+                trainingSet.setSeconds(setRequest.seconds());
+                trainingSet.setDistanceMeters(setRequest.distanceMeters());
                 trainingSet.setCompleted(setRequest.completed());
                 sessionExercise.getSets().add(trainingSet);
             }
@@ -935,13 +1053,121 @@ public class TrainingService {
         }
     }
 
+    private TrainingCategory resolveCategory(AppUser user, TrainingModule module, Long categoryId, String legacyName) {
+        if (categoryId != null) {
+            TrainingCategory category = categories.findSelectable(categoryId, user)
+                    .orElseThrow(() -> new BadRequestException("La categoría no existe o no está disponible."));
+            if (category.getModule() != module) {
+                throw new BadRequestException("La categoría pertenece a otro módulo de entrenamiento.");
+            }
+            if (!category.isActive()) {
+                throw new BadRequestException("La categoría está archivada.");
+            }
+            return category;
+        }
+        if (legacyName != null && !legacyName.isBlank()) {
+            String key = normalizedKey(legacyName);
+            return categories.findSystem(module, key)
+                    .or(() -> categories.findByOwnerAndModuleAndNormalizedNameAndDeletedAtIsNull(user, module, key))
+                    .filter(TrainingCategory::isActive)
+                    .orElseThrow(() -> new BadRequestException("La categoría indicada no existe para este módulo."));
+        }
+        return categories.findSystem(module, normalizedKey("ACONDICIONAMIENTO"))
+                .orElseThrow(() -> new BadRequestException("No hay una categoría predeterminada disponible."));
+    }
+
+    private String resolveExerciseCode(AppUser user, TrainingModule module, String name, String requested, Long excludedId) {
+        String code = blankToNull(requested);
+        if (code == null) {
+            String slug = normalizedKey(name).replaceAll("[^a-z0-9]+", "-");
+            slug = slug.replaceAll("^-|-$", "");
+            if (slug.length() > 42) slug = slug.substring(0, 42);
+            code = "SG-" + module.name() + "-" + slug + "-" + Integer.toUnsignedString(
+                    (module.name() + ":" + normalizedKey(name) + ":" + (user.getId() == null ? "new" : user.getId())).hashCode(), 36);
+        } else {
+            code = code.toUpperCase(Locale.ROOT);
+        }
+        if (exercises.existsLiveCode(code, excludedId)) {
+            throw new BadRequestException("Ya existe un ejercicio con ese código para este módulo.");
+        }
+        return code;
+    }
+
+    private TrainingRegistrationType defaultRegistrationType(TrainingModule module) {
+        return module == TrainingModule.GYM ? TrainingRegistrationType.WEIGHT_AND_REPETITIONS
+                : TrainingRegistrationType.REPETITIONS;
+    }
+
+    private TrainingEquipment defaultEquipment(TrainingModule module) {
+        return module == TrainingModule.GYM ? TrainingEquipment.NONE : TrainingEquipment.BODYWEIGHT;
+    }
+
+    private TrainingRegistrationType effectiveRegistrationType(TrainingExercise exercise,
+            TrainingRegistrationType requested) {
+        return validateRegistrationType(exercise, requested);
+    }
+
+    private TrainingRegistrationType validateRegistrationType(TrainingExercise exercise,
+            TrainingRegistrationType requested) {
+        TrainingRegistrationType actual = exercise.getRegistrationType() == null ? defaultRegistrationType(exercise.getModule())
+                : exercise.getRegistrationType();
+        if (requested != null && requested != actual) {
+            throw new BadRequestException("El tipo de registro no coincide con el tipo del ejercicio.");
+        }
+        return actual;
+    }
+
+    private void validateMetrics(TrainingModule module, TrainingRegistrationType type, Integer repetitions,
+            BigDecimal weightKg, Integer seconds, BigDecimal distanceMeters) {
+        validateWeight(module, weightKg);
+        if ((type == TrainingRegistrationType.REPETITIONS
+                || type == TrainingRegistrationType.WEIGHT_AND_REPETITIONS
+                || type == TrainingRegistrationType.REPETITIONS_AND_TIME) && repetitions == null) {
+            throw new BadRequestException("Este tipo de registro requiere repeticiones.");
+        }
+        if (weightKg != null && type != TrainingRegistrationType.WEIGHT_AND_REPETITIONS) {
+            throw new BadRequestException("El peso solo corresponde a ejercicios de peso y repeticiones.");
+        }
+        if ((type == TrainingRegistrationType.TIME || type == TrainingRegistrationType.REPETITIONS_AND_TIME)
+                && seconds == null) {
+            throw new BadRequestException("Este tipo de registro requiere segundos.");
+        }
+        if (type == TrainingRegistrationType.DISTANCE && distanceMeters == null) {
+            throw new BadRequestException("Este tipo de registro requiere distancia.");
+        }
+        if (type != TrainingRegistrationType.DISTANCE && distanceMeters != null) {
+            throw new BadRequestException("La distancia solo corresponde a ejercicios de distancia.");
+        }
+        if (seconds != null && type != TrainingRegistrationType.TIME
+                && type != TrainingRegistrationType.REPETITIONS_AND_TIME) {
+            throw new BadRequestException("El tiempo solo corresponde a ejercicios con registro de tiempo.");
+        }
+    }
+
+    private void validateSetMetrics(TrainingRegistrationType type, TrainingSetRequest request) {
+        if ((type == TrainingRegistrationType.TIME || type == TrainingRegistrationType.REPETITIONS_AND_TIME)
+                && request.seconds() == null) {
+            throw new BadRequestException("Este tipo de registro requiere segundos por serie.");
+        }
+        if (type == TrainingRegistrationType.DISTANCE && request.distanceMeters() == null) {
+            throw new BadRequestException("Este tipo de registro requiere distancia por serie.");
+        }
+        if (type != TrainingRegistrationType.DISTANCE && request.distanceMeters() != null) {
+            throw new BadRequestException("La distancia solo corresponde a ejercicios de distancia.");
+        }
+        if (request.seconds() != null && type != TrainingRegistrationType.TIME
+                && type != TrainingRegistrationType.REPETITIONS_AND_TIME) {
+            throw new BadRequestException("El tiempo solo corresponde a ejercicios con registro de tiempo.");
+        }
+    }
+
     private void validateWeight(TrainingModule module, BigDecimal weightKg) {
         if (module == TrainingModule.CALISTHENICS && weightKg != null) {
             throw new BadRequestException("Calistenia no admite peso en kilogramos.");
         }
     }
 
-    private void validateSets(TrainingModule module, List<TrainingSetRequest> setRequests) {
+    private void validateSets(TrainingModule module, TrainingRegistrationType type, List<TrainingSetRequest> setRequests) {
         if (setRequests == null) return;
         Set<Integer> numbers = setRequests.stream().map(TrainingSetRequest::setNumber).collect(Collectors.toSet());
         if (numbers.size() != setRequests.size()) {
@@ -949,6 +1175,10 @@ public class TrainingService {
         }
         for (TrainingSetRequest setRequest : setRequests) {
             validateWeight(module, setRequest.weightKg());
+            if (setRequest.weightKg() != null && type != TrainingRegistrationType.WEIGHT_AND_REPETITIONS) {
+                throw new BadRequestException("El peso solo corresponde a ejercicios de peso y repeticiones.");
+            }
+            validateSetMetrics(type, setRequest);
         }
     }
 
@@ -977,9 +1207,19 @@ public class TrainingService {
 
     private TrainingExerciseResponse toExerciseResponse(TrainingExercise exercise) {
         return new TrainingExerciseResponse(exercise.getId(), exercise.getName(), exercise.getDescription(),
-                exercise.getCategory(), exercise.getModule(), exercise.isGlobalExercise(),
+                exercise.getCategory().getName(), exercise.getModule(), exercise.isGlobalExercise(),
                 !exercise.isGlobalExercise(), exercise.isActive(),
-                exercise.getCreatedAt(), exercise.getUpdatedAt());
+                exercise.getCreatedAt(), exercise.getUpdatedAt(), exercise.getCategory().getId(),
+                exercise.getNormalizedName(), exercise.getCode(), List.copyOf(exercise.getPrimaryMuscles()),
+                List.copyOf(exercise.getSecondaryMuscles()), exercise.getEquipment(), exercise.getDifficulty(),
+                exercise.getRegistrationType(), exercise.isUnilateral(), exercise.isExternalLoad(),
+                exercise.isSystemExercise());
+    }
+
+    private TrainingCategoryResponse toCategoryResponse(TrainingCategory category) {
+        return new TrainingCategoryResponse(category.getId(), category.getName(), category.getModule(),
+                category.isSystemCategory(), !category.isSystemCategory(), category.isActive(),
+                category.getCreatedAt(), category.getUpdatedAt());
     }
 
     private LegacyTrainingPlanResponse toPresetResponse(TrainingPlan preset) {
@@ -1003,7 +1243,8 @@ public class TrainingService {
                                                 exercise.getExercise().getId(), exercise.getExercise().getName(),
                                                 exercise.getTargetSets(), exercise.getTargetRepetitions(),
                                                 exercise.getTargetWeightKg(), exercise.getNotes(), exercise.getPosition(),
-                                                exercise.isActive())).toList())).toList());
+                                                exercise.isActive(), exercise.getRegistrationType(),
+                                                exercise.getTargetSeconds(), exercise.getTargetDistanceMeters())).toList())).toList());
     }
 
     private LegacyTrainingPlanDetailResponse toPresetDetailResponse(TrainingPlan preset) {
@@ -1023,7 +1264,8 @@ public class TrainingService {
         return new LegacyPlanExerciseResponse(presetExercise.getId(), exercise.getId(), exercise.getName(),
                 presetExercise.getTargetSets(), presetExercise.getTargetRepetitions(), presetExercise.getTargetWeightKg(),
                 presetExercise.getNotes(), presetExercise.getPosition(), presetExercise.isActive(),
-                presetExercise.getCreatedAt(), presetExercise.getUpdatedAt());
+                presetExercise.getCreatedAt(), presetExercise.getUpdatedAt(), presetExercise.getRegistrationType(),
+                presetExercise.getTargetSeconds(), presetExercise.getTargetDistanceMeters());
     }
 
     private TrainingSessionResponse toSessionResponse(TrainingSession session) {
@@ -1046,13 +1288,15 @@ public class TrainingService {
                 exercise.getExerciseName(), exercise.getTargetSets(), exercise.getTargetRepetitions(),
                 exercise.getTargetWeightKg(), exercise.getNotes(), exercise.getPosition(),
                 exercise.getSets().stream().sorted(Comparator.comparingInt(TrainingSet::getSetNumber)
-                        .thenComparing(TrainingSet::getId)).map(this::toSetResponse).toList());
+                        .thenComparing(TrainingSet::getId)).map(this::toSetResponse).toList(),
+                exercise.getRegistrationType(), exercise.getTargetSeconds(), exercise.getTargetDistanceMeters());
     }
 
     private TrainingSetResponse toSetResponse(TrainingSet trainingSet) {
         return new TrainingSetResponse(trainingSet.getId(), trainingSet.getSetNumber(), trainingSet.getRepetitions(),
                 trainingSet.getWeightKg(), trainingSet.isCompleted(), trainingSet.getNotes(),
-                trainingSet.getCreatedAt(), trainingSet.getUpdatedAt());
+                trainingSet.getCreatedAt(), trainingSet.getUpdatedAt(), trainingSet.getSeconds(),
+                trainingSet.getDistanceMeters());
     }
 
     private TrainingCalendarDayResponse toCalendarDay(AppUser user, LocalDate date, List<TrainingSession> daySessions) {
@@ -1121,6 +1365,16 @@ public class TrainingService {
 
     private static String normalized(String value) {
         return value.trim();
+    }
+
+    private static String normalizedKey(String value) {
+        return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static Set<String> normalizedValues(List<String> values) {
+        if (values == null) return new LinkedHashSet<>();
+        return values.stream().filter(Objects::nonNull).map(String::trim).filter(value -> !value.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private static String blankToNull(String value) {

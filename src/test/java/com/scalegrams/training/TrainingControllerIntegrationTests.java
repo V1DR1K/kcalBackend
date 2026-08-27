@@ -95,6 +95,73 @@ class TrainingControllerIntegrationTests {
     }
 
     @Test
+    void exposesSystemCategoriesAndAllowsOnlyOwnedCategoryChanges() {
+        HttpHeaders headers = authHeaders("training-categories");
+        ResponseEntity<Map> listed = rest.exchange(
+                "/api/training/categories?module=CALISTHENICS&page=0&size=50", HttpMethod.GET,
+                new HttpEntity<>(headers), Map.class);
+        assertThat(listed.getStatusCode().is2xxSuccessful()).isTrue();
+        Map<?, ?> system = ((List<Map<?, ?>>) listed.getBody().get("items")).stream()
+                .filter(category -> "EMPUJE".equals(category.get("name"))).findFirst().orElseThrow();
+        assertThat(system.get("system")).isEqualTo(true);
+        assertThat(system.get("editable")).isEqualTo(false);
+
+        ResponseEntity<String> protectedSystem = rest.exchange("/api/training/categories/" + system.get("id"),
+                HttpMethod.PUT, new HttpEntity<>(Map.of("name", "Empuje editado", "module", "CALISTHENICS"), headers),
+                String.class);
+        assertThat(protectedSystem.getStatusCode().value()).isEqualTo(404);
+
+        ResponseEntity<Map> created = rest.postForEntity("/api/training/categories",
+                new HttpEntity<>(Map.of("name", "Mi circuito", "module", "CALISTHENICS"), headers), Map.class);
+        assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(created.getBody().get("editable")).isEqualTo(true);
+        ResponseEntity<Void> deleted = rest.exchange("/api/training/categories/" + created.getBody().get("id"),
+                HttpMethod.DELETE, new HttpEntity<>(headers), Void.class);
+        assertThat(deleted.getStatusCode().value()).isEqualTo(204);
+    }
+
+    @Test
+    void createsExercisesWithMetadataAndSupportsMetadataFilters() {
+        HttpHeaders headers = authHeaders("training-exercise-filters");
+        ResponseEntity<Map> categories = rest.exchange("/api/training/categories?module=GYM&size=50",
+                HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        Map<?, ?> chest = ((List<Map<?, ?>>) categories.getBody().get("items")).stream()
+                .filter(category -> "PECHO".equals(category.get("name"))).findFirst().orElseThrow();
+        Map<String, Object> request = Map.of("name", "Press técnico", "module", "GYM",
+                "categoryId", chest.get("id"), "code", "TEST_PRESS_TECNICO", "equipment", "BARBELL",
+                "difficulty", "INTERMEDIATE", "registrationType", "WEIGHT_AND_REPETITIONS",
+                "primaryMuscles", List.of("Pectorales"), "secondaryMuscles", List.of("Triceps"),
+                "externalLoad", true);
+        ResponseEntity<Map> created = rest.postForEntity("/api/training/exercises", new HttpEntity<>(request, headers), Map.class);
+        assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(created.getBody()).containsEntry("code", "TEST_PRESS_TECNICO")
+                .containsEntry("categoryId", chest.get("id"));
+
+        ResponseEntity<Map> filtered = rest.exchange(
+                "/api/training/exercises?module=GYM&equipment=BARBELL&difficulty=INTERMEDIATE&registrationType=WEIGHT_AND_REPETITIONS&q=TEST_PRESS_TECNICO",
+                HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(filtered.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(filtered.getBody().get("items").toString()).contains("TEST_PRESS_TECNICO");
+    }
+
+    @Test
+    void recordsTimeTargetsAndSecondsWithoutWeight() {
+        HttpHeaders headers = authHeaders("training-time");
+        ResponseEntity<Map> exercise = rest.postForEntity("/api/training/exercises",
+                new HttpEntity<>(Map.of("name", "Sostén personalizado", "module", "CALISTHENICS",
+                        "registrationType", "TIME"), headers), Map.class);
+        Map<String, Object> session = Map.of("date", "2040-04-01", "module", "CALISTHENICS", "exercises",
+                List.of(Map.of("exerciseId", exercise.getBody().get("id"), "targetSets", 2, "targetSeconds", 30,
+                        "sets", List.of(Map.of("setNumber", 1, "seconds", 30)))));
+        ResponseEntity<Map> created = rest.postForEntity("/api/training/sessions",
+                new HttpEntity<>(session, headers), Map.class);
+        assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+        Map<?, ?> sessionExercise = (Map<?, ?>) ((List<?>) created.getBody().get("exercises")).get(0);
+        assertThat(sessionExercise.get("registrationType")).isEqualTo("TIME");
+        assertThat(sessionExercise.get("targetSeconds")).isEqualTo(30);
+    }
+
+    @Test
     void snapshotsPresetDaysCompletesSessionsAndAggregatesTheCalendar() {
         HttpHeaders headers = authHeaders("training-snapshot");
         ResponseEntity<Map> exercise = rest.postForEntity("/api/training/exercises",

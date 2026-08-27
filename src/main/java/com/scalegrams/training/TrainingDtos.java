@@ -6,6 +6,8 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -18,6 +20,10 @@ public class TrainingDtos {
     public record TrainingModuleResponse(TrainingModule code, String label) {
     }
 
+    public record TrainingCategoryResponse(Long id, String name, TrainingModule module, boolean system,
+            boolean editable, boolean active, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    }
+
     public record PageResponse<T>(List<T> items, int page, int size, long totalElements, int totalPages,
             boolean hasNext) {
     }
@@ -27,12 +33,28 @@ public class TrainingDtos {
             @Size(max = 1000) String description,
             @Size(max = 80) String category,
             @NotNull TrainingModule module,
-            Boolean active) {
+            Boolean active,
+            Long categoryId,
+            @Size(max = 80) String code,
+            @Size(max = 80) @JsonDeserialize(using = StringOrStringListDeserializer.class) List<String> primaryMuscles,
+            @Size(max = 80) @JsonDeserialize(using = StringOrStringListDeserializer.class) List<String> secondaryMuscles,
+            TrainingEquipment equipment,
+            TrainingDifficulty difficulty,
+            TrainingRegistrationType registrationType,
+            Boolean unilateral,
+            Boolean externalLoad) {
     }
 
     public record TrainingExerciseResponse(Long id, String name, String description, String category,
             TrainingModule module, boolean global, boolean editable, boolean active, OffsetDateTime createdAt,
-            OffsetDateTime updatedAt) {
+            OffsetDateTime updatedAt, Long categoryId, String normalizedName, String code,
+            List<String> primaryMuscles, List<String> secondaryMuscles, TrainingEquipment equipment,
+            TrainingDifficulty difficulty, TrainingRegistrationType registrationType, boolean unilateral,
+            boolean externalLoad, boolean systemExercise) {
+    }
+
+    public record UpsertTrainingCategoryRequest(@NotBlank @Size(max = 80) String name,
+            @NotNull TrainingModule module, Boolean active) {
     }
 
     public record LegacyPlanRequest(
@@ -67,15 +89,19 @@ public class TrainingDtos {
     public record LegacyPlanExerciseRequest(
             @NotNull @Positive Long exerciseId,
             @NotNull @PositiveOrZero Integer targetSets,
-            @NotNull @PositiveOrZero Integer targetRepetitions,
+            @PositiveOrZero Integer targetRepetitions,
             @PositiveOrZero BigDecimal targetWeightKg,
             @Size(max = 1000) String notes,
-            Boolean active) {
+            Boolean active,
+            TrainingRegistrationType registrationType,
+            @PositiveOrZero Integer targetSeconds,
+            @PositiveOrZero BigDecimal targetDistanceMeters) {
     }
 
     public record LegacyPlanExerciseResponse(Long id, Long exerciseId, String exerciseName, int targetSets,
             int targetRepetitions, BigDecimal targetWeightKg, String notes, int position, boolean active,
-            OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+            OffsetDateTime createdAt, OffsetDateTime updatedAt, TrainingRegistrationType registrationType,
+            Integer targetSeconds, BigDecimal targetDistanceMeters) {
     }
 
     public record ReorderRequest(@NotEmpty @Size(max = 100) List<@NotNull Long> ids) {
@@ -83,10 +109,12 @@ public class TrainingDtos {
 
     public record TrainingSetRequest(
             @NotNull @Positive Integer setNumber,
-            @NotNull @PositiveOrZero Integer repetitions,
+            @PositiveOrZero Integer repetitions,
             @PositiveOrZero BigDecimal weightKg,
             boolean completed,
-            @Size(max = 1000) String notes) {
+            @Size(max = 1000) String notes,
+            @PositiveOrZero Integer seconds,
+            @PositiveOrZero BigDecimal distanceMeters) {
     }
 
     public record TrainingSessionExerciseRequest(
@@ -95,7 +123,10 @@ public class TrainingDtos {
             @PositiveOrZero Integer targetRepetitions,
             @PositiveOrZero BigDecimal targetWeightKg,
             @Size(max = 1000) String notes,
-            @Size(max = 100) List<@Valid TrainingSetRequest> sets) {
+            @Size(max = 100) List<@Valid TrainingSetRequest> sets,
+            TrainingRegistrationType registrationType,
+            @PositiveOrZero Integer targetSeconds,
+            @PositiveOrZero BigDecimal targetDistanceMeters) {
     }
 
     public record CreateTrainingSessionRequest(
@@ -131,12 +162,14 @@ public class TrainingDtos {
     }
 
     public record TrainingSetResponse(Long id, int setNumber, int repetitions, BigDecimal weightKg, boolean completed,
-            String notes, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+            String notes, OffsetDateTime createdAt, OffsetDateTime updatedAt, Integer seconds,
+            BigDecimal distanceMeters) {
     }
 
     public record TrainingSessionExerciseResponse(Long id, Long exerciseId, String exerciseName, Integer targetSets,
             Integer targetRepetitions, BigDecimal targetWeightKg, String notes, int position,
-            List<TrainingSetResponse> sets) {
+            List<TrainingSetResponse> sets, TrainingRegistrationType registrationType, Integer targetSeconds,
+            BigDecimal targetDistanceMeters) {
     }
 
     public record TrainingSessionResponse(Long id, LocalDate date, TrainingModule module, Long planId,
@@ -172,9 +205,10 @@ public class TrainingDtos {
     }
 
     public record PlanExerciseRequest(@NotNull @Positive Long exerciseId,
-            @NotNull @PositiveOrZero Integer targetSets, @NotNull @PositiveOrZero Integer targetRepetitions,
+            @NotNull @PositiveOrZero Integer targetSets, @PositiveOrZero Integer targetRepetitions,
             @PositiveOrZero BigDecimal targetWeightKg, @Size(max = 1000) String notes,
-            @PositiveOrZero Integer position) {
+            @PositiveOrZero Integer position, TrainingRegistrationType registrationType,
+            @PositiveOrZero Integer targetSeconds, @PositiveOrZero BigDecimal targetDistanceMeters) {
     }
 
     public record PlanDayRequest(@NotBlank @Size(max = 120) String name,
@@ -205,7 +239,8 @@ public class TrainingDtos {
     }
 
     public record TrainingPlanExerciseResponse(Long id, Long exerciseId, String exerciseName, int targetSets,
-            int targetRepetitions, BigDecimal targetWeightKg, String notes, int position, boolean active) {
+            int targetRepetitions, BigDecimal targetWeightKg, String notes, int position, boolean active,
+            TrainingRegistrationType registrationType, Integer targetSeconds, BigDecimal targetDistanceMeters) {
     }
 
     public record TrainingPlanResolutionResponse(LocalDate date, boolean scheduled, Long planId, Long planDayId,

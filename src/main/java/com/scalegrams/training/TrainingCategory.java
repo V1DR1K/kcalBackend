@@ -1,10 +1,13 @@
 package com.scalegrams.training;
 
-import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+
+import com.scalegrams.user.AppUser;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -17,41 +20,40 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "training_set")
+@Table(name = "training_category")
 @Getter
 @Setter
 @NoArgsConstructor
-public class TrainingSet {
+public class TrainingCategory {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "session_exercise_id", nullable = false)
-    private TrainingSessionExercise sessionExercise;
+    @JoinColumn(name = "owner_id")
+    private AppUser owner;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private TrainingModule module;
+
+    @Column(nullable = false, length = 80)
+    private String name;
+
+    @Column(name = "normalized_name", nullable = false, length = 80)
+    private String normalizedName;
+
+    @Column(name = "system_category", nullable = false)
+    private boolean systemCategory;
 
     @Column(nullable = false)
-    private int setNumber;
-
-    @Column(nullable = false)
-    private int repetitions;
-
-    private BigDecimal weightKg;
-
-    private Integer seconds;
-
-    @Column(name = "distance_meters", precision = 12, scale = 3)
-    private BigDecimal distanceMeters;
-
-    @Column(nullable = false)
-    private boolean completed;
-
-    @Column(length = 1000)
-    private String notes;
+    private boolean active = true;
 
     @Column(nullable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
     @Column(nullable = false)
     private OffsetDateTime updatedAt = OffsetDateTime.now();
+
+    private OffsetDateTime deletedAt;
 }

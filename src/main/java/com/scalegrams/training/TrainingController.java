@@ -22,6 +22,7 @@ import com.scalegrams.training.TrainingDtos.DuplicateTrainingPlanRequest;
 import com.scalegrams.training.TrainingDtos.PageResponse;
 import com.scalegrams.training.TrainingDtos.ReorderRequest;
 import com.scalegrams.training.TrainingDtos.TrainingCalendarDayResponse;
+import com.scalegrams.training.TrainingDtos.TrainingCategoryResponse;
 import com.scalegrams.training.TrainingDtos.TrainingDashboardResponse;
 import com.scalegrams.training.TrainingDtos.LegacyPlanDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingExerciseResponse;
@@ -41,6 +42,7 @@ import com.scalegrams.training.TrainingDtos.TrainingSetRequest;
 import com.scalegrams.training.TrainingDtos.TrainingSetResponse;
 import com.scalegrams.training.TrainingDtos.UpdateTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.UpsertExerciseRequest;
+import com.scalegrams.training.TrainingDtos.UpsertTrainingCategoryRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanDayRequest;
@@ -64,11 +66,48 @@ public class TrainingController {
         return trainingService.modules();
     }
 
+    @GetMapping("/categories")
+    PageResponse<TrainingCategoryResponse> categories(Authentication authentication,
+            @RequestParam(required = false) TrainingModule module, @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "false") boolean includeInactive,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return trainingService.categories(currentUser.from(authentication), q, module, includeInactive, page, size);
+    }
+
+    @PostMapping("/categories")
+    TrainingCategoryResponse createCategory(Authentication authentication,
+            @Valid @RequestBody UpsertTrainingCategoryRequest request) {
+        return trainingService.createCategory(currentUser.from(authentication), request);
+    }
+
+    @PutMapping("/categories/{id}")
+    TrainingCategoryResponse updateCategory(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody UpsertTrainingCategoryRequest request) {
+        return trainingService.updateCategory(currentUser.from(authentication), id, request);
+    }
+
+    @DeleteMapping("/categories/{id}")
+    ResponseEntity<Void> deleteCategory(Authentication authentication, @PathVariable Long id) {
+        trainingService.deleteCategory(currentUser.from(authentication), id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/exercises")
     PageResponse<TrainingExerciseResponse> exercises(Authentication authentication,
             @RequestParam(required = false) String q, @RequestParam(required = false) TrainingModule module,
+            @RequestParam(required = false) String category, @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) TrainingEquipment equipment,
+            @RequestParam(required = false) TrainingDifficulty difficulty,
+            @RequestParam(required = false) TrainingRegistrationType registrationType,
+            @RequestParam(defaultValue = "false") boolean includeInactive,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return trainingService.exercises(currentUser.from(authentication), q, module, page, size);
+        return trainingService.exercises(currentUser.from(authentication), q, module, categoryId, category, equipment,
+                difficulty, registrationType, includeInactive, page, size);
+    }
+
+    @GetMapping("/exercises/{id}")
+    TrainingExerciseResponse exercise(Authentication authentication, @PathVariable Long id) {
+        return trainingService.exercise(currentUser.from(authentication), id);
     }
 
     @PostMapping("/exercises")

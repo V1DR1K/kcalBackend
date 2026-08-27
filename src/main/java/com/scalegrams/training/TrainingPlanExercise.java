@@ -12,6 +12,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -41,6 +43,16 @@ public class TrainingPlanExercise {
     private int targetRepetitions;
 
     private BigDecimal targetWeightKg;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "registration_type", nullable = false, length = 35)
+    private TrainingRegistrationType registrationType = TrainingRegistrationType.REPETITIONS;
+
+    @Column(name = "target_seconds")
+    private Integer targetSeconds;
+
+    @Column(name = "target_distance_meters", precision = 12, scale = 3)
+    private BigDecimal targetDistanceMeters;
 
     @Column(length = 1000)
     private String notes;
