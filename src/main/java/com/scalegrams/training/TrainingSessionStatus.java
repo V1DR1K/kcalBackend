@@ -1,7 +1,7 @@
 package com.scalegrams.training;
 
 public enum TrainingSessionStatus {
-    STARTED,
+    IN_PROGRESS,
     COMPLETED,
     CANCELLED,
     SKIPPED

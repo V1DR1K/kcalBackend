@@ -33,8 +33,7 @@ public class TrainingSet {
     @Column(nullable = false)
     private int setNumber;
 
-    @Column(nullable = false)
-    private int repetitions;
+    private Integer repetitions;
 
     private BigDecimal weightKg;
 

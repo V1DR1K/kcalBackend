@@ -24,8 +24,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.scalegrams.common.BadRequestException;
+import com.scalegrams.common.ConflictException;
 import com.scalegrams.common.NotFoundException;
 import com.scalegrams.training.TrainingDtos.CompleteTrainingSessionRequest;
+import com.scalegrams.training.TrainingDtos.CancelTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.CreateTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.DuplicateTrainingPlanRequest;
 import com.scalegrams.training.TrainingDtos.PageResponse;
@@ -74,10 +76,12 @@ public class TrainingService {
     private final TrainingPlanExerciseRepository presetExercises;
     private final TrainingSessionRepository sessions;
     private final TrainingSessionExerciseRepository sessionExercises;
+    private final TrainingSessionBaselineRepository baselines;
 
     public TrainingService(TrainingExerciseRepository exercises, TrainingCategoryRepository categories, TrainingPlanRepository presets,
             TrainingPlanDayRepository days, TrainingPlanExerciseRepository presetExercises,
-            TrainingSessionRepository sessions, TrainingSessionExerciseRepository sessionExercises) {
+            TrainingSessionRepository sessions, TrainingSessionExerciseRepository sessionExercises,
+            TrainingSessionBaselineRepository baselines) {
         this.exercises = exercises;
         this.categories = categories;
         this.presets = presets;
@@ -85,6 +89,7 @@ public class TrainingService {
         this.presetExercises = presetExercises;
         this.sessions = sessions;
         this.sessionExercises = sessionExercises;
+        this.baselines = baselines;
     }
 
     @Transactional(readOnly = true)
@@ -270,6 +275,7 @@ public class TrainingService {
     @Transactional
     public LegacyTrainingPlanDetailResponse updatePreset(AppUser user, Long id, LegacyPlanRequest request) {
         TrainingPlan preset = requirePresetDetail(user, id);
+        checkVersion(request.version(), preset.getVersion(), "La rutina");
         if (preset.getModule() != request.module() && !livePresetExercises(preset).isEmpty()) {
             throw new BadRequestException("No podés cambiar el módulo de una rutina que tiene ejercicios.");
         }
@@ -474,12 +480,13 @@ public class TrainingService {
         applyPlan(plan, request, name);
         if (plan.isActive()) closeActivePlans(user, plan.getModule(), null, plan.getStartDate());
         addPlanStructure(user, plan, request.days());
-        return toPlanDetailResponse(presets.save(plan));
+        return toPlanDetailResponse(presets.saveAndFlush(plan));
     }
 
     @Transactional
     public TrainingPlanDetailResponse updatePlan(AppUser user, Long id, UpsertTrainingPlanRequest request) {
         TrainingPlan plan = requirePresetDetail(user, id);
+        checkVersion(request.version(), plan.getVersion(), "La rutina");
         validatePlanRequest(user, request);
         String name = normalized(request.name());
         ensurePresetNameAvailable(user, request.module(), name, id);
@@ -497,6 +504,7 @@ public class TrainingService {
         applyPlan(plan, request, name);
         if (plan.isActive()) closeActivePlans(user, plan.getModule(), plan.getId(), plan.getStartDate());
         addPlanStructure(user, plan, request.days());
+        presets.saveAndFlush(plan);
         return toPlanDetailResponse(plan);
     }
 
@@ -510,9 +518,11 @@ public class TrainingService {
     public TrainingPlanResolutionResponse resolvePlan(AppUser user, Long id, LocalDate date) {
         TrainingPlan plan = requirePresetDetail(user, id);
         TrainingPlanDay day = resolvePlanDay(user, plan, date);
-        TrainingSessionSummaryResponse session = sessions.search(user, date, date, date, plan.getModule(), null,
-                id, day == null ? null : day.getId(), page(0, 1, Sort.unsorted())).stream().findFirst()
-                .map(this::toSessionSummaryResponse).orElse(null);
+        TrainingSessionSummaryResponse session = day == null ? null
+                : sessions.findBlockingForSchedule(user, date, id, day.getId()).stream().findFirst()
+                        .map(this::toSessionSummaryResponse).orElseGet(() -> sessions.search(user, date, date, date,
+                                plan.getModule(), null, id, day.getId(), page(0, 1, Sort.unsorted())).stream().findFirst()
+                                        .map(this::toSessionSummaryResponse).orElse(null));
         return new TrainingPlanResolutionResponse(date, day != null, plan.getId(), idOf(day),
                 day == null ? null : day.getName(), plan.getModule(), plan.getFrequencyMode(), session);
     }
@@ -530,12 +540,15 @@ public class TrainingService {
         if (request.planDayId() != null && !Objects.equals(request.planDayId(), day.getId())) {
             throw new BadRequestException("La sesión no corresponde al siguiente día dinámico.");
         }
-        TrainingSession existing = sessions.search(user, request.date(), request.date(), request.date(), plan.getModule(),
-                null, planId, day.getId(), page(0, 10, Sort.unsorted())).stream()
-                .filter(item -> item.getStatus() == TrainingSessionStatus.COMPLETED
-                        || item.getStatus() == TrainingSessionStatus.SKIPPED)
-                .findFirst().orElse(null);
-        if (existing != null) return toSessionResponse(existing);
+        TrainingSession existing = sessions.findBlockingForSchedule(user, request.date(), planId, day.getId())
+                .stream().findFirst().orElse(null);
+        if (existing != null) {
+            if (existing.getStatus() == TrainingSessionStatus.IN_PROGRESS) {
+                throw new ConflictException("Ya existe una sesión IN_PROGRESS para este plan y fecha: "
+                        + existing.getId() + ".");
+            }
+            return toSessionResponse(existing);
+        }
 
         TrainingSession skipped = new TrainingSession();
         skipped.setUser(user);
@@ -548,7 +561,7 @@ public class TrainingService {
         skipped.setNotes(blankToNull(request.notes()));
         skipped.setStartedAt(null);
         skipped.setFinishedAt(OffsetDateTime.now());
-        return toSessionResponse(sessions.save(skipped));
+        return toSessionResponse(sessions.saveAndFlush(skipped));
     }
 
     private void validatePlanRequest(AppUser user, UpsertTrainingPlanRequest request) {
@@ -613,7 +626,7 @@ public class TrainingService {
                 exercise.setPlanDay(day);
                 exercise.setExercise(requireSelectableExercise(user, requestExercise.exerciseId()));
                 exercise.setTargetSets(requestExercise.targetSets());
-                exercise.setTargetRepetitions(requestExercise.targetRepetitions() == null ? 0 : requestExercise.targetRepetitions());
+                exercise.setTargetRepetitions(requestExercise.targetRepetitions());
                 exercise.setTargetWeightKg(requestExercise.targetWeightKg());
                 exercise.setRegistrationType(effectiveRegistrationType(exercise.getExercise(), requestExercise.registrationType()));
                 exercise.setTargetSeconds(requestExercise.targetSeconds());
@@ -646,60 +659,107 @@ public class TrainingService {
 
     @Transactional
     public TrainingSessionResponse createSession(AppUser user, CreateTrainingSessionRequest request) {
+        if (request.status() != null && request.status() != TrainingSessionStatus.IN_PROGRESS) {
+            throw new BadRequestException("Una sesión nueva siempre comienza en IN_PROGRESS.");
+        }
         SessionSource source = resolveSource(user, request.module(), request.planId(), request.planDayId());
         validateScheduledSession(user, source, request.date());
+        if (source.plan() != null) {
+            sessions.findBlockingForSchedule(user, request.date(), source.plan().getId(), source.planDay().getId())
+                    .stream().findFirst().ifPresent(existing -> {
+                        throw new ConflictException("Ya existe una sesión de este plan para la fecha indicada. "
+                                + "Continuá la sesión " + existing.getId() + ".");
+                    });
+        }
         TrainingSession session = new TrainingSession();
         session.setUser(user);
+        OffsetDateTime startedAt = request.startedAt() == null ? OffsetDateTime.now() : request.startedAt();
         applySession(session, request.date(), request.module(), source, request.title(),
-                request.status() == null ? TrainingSessionStatus.STARTED : request.status(), request.startedAt(),
-                request.finishedAt(), request.durationMinutes(), request.notes());
+                TrainingSessionStatus.IN_PROGRESS, startedAt, null, request.durationMinutes(), request.notes());
+        session.setBaselineCaptured(source.planDay() != null);
+        if (source.planDay() != null) {
+            session.setBaselinePlanVersion(versionOrZero(source.plan()));
+            session.setBaselinePlanDayVersion(versionOrZero(source.planDay()));
+        }
 
         if (source.planDay() != null) {
             for (TrainingPlanExercise presetExercise : livePresetExercises(source.planDay())) {
                 if (!presetExercise.isActive()) continue;
                 addSessionExerciseSnapshot(session, presetExercise, session.getExercises().size());
             }
-        }
-        if (request.exercises() != null) {
+        } else if (request.exercises() != null) {
             for (TrainingSessionExerciseRequest exerciseRequest : request.exercises()) {
                 addSessionExercise(session, user, exerciseRequest, session.getExercises().size());
             }
         }
-        sessions.save(session);
+        sessions.saveAndFlush(session);
+        saveBaseline(session, source);
         return toSessionResponse(session);
     }
 
     @Transactional
     public TrainingSessionResponse updateSession(AppUser user, Long id, UpdateTrainingSessionRequest request) {
         TrainingSession session = requireSession(user, id);
-        if (session.getStatus() == TrainingSessionStatus.COMPLETED) {
-            throw new BadRequestException("Las sesiones completadas son históricas y no se pueden modificar.");
+        checkVersion(request.version(), session.getVersion(), "La sesión");
+        if (session.getStatus() != TrainingSessionStatus.IN_PROGRESS) {
+            throw new BadRequestException("Solo se pueden modificar sesiones IN_PROGRESS.");
+        }
+        if (request.status() != TrainingSessionStatus.IN_PROGRESS) {
+            throw new BadRequestException("PUT solo puede mantener una sesión IN_PROGRESS. Usá complete o cancel.");
         }
         SessionSource source = resolveSource(user, request.module(), request.planId(), request.planDayId());
         validateScheduledSession(user, source, request.date());
+        if (!Objects.equals(idOf(session.getSourcePlan()), idOf(source.plan()))
+                || !Objects.equals(idOf(session.getSourcePlanDay()), idOf(source.planDay()))) {
+            throw new BadRequestException("No podés cambiar el plan de origen de una sesión ya iniciada.");
+        }
+        if (source.plan() != null) {
+            sessions.findBlockingForSchedule(user, request.date(), source.plan().getId(), source.planDay().getId())
+                    .stream().filter(existing -> !Objects.equals(existing.getId(), session.getId())).findFirst()
+                    .ifPresent(existing -> {
+                        throw new ConflictException("Ya existe otra sesión para este plan y fecha: " + existing.getId() + ".");
+                    });
+        }
         applySession(session, request.date(), request.module(), source, request.title(), request.status(), request.startedAt(),
                 request.finishedAt(), request.durationMinutes(), request.notes());
-        session.getExercises().clear();
-        for (TrainingSessionExerciseRequest exerciseRequest : request.exercises()) {
-            addSessionExercise(session, user, exerciseRequest, session.getExercises().size());
-        }
+        replaceSessionExercises(session, user, request.exercises());
+        sessions.saveAndFlush(session);
         return toSessionResponse(session);
     }
 
     @Transactional
     public TrainingSessionResponse completeSession(AppUser user, Long id, CompleteTrainingSessionRequest request) {
         TrainingSession session = requireSession(user, id);
-        if (session.getStatus() == TrainingSessionStatus.CANCELLED || session.getStatus() == TrainingSessionStatus.SKIPPED) {
-            throw new BadRequestException("No podés completar una sesión cancelada u omitida.");
+        checkVersion(request.version(), session.getVersion(), "La sesión");
+        if (session.getStatus() != TrainingSessionStatus.IN_PROGRESS) {
+            throw new BadRequestException("Solo se puede completar una sesión IN_PROGRESS.");
         }
-        OffsetDateTime finishedAt = request != null && request.finishedAt() != null
-                ? request.finishedAt() : OffsetDateTime.now();
+        if (Boolean.TRUE.equals(request.persistPlanChanges())) {
+            persistPlanChanges(session, user);
+        }
+        OffsetDateTime finishedAt = request.finishedAt() != null ? request.finishedAt() : OffsetDateTime.now();
         validateTimes(session.getStartedAt(), finishedAt);
         session.setStatus(TrainingSessionStatus.COMPLETED);
         session.setFinishedAt(finishedAt);
         session.setDurationMinutes(resolveDuration(session.getStartedAt(), finishedAt,
-                request == null ? null : request.durationMinutes(), session.getDurationMinutes()));
+                request.durationMinutes(), session.getDurationMinutes()));
         session.setUpdatedAt(OffsetDateTime.now());
+        sessions.saveAndFlush(session);
+        return toSessionResponse(session);
+    }
+
+    @Transactional
+    public TrainingSessionResponse cancelSession(AppUser user, Long id, CancelTrainingSessionRequest request) {
+        TrainingSession session = requireSession(user, id);
+        checkVersion(request.version(), session.getVersion(), "La sesión");
+        if (session.getStatus() != TrainingSessionStatus.IN_PROGRESS) {
+            throw new BadRequestException("Solo se puede cancelar una sesión IN_PROGRESS.");
+        }
+        session.setStatus(TrainingSessionStatus.CANCELLED);
+        session.setFinishedAt(OffsetDateTime.now());
+        session.setNotes(request.notes() == null ? session.getNotes() : blankToNull(request.notes()));
+        session.setUpdatedAt(OffsetDateTime.now());
+        sessions.saveAndFlush(session);
         return toSessionResponse(session);
     }
 
@@ -866,7 +926,7 @@ public class TrainingService {
         validateMetrics(module, type, request.targetRepetitions(), request.targetWeightKg(), request.targetSeconds(),
                 request.targetDistanceMeters());
         presetExercise.setTargetSets(request.targetSets());
-        presetExercise.setTargetRepetitions(request.targetRepetitions() == null ? 0 : request.targetRepetitions());
+        presetExercise.setTargetRepetitions(request.targetRepetitions());
         presetExercise.setTargetWeightKg(request.targetWeightKg());
         presetExercise.setRegistrationType(type);
         presetExercise.setTargetSeconds(request.targetSeconds());
@@ -963,14 +1023,21 @@ public class TrainingService {
     }
 
     private List<TrainingPlanScheduleResponse> schedulesForDate(AppUser user, LocalDate date) {
+        Map<String, TrainingSession> blockingSessions = sessions.findBlockingForDate(user, date).stream()
+                .collect(Collectors.toMap(session -> scheduleKey(session.getSourcePlan(), session.getSourcePlanDay()),
+                        session -> session, (first, ignored) -> first));
         return presets.search(user, null, false, page(0, 50, Sort.unsorted())).stream()
                 .map(plan -> {
                     if (plan.getFrequencyMode() == TrainingFrequencyMode.DYNAMIC && !date.equals(LocalDate.now())) {
                         return null;
                     }
                     TrainingPlanDay day = resolvePlanDay(user, plan, date);
-                    return day == null ? null : new TrainingPlanScheduleResponse(plan.getId(), day.getId(), day.getName(),
-                            plan.getModule(), true);
+                    if (day == null) return null;
+                    TrainingSession blocking = blockingSessions.get(scheduleKey(plan, day));
+                    if (blocking != null && blocking.getStatus() != TrainingSessionStatus.IN_PROGRESS) return null;
+                    return new TrainingPlanScheduleResponse(plan.getId(), day.getId(), day.getName(), plan.getModule(),
+                            blocking == null, blocking == null ? null : blocking.getId(),
+                            blocking == null ? null : blocking.getStatus());
                 })
                 .filter(Objects::nonNull).toList();
     }
@@ -978,6 +1045,9 @@ public class TrainingService {
     private void applySession(TrainingSession session, LocalDate date, TrainingModule module, SessionSource source,
             String title, TrainingSessionStatus status, OffsetDateTime startedAt, OffsetDateTime finishedAt,
             Integer durationMinutes, String notes) {
+        if (status == TrainingSessionStatus.IN_PROGRESS && finishedAt != null) {
+            throw new BadRequestException("Una sesión IN_PROGRESS no puede tener fecha de finalización.");
+        }
         validateTimes(startedAt, finishedAt);
         session.setSessionDate(date);
         session.setModule(module);
@@ -993,19 +1063,14 @@ public class TrainingService {
     }
 
     private void addSessionExerciseSnapshot(TrainingSession session, TrainingPlanExercise source, int position) {
-        validateMetrics(session.getModule(), source.getRegistrationType(), source.getTargetRepetitions(),
-                source.getTargetWeightKg(), source.getTargetSeconds(), source.getTargetDistanceMeters());
         TrainingSessionExercise snapshot = new TrainingSessionExercise();
         snapshot.setSession(session);
         snapshot.setSourceExercise(source.getExercise());
+        snapshot.setSourcePlanExercise(source);
         snapshot.setExerciseName(source.getExercise().getName());
-        snapshot.setTargetSets(source.getTargetSets());
-        snapshot.setTargetRepetitions(source.getTargetRepetitions());
-        snapshot.setTargetWeightKg(source.getTargetWeightKg());
-        snapshot.setRegistrationType(source.getRegistrationType());
-        snapshot.setTargetSeconds(source.getTargetSeconds());
-        snapshot.setTargetDistanceMeters(source.getTargetDistanceMeters());
-        snapshot.setNotes(source.getNotes());
+        // The session starts from structure only. Plan targets are not performed metrics.
+        snapshot.setOrigin(TrainingSessionExerciseOrigin.PLAN);
+        snapshot.setRegistrationType(effectiveRegistrationType(source.getExercise(), source.getRegistrationType()));
         snapshot.setPosition(position);
         session.getExercises().add(snapshot);
     }
@@ -1022,6 +1087,7 @@ public class TrainingService {
         TrainingSessionExercise sessionExercise = new TrainingSessionExercise();
         sessionExercise.setSession(session);
         sessionExercise.setSourceExercise(exercise);
+        sessionExercise.setOrigin(TrainingSessionExerciseOrigin.ADDED);
         sessionExercise.setExerciseName(exercise.getName());
         sessionExercise.setTargetSets(request.targetSets());
         sessionExercise.setTargetRepetitions(request.targetRepetitions());
@@ -1036,15 +1102,208 @@ public class TrainingService {
                 TrainingSet trainingSet = new TrainingSet();
                 trainingSet.setSessionExercise(sessionExercise);
                 trainingSet.setSetNumber(setRequest.setNumber());
-                trainingSet.setRepetitions(setRequest.repetitions() == null ? 0 : setRequest.repetitions());
+                trainingSet.setRepetitions(setRequest.repetitions());
                 trainingSet.setWeightKg(setRequest.weightKg());
                 trainingSet.setSeconds(setRequest.seconds());
                 trainingSet.setDistanceMeters(setRequest.distanceMeters());
                 trainingSet.setCompleted(setRequest.completed());
+                trainingSet.setNotes(blankToNull(setRequest.notes()));
                 sessionExercise.getSets().add(trainingSet);
             }
         }
         session.getExercises().add(sessionExercise);
+    }
+
+    private void saveBaseline(TrainingSession session, SessionSource source) {
+        if (source.planDay() == null) return;
+        for (TrainingPlanExercise planExercise : livePresetExercises(source.planDay())) {
+            TrainingSessionBaseline baseline = new TrainingSessionBaseline();
+            baseline.setSession(session);
+            baseline.setPlanExercise(planExercise);
+            baseline.setCatalogExercise(planExercise.getExercise());
+            baseline.setExerciseName(planExercise.getExercise().getName());
+            baseline.setPosition(planExercise.getPosition());
+            baseline.setPlanVersion(versionOrZero(source.plan()));
+            baseline.setPlanDayVersion(versionOrZero(source.planDay()));
+            session.getBaseline().add(baseline);
+        }
+        baselines.saveAll(session.getBaseline());
+    }
+
+    private void replaceSessionExercises(TrainingSession session, AppUser user,
+            List<TrainingSessionExerciseRequest> requests) {
+        List<TrainingSessionExerciseRequest> desiredRequests = requests == null ? List.of() : requests;
+        Map<Long, TrainingSessionExercise> existingById = session.getExercises().stream()
+                .filter(exercise -> exercise.getId() != null)
+                .collect(Collectors.toMap(TrainingSessionExercise::getId, exercise -> exercise));
+        Set<TrainingSessionExercise> retained = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        Set<Long> exerciseIds = new java.util.HashSet<>();
+        Set<Integer> positions = new java.util.HashSet<>();
+
+        for (int index = 0; index < desiredRequests.size(); index++) {
+            TrainingSessionExerciseRequest request = desiredRequests.get(index);
+            if (!exerciseIds.add(request.exerciseId())) {
+                throw new BadRequestException("No puede haber ejercicios repetidos en una sesión.");
+            }
+            int position = request.position() == null ? index : request.position();
+            if (!positions.add(position)) {
+                throw new BadRequestException("Las posiciones de los ejercicios deben ser únicas.");
+            }
+
+            TrainingSessionExercise existing = request.id() == null ? session.getExercises().stream()
+                    .filter(candidate -> !retained.contains(candidate)
+                            && candidate.getSourceExercise() != null
+                            && Objects.equals(candidate.getSourceExercise().getId(), request.exerciseId()))
+                    .findFirst().orElse(null) : existingById.get(request.id());
+            if (request.id() != null && existing == null) {
+                throw new NotFoundException("El ejercicio de sesión no pertenece a esta sesión.");
+            }
+            if (existing == null) {
+                addSessionExercise(session, user, request, position);
+                existing = session.getExercises().get(session.getExercises().size() - 1);
+            } else {
+                if (existing.getOrigin() == TrainingSessionExerciseOrigin.PLAN
+                        && (existing.getSourceExercise() == null
+                                || !Objects.equals(existing.getSourceExercise().getId(), request.exerciseId()))) {
+                    throw new BadRequestException("No podés cambiar el ejercicio original de un snapshot de plan.");
+                }
+                applyExistingSessionExercise(existing, session, user, request);
+                existing.setPosition(position);
+            }
+            retained.add(existing);
+        }
+
+        session.getExercises().removeIf(existing -> !retained.contains(existing));
+        session.getExercises().sort(Comparator.comparingInt(TrainingSessionExercise::getPosition)
+                .thenComparing(exercise -> exercise.getId() == null ? Long.MAX_VALUE : exercise.getId()));
+    }
+
+    private void applyExistingSessionExercise(TrainingSessionExercise sessionExercise, TrainingSession session,
+            AppUser user, TrainingSessionExerciseRequest request) {
+        TrainingExercise exercise = sessionExercise.getSourceExercise();
+        if (sessionExercise.getOrigin() != TrainingSessionExerciseOrigin.PLAN) {
+            exercise = requireSelectableExercise(user, request.exerciseId());
+            validateExerciseModule(session.getModule(), exercise);
+            sessionExercise.setSourceExercise(exercise);
+            sessionExercise.setExerciseName(exercise.getName());
+        }
+        TrainingRegistrationType type = validateRegistrationType(exercise, request.registrationType());
+        validateMetrics(session.getModule(), type, request.targetRepetitions(), request.targetWeightKg(),
+                request.targetSeconds(), request.targetDistanceMeters());
+        validateSets(session.getModule(), type, request.sets());
+        sessionExercise.setTargetSets(request.targetSets());
+        sessionExercise.setTargetRepetitions(request.targetRepetitions());
+        sessionExercise.setTargetWeightKg(request.targetWeightKg());
+        sessionExercise.setRegistrationType(type);
+        sessionExercise.setTargetSeconds(request.targetSeconds());
+        sessionExercise.setTargetDistanceMeters(request.targetDistanceMeters());
+        sessionExercise.setNotes(blankToNull(request.notes()));
+        sessionExercise.setUpdatedAt(OffsetDateTime.now());
+        sessionExercise.getSets().clear();
+        if (request.sets() != null) {
+            for (TrainingSetRequest setRequest : request.sets()) {
+                TrainingSet trainingSet = new TrainingSet();
+                trainingSet.setSessionExercise(sessionExercise);
+                trainingSet.setSetNumber(setRequest.setNumber());
+                trainingSet.setRepetitions(setRequest.repetitions());
+                trainingSet.setWeightKg(setRequest.weightKg());
+                trainingSet.setSeconds(setRequest.seconds());
+                trainingSet.setDistanceMeters(setRequest.distanceMeters());
+                trainingSet.setCompleted(setRequest.completed());
+                trainingSet.setNotes(blankToNull(setRequest.notes()));
+                sessionExercise.getSets().add(trainingSet);
+            }
+        }
+    }
+
+    private void persistPlanChanges(TrainingSession session, AppUser user) {
+        TrainingPlan plan = session.getSourcePlan();
+        TrainingPlanDay day = session.getSourcePlanDay();
+        if (plan == null || day == null) {
+            throw new ConflictException("La sesión no tiene un plan y día de origen para guardar cambios.");
+        }
+        if (!plan.isActive() || !day.isActive() || plan.getDeletedAt() != null || day.getDeletedAt() != null) {
+            throw new ConflictException("La rutina o el día de origen ya no está activo.");
+        }
+        List<TrainingSessionBaseline> baseline = baselines.findBySessionIdOrderByPositionAscIdAsc(session.getId());
+        if (!session.isBaselineCaptured()) {
+            throw new ConflictException("La sesión no tiene baseline de estructura para guardar cambios.");
+        }
+        Long planVersion = session.getBaselinePlanVersion();
+        Long dayVersion = session.getBaselinePlanDayVersion();
+        if (!baseline.isEmpty()) {
+            planVersion = baseline.get(0).getPlanVersion();
+            dayVersion = baseline.get(0).getPlanDayVersion();
+        }
+        if (!Objects.equals(planVersion, versionOrZero(plan)) || !Objects.equals(dayVersion, versionOrZero(day))) {
+            throw new ConflictException("La rutina o el día cambió desde que se inició la sesión. Recargá y reintentá.");
+        }
+
+        Map<Long, TrainingPlanExercise> currentById = livePresetExercises(day).stream()
+                .collect(Collectors.toMap(TrainingPlanExercise::getId, exercise -> exercise));
+        if (baseline.stream().anyMatch(item -> item.getPlanExercise() == null || item.getCatalogExercise() == null)) {
+            throw new ConflictException("El baseline de la sesión ya no referencia ejercicios válidos.");
+        }
+        Set<Long> baselineIds = baseline.stream().map(item -> item.getPlanExercise().getId()).collect(Collectors.toSet());
+        Set<Long> selectedPlanIds = new java.util.HashSet<>();
+        Set<Long> selectedExerciseIds = new java.util.HashSet<>();
+        int position = 0;
+
+        List<TrainingSessionExercise> orderedExercises = session.getExercises().stream()
+                .sorted(Comparator.comparingInt(TrainingSessionExercise::getPosition)
+                        .thenComparing(exercise -> exercise.getId() == null ? Long.MAX_VALUE : exercise.getId()))
+                .toList();
+        for (TrainingSessionExercise sessionExercise : orderedExercises) {
+            if (sessionExercise.getSourceExercise() == null) {
+                throw new BadRequestException("Cada ejercicio de sesión debe pertenecer al catálogo.");
+            }
+            Long catalogId = sessionExercise.getSourceExercise().getId();
+            if (!selectedExerciseIds.add(catalogId)) {
+                throw new BadRequestException("No puede haber ejercicios repetidos al guardar cambios en la rutina.");
+            }
+            if (sessionExercise.getOrigin() == TrainingSessionExerciseOrigin.PLAN) {
+                TrainingPlanExercise planExercise = sessionExercise.getSourcePlanExercise();
+                if (planExercise == null || !baselineIds.contains(planExercise.getId())) {
+                    throw new ConflictException("El origen de un ejercicio de plan ya no coincide con el baseline.");
+                }
+                TrainingPlanExercise current = currentById.get(planExercise.getId());
+                if (current == null || !Objects.equals(current.getExercise().getId(), catalogId)) {
+                    throw new ConflictException("Un ejercicio del plan cambió desde que se inició la sesión.");
+                }
+                if (!selectedPlanIds.add(planExercise.getId())) {
+                    throw new BadRequestException("No puede haber ejercicios de plan repetidos en una sesión.");
+                }
+                current.setPosition(position++);
+                current.setUpdatedAt(OffsetDateTime.now());
+            } else {
+                TrainingExercise exercise = requireSelectableExercise(user, catalogId);
+                validateExerciseModule(plan.getModule(), exercise);
+                TrainingPlanExercise added = new TrainingPlanExercise();
+                added.setPlanDay(day);
+                added.setExercise(exercise);
+                added.setTargetSets(sessionExercise.getTargetSets());
+                added.setTargetRepetitions(sessionExercise.getTargetRepetitions());
+                added.setTargetWeightKg(sessionExercise.getTargetWeightKg());
+                added.setRegistrationType(validateRegistrationType(exercise, sessionExercise.getRegistrationType()));
+                added.setTargetSeconds(sessionExercise.getTargetSeconds());
+                added.setTargetDistanceMeters(sessionExercise.getTargetDistanceMeters());
+                added.setNotes(sessionExercise.getNotes());
+                added.setPosition(position++);
+                added.setActive(true);
+                day.getExercises().add(added);
+            }
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        for (TrainingPlanExercise existing : livePresetExercises(day)) {
+            if (baselineIds.contains(existing.getId()) && !selectedPlanIds.contains(existing.getId())) {
+                existing.setActive(false);
+                existing.setDeletedAt(now);
+                existing.setUpdatedAt(now);
+            }
+        }
+        touch(day);
+        touch(plan);
+        days.saveAndFlush(day);
     }
 
     private void validateExerciseModule(TrainingModule module, TrainingExercise exercise) {
@@ -1120,36 +1379,33 @@ public class TrainingService {
     private void validateMetrics(TrainingModule module, TrainingRegistrationType type, Integer repetitions,
             BigDecimal weightKg, Integer seconds, BigDecimal distanceMeters) {
         validateWeight(module, weightKg);
-        if ((type == TrainingRegistrationType.REPETITIONS
-                || type == TrainingRegistrationType.WEIGHT_AND_REPETITIONS
-                || type == TrainingRegistrationType.REPETITIONS_AND_TIME) && repetitions == null) {
-            throw new BadRequestException("Este tipo de registro requiere repeticiones.");
+        if (repetitions != null && !supportsRepetitions(type)) {
+            throw new BadRequestException("Las repeticiones no corresponden a este tipo de registro.");
         }
         if (weightKg != null && type != TrainingRegistrationType.WEIGHT_AND_REPETITIONS) {
             throw new BadRequestException("El peso solo corresponde a ejercicios de peso y repeticiones.");
-        }
-        if ((type == TrainingRegistrationType.TIME || type == TrainingRegistrationType.REPETITIONS_AND_TIME)
-                && seconds == null) {
-            throw new BadRequestException("Este tipo de registro requiere segundos.");
-        }
-        if (type == TrainingRegistrationType.DISTANCE && distanceMeters == null) {
-            throw new BadRequestException("Este tipo de registro requiere distancia.");
-        }
-        if (type != TrainingRegistrationType.DISTANCE && distanceMeters != null) {
-            throw new BadRequestException("La distancia solo corresponde a ejercicios de distancia.");
         }
         if (seconds != null && type != TrainingRegistrationType.TIME
                 && type != TrainingRegistrationType.REPETITIONS_AND_TIME) {
             throw new BadRequestException("El tiempo solo corresponde a ejercicios con registro de tiempo.");
         }
+        if (distanceMeters != null && type != TrainingRegistrationType.DISTANCE) {
+            throw new BadRequestException("La distancia solo corresponde a ejercicios de distancia.");
+        }
+        if (type == TrainingRegistrationType.DISTANCE && repetitions != null) {
+            throw new BadRequestException("La distancia no admite repeticiones.");
+        }
     }
 
     private void validateSetMetrics(TrainingRegistrationType type, TrainingSetRequest request) {
-        if ((type == TrainingRegistrationType.TIME || type == TrainingRegistrationType.REPETITIONS_AND_TIME)
-                && request.seconds() == null) {
+        if (request.completed() && supportsRepetitions(type) && request.repetitions() == null) {
+            throw new BadRequestException("Una serie completada requiere repeticiones.");
+        }
+        if (request.completed() && (type == TrainingRegistrationType.TIME
+                || type == TrainingRegistrationType.REPETITIONS_AND_TIME) && request.seconds() == null) {
             throw new BadRequestException("Este tipo de registro requiere segundos por serie.");
         }
-        if (type == TrainingRegistrationType.DISTANCE && request.distanceMeters() == null) {
+        if (request.completed() && type == TrainingRegistrationType.DISTANCE && request.distanceMeters() == null) {
             throw new BadRequestException("Este tipo de registro requiere distancia por serie.");
         }
         if (type != TrainingRegistrationType.DISTANCE && request.distanceMeters() != null) {
@@ -1159,6 +1415,15 @@ public class TrainingService {
                 && type != TrainingRegistrationType.REPETITIONS_AND_TIME) {
             throw new BadRequestException("El tiempo solo corresponde a ejercicios con registro de tiempo.");
         }
+        if (request.repetitions() != null && !supportsRepetitions(type)) {
+            throw new BadRequestException("Las repeticiones no corresponden a este tipo de registro.");
+        }
+    }
+
+    private boolean supportsRepetitions(TrainingRegistrationType type) {
+        return type == TrainingRegistrationType.REPETITIONS
+                || type == TrainingRegistrationType.WEIGHT_AND_REPETITIONS
+                || type == TrainingRegistrationType.REPETITIONS_AND_TIME;
     }
 
     private void validateWeight(TrainingModule module, BigDecimal weightKg) {
@@ -1203,6 +1468,9 @@ public class TrainingService {
         if (from != null && to != null && to.isBefore(from)) {
             throw new BadRequestException("La fecha final no puede ser anterior a la inicial.");
         }
+        if (from != null && to != null && from.plusDays(93).isBefore(to)) {
+            throw new BadRequestException("El rango máximo de consulta es de 94 días.");
+        }
     }
 
     private TrainingExerciseResponse toExerciseResponse(TrainingExercise exercise) {
@@ -1224,19 +1492,19 @@ public class TrainingService {
 
     private LegacyTrainingPlanResponse toPresetResponse(TrainingPlan preset) {
         return new LegacyTrainingPlanResponse(preset.getId(), preset.getName(), preset.getDescription(), preset.getModule(),
-                preset.isActive(), preset.getCreatedAt(), preset.getUpdatedAt());
+                preset.isActive(), preset.getCreatedAt(), preset.getUpdatedAt(), preset.getVersion());
     }
 
     private TrainingPlanResponse toPlanResponse(TrainingPlan plan) {
         return new TrainingPlanResponse(plan.getId(), plan.getName(), plan.getDescription(), plan.getModule(),
                 plan.getFrequencyMode(), plan.getTargetSessionsPerWeek(), plan.getStartDate(), plan.getEndDate(),
-                plan.isActive(), plan.getCreatedAt(), plan.getUpdatedAt());
+                plan.isActive(), plan.getCreatedAt(), plan.getUpdatedAt(), plan.getVersion());
     }
 
     private TrainingPlanDetailResponse toPlanDetailResponse(TrainingPlan plan) {
         return new TrainingPlanDetailResponse(plan.getId(), plan.getName(), plan.getDescription(), plan.getModule(),
                 plan.getFrequencyMode(), plan.getTargetSessionsPerWeek(), plan.getStartDate(), plan.getEndDate(),
-                plan.isActive(), plan.getCreatedAt(), plan.getUpdatedAt(), liveDays(plan).stream()
+                plan.isActive(), plan.getCreatedAt(), plan.getUpdatedAt(), plan.getVersion(), liveDays(plan).stream()
                         .map(day -> new TrainingPlanDayResponse(day.getId(), day.getName(), day.getDescription(),
                                 day.getDayOfWeek(), day.getPosition(), day.isActive(), livePresetExercises(day).stream()
                                         .map(exercise -> new TrainingPlanExerciseResponse(exercise.getId(),
@@ -1249,7 +1517,7 @@ public class TrainingService {
 
     private LegacyTrainingPlanDetailResponse toPresetDetailResponse(TrainingPlan preset) {
         return new LegacyTrainingPlanDetailResponse(preset.getId(), preset.getName(), preset.getDescription(), preset.getModule(),
-                preset.isActive(), preset.getCreatedAt(), preset.getUpdatedAt(),
+                preset.isActive(), preset.getCreatedAt(), preset.getUpdatedAt(), preset.getVersion(),
                 liveDays(preset).stream().map(this::toDayResponse).toList());
     }
 
@@ -1272,7 +1540,7 @@ public class TrainingService {
         return new TrainingSessionResponse(session.getId(), session.getSessionDate(), session.getModule(),
                 idOf(session.getSourcePlan()), idOf(session.getSourcePlanDay()), session.getTitle(), session.getStatus(),
                 session.getStartedAt(), session.getFinishedAt(), session.getDurationMinutes(), session.getNotes(),
-                session.getCreatedAt(), session.getUpdatedAt(),
+                session.getCreatedAt(), session.getUpdatedAt(), session.getVersion(),
                 session.getExercises().stream().sorted(Comparator.comparingInt(TrainingSessionExercise::getPosition)
                         .thenComparing(TrainingSessionExercise::getId)).map(this::toSessionExerciseResponse).toList());
     }
@@ -1280,7 +1548,7 @@ public class TrainingService {
     private TrainingSessionSummaryResponse toSessionSummaryResponse(TrainingSession session) {
         return new TrainingSessionSummaryResponse(session.getId(), session.getSessionDate(), session.getModule(),
                 idOf(session.getSourcePlan()), idOf(session.getSourcePlanDay()), session.getTitle(), session.getStatus(),
-                session.getStartedAt(), session.getFinishedAt(), session.getDurationMinutes());
+                session.getStartedAt(), session.getFinishedAt(), session.getDurationMinutes(), session.getVersion());
     }
 
     private TrainingSessionExerciseResponse toSessionExerciseResponse(TrainingSessionExercise exercise) {
@@ -1288,8 +1556,9 @@ public class TrainingService {
                 exercise.getExerciseName(), exercise.getTargetSets(), exercise.getTargetRepetitions(),
                 exercise.getTargetWeightKg(), exercise.getNotes(), exercise.getPosition(),
                 exercise.getSets().stream().sorted(Comparator.comparingInt(TrainingSet::getSetNumber)
-                        .thenComparing(TrainingSet::getId)).map(this::toSetResponse).toList(),
-                exercise.getRegistrationType(), exercise.getTargetSeconds(), exercise.getTargetDistanceMeters());
+                         .thenComparing(TrainingSet::getId)).map(this::toSetResponse).toList(),
+                exercise.getRegistrationType(), exercise.getTargetSeconds(), exercise.getTargetDistanceMeters(),
+                idOf(exercise.getSourcePlanExercise()), exercise.getOrigin());
     }
 
     private TrainingSetResponse toSetResponse(TrainingSet trainingSet) {
@@ -1300,7 +1569,7 @@ public class TrainingService {
     }
 
     private TrainingCalendarDayResponse toCalendarDay(AppUser user, LocalDate date, List<TrainingSession> daySessions) {
-        long started = daySessions.stream().filter(session -> session.getStatus() == TrainingSessionStatus.STARTED).count();
+        long inProgress = daySessions.stream().filter(session -> session.getStatus() == TrainingSessionStatus.IN_PROGRESS).count();
         long completed = daySessions.stream().filter(session -> session.getStatus() == TrainingSessionStatus.COMPLETED).count();
         long cancelled = daySessions.stream().filter(session -> session.getStatus() == TrainingSessionStatus.CANCELLED).count();
         long duration = daySessions.stream().map(TrainingSession::getDurationMinutes).filter(Objects::nonNull)
@@ -1309,8 +1578,8 @@ public class TrainingService {
                 .collect(Collectors.toCollection(() -> EnumSet.noneOf(TrainingModule.class))).stream().sorted().toList();
         List<TrainingCalendarSessionResponse> sessions = daySessions.stream().map(session -> new TrainingCalendarSessionResponse(
                 session.getId(), session.getModule(), session.getTitle(), session.getStatus(),
-                idOf(session.getSourcePlan()), idOf(session.getSourcePlanDay()))).toList();
-        return new TrainingCalendarDayResponse(date, daySessions.size(), started, completed, cancelled, duration, modules,
+                idOf(session.getSourcePlan()), idOf(session.getSourcePlanDay()), session.getVersion())).toList();
+        return new TrainingCalendarDayResponse(date, daySessions.size(), inProgress, completed, cancelled, duration, modules,
                 sessions, schedulesForDate(user, date));
     }
 
@@ -1347,6 +1616,30 @@ public class TrainingService {
         preset.setUpdatedAt(OffsetDateTime.now());
     }
 
+    private void touch(TrainingPlanDay day) {
+        day.setUpdatedAt(OffsetDateTime.now());
+    }
+
+    private void checkVersion(Long requested, Long actual, String resource) {
+        if (requested != null && !Objects.equals(requested, versionOrZeroValue(actual))) {
+            throw new ConflictException(resource + " está desactualizada. Recargá y volvé a intentar.");
+        }
+    }
+
+    private static long versionOrZeroValue(Long version) {
+        return version == null ? 0L : version;
+    }
+
+    private static Long versionOrZero(Object entity) {
+        if (entity instanceof TrainingPlan plan) return versionOrZeroValue(plan.getVersion());
+        if (entity instanceof TrainingPlanDay day) return versionOrZeroValue(day.getVersion());
+        return 0L;
+    }
+
+    private static String scheduleKey(TrainingPlan plan, TrainingPlanDay day) {
+        return idOf(plan) + ":" + idOf(day);
+    }
+
     private Pageable page(int page, int size, Sort sort) {
         return PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50), sort);
     }
@@ -1360,6 +1653,8 @@ public class TrainingService {
         if (entity == null) return null;
         if (entity instanceof TrainingPlan preset) return preset.getId();
         if (entity instanceof TrainingPlanDay day) return day.getId();
+        if (entity instanceof TrainingPlanExercise planExercise) return planExercise.getId();
+        if (entity instanceof TrainingSessionExercise sessionExercise) return sessionExercise.getId();
         return ((TrainingExercise) entity).getId();
     }
 

@@ -21,6 +21,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -59,7 +60,11 @@ public class TrainingSession {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private TrainingSessionStatus status = TrainingSessionStatus.STARTED;
+    private TrainingSessionStatus status = TrainingSessionStatus.IN_PROGRESS;
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     private OffsetDateTime startedAt;
     private OffsetDateTime finishedAt;
@@ -74,7 +79,20 @@ public class TrainingSession {
     @Column(nullable = false)
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
+    @Column(name = "baseline_captured", nullable = false)
+    private boolean baselineCaptured;
+
+    @Column(name = "baseline_plan_version")
+    private Long baselinePlanVersion;
+
+    @Column(name = "baseline_plan_day_version")
+    private Long baselinePlanDayVersion;
+
     @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC, id ASC")
     private List<TrainingSessionExercise> exercises = new ArrayList<>();
+
+    @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("position ASC, id ASC")
+    private List<TrainingSessionBaseline> baseline = new ArrayList<>();
 }

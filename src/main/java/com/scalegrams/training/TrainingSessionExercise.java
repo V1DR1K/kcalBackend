@@ -41,6 +41,10 @@ public class TrainingSessionExercise {
     @JoinColumn(name = "source_exercise_id")
     private TrainingExercise sourceExercise;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_plan_exercise_id")
+    private TrainingPlanExercise sourcePlanExercise;
+
     @Column(nullable = false, length = 120)
     private String exerciseName;
 
@@ -51,6 +55,10 @@ public class TrainingSessionExercise {
     @Enumerated(EnumType.STRING)
     @Column(name = "registration_type", nullable = false, length = 35)
     private TrainingRegistrationType registrationType = TrainingRegistrationType.REPETITIONS;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private TrainingSessionExerciseOrigin origin = TrainingSessionExerciseOrigin.ADDED;
 
     @Column(name = "target_seconds")
     private Integer targetSeconds;

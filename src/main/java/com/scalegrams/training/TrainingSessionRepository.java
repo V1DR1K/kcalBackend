@@ -64,6 +64,45 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
     Optional<TrainingSession> findFirstByUserOrderBySessionDateDescIdDesc(AppUser user);
 
     @Query("""
+            select session from TrainingSession session
+            left join fetch session.sourcePlan
+            left join fetch session.sourcePlanDay
+            where session.user = :user
+              and session.sessionDate = :date
+              and session.sourcePlan.id = :planId
+              and session.sourcePlanDay.id = :planDayId
+              and session.status in (com.scalegrams.training.TrainingSessionStatus.IN_PROGRESS,
+                                     com.scalegrams.training.TrainingSessionStatus.COMPLETED,
+                                     com.scalegrams.training.TrainingSessionStatus.SKIPPED)
+            order by case session.status
+                when com.scalegrams.training.TrainingSessionStatus.IN_PROGRESS then 0
+                when com.scalegrams.training.TrainingSessionStatus.COMPLETED then 1
+                else 2
+            end, session.id desc
+            """)
+    List<TrainingSession> findBlockingForSchedule(@Param("user") AppUser user, @Param("date") LocalDate date,
+            @Param("planId") Long planId, @Param("planDayId") Long planDayId);
+
+    @Query("""
+            select session from TrainingSession session
+            left join fetch session.sourcePlan
+            left join fetch session.sourcePlanDay
+            where session.user = :user
+              and session.sessionDate = :date
+              and session.sourcePlan is not null
+              and session.sourcePlanDay is not null
+              and session.status in (com.scalegrams.training.TrainingSessionStatus.IN_PROGRESS,
+                                     com.scalegrams.training.TrainingSessionStatus.COMPLETED,
+                                     com.scalegrams.training.TrainingSessionStatus.SKIPPED)
+            order by case session.status
+                when com.scalegrams.training.TrainingSessionStatus.IN_PROGRESS then 0
+                when com.scalegrams.training.TrainingSessionStatus.COMPLETED then 1
+                else 2
+            end, session.id desc
+            """)
+    List<TrainingSession> findBlockingForDate(@Param("user") AppUser user, @Param("date") LocalDate date);
+
+    @Query("""
             select count(session) from TrainingSession session
             where session.user = :user
               and session.sourcePlan.id = :planId

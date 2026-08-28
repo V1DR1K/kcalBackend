@@ -205,11 +205,13 @@ class TrainingControllerIntegrationTests {
         List<?> sessionExercises = (List<?>) session.getBody().get("exercises");
         assertThat(sessionExercises).hasSize(1);
         assertThat(((Map<?, ?>) sessionExercises.get(0)).get("exerciseName")).isEqualTo("Press banca");
-        assertThat(((Map<?, ?>) sessionExercises.get(0)).get("targetSets")).isEqualTo(4);
+        assertThat(session.getBody().get("status")).isEqualTo("IN_PROGRESS");
+        assertThat(((Map<?, ?>) sessionExercises.get(0)).get("targetSets")).isNull();
+        assertThat(((Map<?, ?>) sessionExercises.get(0)).get("sets")).isEqualTo(List.of());
 
         ResponseEntity<Map> completed = rest.postForEntity(
                 "/api/training/sessions/" + session.getBody().get("id") + "/complete",
-                new HttpEntity<>(Map.of("durationMinutes", 45), headers), Map.class);
+                new HttpEntity<>(Map.of("durationMinutes", 45, "version", session.getBody().get("version")), headers), Map.class);
         assertThat(completed.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(completed.getBody().get("status")).isEqualTo("COMPLETED");
 
@@ -252,11 +254,11 @@ class TrainingControllerIntegrationTests {
                 new HttpEntity<>(sessionRequest, headers), Map.class);
         assertThat(session.getStatusCode().is2xxSuccessful()).isTrue();
         List<?> snapshots = (List<?>) session.getBody().get("exercises");
-        assertThat(((Map<?, ?>) snapshots.get(0)).get("targetWeightKg")).isEqualTo(60.0);
+        assertThat(((Map<?, ?>) snapshots.get(0)).get("targetWeightKg")).isNull();
 
         ResponseEntity<Map> completed = rest.postForEntity(
                 "/api/training/sessions/" + session.getBody().get("id") + "/complete",
-                new HttpEntity<>(Map.of(), headers), Map.class);
+                new HttpEntity<>(Map.of("version", session.getBody().get("version")), headers), Map.class);
         assertThat(completed.getBody().get("status")).isEqualTo("COMPLETED");
 
         ResponseEntity<Map> next = rest.exchange(
@@ -273,6 +275,60 @@ class TrainingControllerIntegrationTests {
                 "/api/training/plans/" + plan.getBody().get("id") + "/resolve?date=2040-01-03",
                 HttpMethod.GET, new HttpEntity<>(headers), Map.class);
         assertThat(continued.getBody().get("planDayId")).isEqualTo(firstDayId);
+    }
+
+    @Test
+    void allowsEmptyTargetsAndPersistsSessionStructureChangesOnCompletion() {
+        HttpHeaders headers = authHeaders("training-session-structure");
+        ResponseEntity<Map> firstExercise = rest.postForEntity("/api/training/exercises",
+                new HttpEntity<>(Map.of("name", "Press inicial", "module", "GYM"), headers), Map.class);
+        ResponseEntity<Map> secondExercise = rest.postForEntity("/api/training/exercises",
+                new HttpEntity<>(Map.of("name", "Remo adicional", "module", "GYM"), headers), Map.class);
+
+        Map<String, Object> planRequest = Map.of(
+                "name", "Plan sin objetivos",
+                "module", "GYM",
+                "frequencyMode", "DYNAMIC",
+                "targetSessionsPerWeek", 1,
+                "startDate", "2041-01-01",
+                "days", List.of(Map.of("name", "Día único", "position", 0, "exercises", List.of(
+                        Map.of("exerciseId", firstExercise.getBody().get("id"))))));
+        ResponseEntity<Map> plan = rest.postForEntity("/api/training/plans",
+                new HttpEntity<>(planRequest, headers), Map.class);
+        Map<?, ?> planDay = (Map<?, ?>) ((List<?>) plan.getBody().get("days")).get(0);
+
+        ResponseEntity<Map> created = rest.postForEntity("/api/training/sessions",
+                new HttpEntity<>(Map.of("date", "2041-01-01", "module", "GYM",
+                        "planId", plan.getBody().get("id"), "planDayId", planDay.get("id")), headers), Map.class);
+        Map<?, ?> snapshot = (Map<?, ?>) ((List<?>) created.getBody().get("exercises")).get(0);
+        assertThat(snapshot.get("targetRepetitions")).isNull();
+        assertThat(snapshot.get("sets")).isEqualTo(List.of());
+
+        Map<String, Object> update = Map.of(
+                "date", "2041-01-01",
+                "module", "GYM",
+                "planId", plan.getBody().get("id"),
+                "planDayId", planDay.get("id"),
+                "status", "IN_PROGRESS",
+                "version", created.getBody().get("version"),
+                "exercises", List.of(
+                        Map.of("id", snapshot.get("id"), "exerciseId", firstExercise.getBody().get("id"), "position", 0),
+                        Map.of("exerciseId", secondExercise.getBody().get("id"), "position", 1)));
+        ResponseEntity<Map> updated = rest.exchange("/api/training/sessions/" + created.getBody().get("id"),
+                HttpMethod.PUT, new HttpEntity<>(update, headers), Map.class);
+        assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
+
+        Map<String, Object> complete = Map.of("version", updated.getBody().get("version"),
+                "persistPlanChanges", true);
+        ResponseEntity<Map> completed = rest.postForEntity(
+                "/api/training/sessions/" + created.getBody().get("id") + "/complete",
+                new HttpEntity<>(complete, headers), Map.class);
+        assertThat(completed.getStatusCode().is2xxSuccessful()).isTrue();
+
+        ResponseEntity<Map> reloadedPlan = rest.exchange("/api/training/plans/" + plan.getBody().get("id"),
+                HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        Map<?, ?> reloadedDay = (Map<?, ?>) ((List<?>) reloadedPlan.getBody().get("days")).get(0);
+        assertThat((List<?>) reloadedDay.get("exercises")).hasSize(2);
     }
 
     private HttpHeaders authHeaders(String username) {

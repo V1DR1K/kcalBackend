@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.scalegrams.common.CurrentUser;
 import com.scalegrams.training.TrainingDtos.CompleteTrainingSessionRequest;
+import com.scalegrams.training.TrainingDtos.CancelTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.CreateTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.DuplicateTrainingPlanRequest;
 import com.scalegrams.training.TrainingDtos.PageResponse;
@@ -295,8 +296,14 @@ public class TrainingController {
 
     @PostMapping("/sessions/{id}/complete")
     TrainingSessionResponse completeSession(Authentication authentication, @PathVariable Long id,
-            @Valid @RequestBody(required = false) CompleteTrainingSessionRequest request) {
+            @Valid @RequestBody CompleteTrainingSessionRequest request) {
         return trainingService.completeSession(currentUser.from(authentication), id, request);
+    }
+
+    @PostMapping("/sessions/{id}/cancel")
+    TrainingSessionResponse cancelSession(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody CancelTrainingSessionRequest request) {
+        return trainingService.cancelSession(currentUser.from(authentication), id, request);
     }
 
     @DeleteMapping("/sessions/{id}")

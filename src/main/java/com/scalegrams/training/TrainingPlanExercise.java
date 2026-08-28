@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -36,11 +37,9 @@ public class TrainingPlanExercise {
     @JoinColumn(name = "exercise_id", nullable = false)
     private TrainingExercise exercise;
 
-    @Column(nullable = false)
-    private int targetSets;
+    private Integer targetSets;
 
-    @Column(nullable = false)
-    private int targetRepetitions;
+    private Integer targetRepetitions;
 
     private BigDecimal targetWeightKg;
 
@@ -68,6 +67,10 @@ public class TrainingPlanExercise {
 
     @Column(nullable = false)
     private OffsetDateTime updatedAt = OffsetDateTime.now();
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     private OffsetDateTime deletedAt;
 }

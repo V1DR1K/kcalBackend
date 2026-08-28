@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import jakarta.persistence.OptimisticLockException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -85,6 +87,16 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> conflict(DataIntegrityViolationException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ApiError("CONFLICT", "El registro entra en conflicto con datos existentes.", null, Instant.now()));
+    }
+
+    @ExceptionHandler({ConflictException.class, ObjectOptimisticLockingFailureException.class,
+            OptimisticLockException.class})
+    ResponseEntity<ApiError> staleVersion(RuntimeException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiError("STALE_VERSION",
+                        ex instanceof ConflictException ? ex.getMessage()
+                                : "El registro fue modificado por otra operación. Recargá y volvé a intentar.",
+                        null, Instant.now()));
     }
 
     @ExceptionHandler(Exception.class)

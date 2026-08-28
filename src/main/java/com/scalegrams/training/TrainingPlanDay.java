@@ -19,6 +19,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -58,6 +59,10 @@ public class TrainingPlanDay {
 
     @Column(nullable = false)
     private OffsetDateTime updatedAt = OffsetDateTime.now();
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     private OffsetDateTime deletedAt;
 
