@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +48,9 @@ import com.scalegrams.user.UserRepository;
 class ScaleGramsApplicationTests {
 	@Autowired
 	TestRestTemplate rest;
+
+	@Autowired
+	ObjectMapper objectMapper;
 
 	@MockBean
 	ExternalFoodLookupService externalFoodLookup;
@@ -723,6 +727,32 @@ class ScaleGramsApplicationTests {
 		assertThat(portions.getBody()).contains("\"proteinGrams\":62.0", "\"unit\":\"PORTION\"");
 		assertThat(invalidGrams.getStatusCode().is4xxClientError()).isTrue();
 		assertThat(invalidGrams.getBody()).contains("peso total cocido");
+	}
+
+	@Test
+	void preservesDecimalFoodAndRecipeQuantities() throws Exception {
+		HttpHeaders headers = authHeaders();
+		String date = "2033-04-12";
+
+		ResponseEntity<String> foodLog = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(Map.of(
+				"itemType", "FOOD", "itemId", 1, "mealType", "LUNCH", "quantity", 42.5,
+				"unit", "GRAM", "logDate", date), headers), String.class);
+		ResponseEntity<String> recipe = rest.postForEntity("/api/recipes", new HttpEntity<>(Map.of(
+				"name", "Receta decimal", "cookedTotalWeightGrams", 84.25,
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 42.5, "unit", "GRAM"))), headers), String.class);
+
+		assertThat(foodLog.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(foodLog.getBody()).contains("\"quantity\":42.5");
+		assertThat(recipe.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(recipe.getBody()).contains("\"quantity\":42.5", "\"cookedTotalWeightGrams\":84.25");
+
+		Object recipeId = objectMapper.readValue(recipe.getBody(), Map.class).get("id");
+		ResponseEntity<String> halfPortion = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(Map.of(
+				"itemType", "RECIPE", "itemId", recipeId, "mealType", "DINNER", "quantity", 0.5,
+				"unit", "PORTION", "logDate", date), headers), String.class);
+
+		assertThat(halfPortion.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(halfPortion.getBody()).contains("\"quantity\":0.5");
 	}
 
 	@Test

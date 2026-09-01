@@ -18,6 +18,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -73,14 +74,14 @@ public class NutritionDtos {
             @Pattern(regexp = "^$|\\d{6,32}", message = "Debe contener entre 6 y 32 digitos.") String barcode,
             @NotNull FoodCategory category,
             @NotNull FoodUnit baseUnit,
-            @Positive BigDecimal baseQuantity,
+            @Positive @Digits(integer = 36, fraction = 2) BigDecimal baseQuantity,
             @PositiveOrZero Integer calories,
-            @NotNull @PositiveOrZero BigDecimal proteinGrams,
-            @NotNull @PositiveOrZero BigDecimal carbsGrams,
-            @NotNull @PositiveOrZero BigDecimal fatGrams,
+            @NotNull @PositiveOrZero @Digits(integer = 36, fraction = 2) BigDecimal proteinGrams,
+            @NotNull @PositiveOrZero @Digits(integer = 36, fraction = 2) BigDecimal carbsGrams,
+            @NotNull @PositiveOrZero @Digits(integer = 36, fraction = 2) BigDecimal fatGrams,
             FoodPreparation preparation,
             @Size(max = 80) String servingName,
-            @Positive BigDecimal servingWeightGrams,
+            @Positive @Digits(integer = 36, fraction = 2) BigDecimal servingWeightGrams,
             @Size(max = 10) Set<@Size(max = 40) String> tags,
             @Positive @DecimalMax("10") BigDecimal cookedYieldFactor,
             @Size(max = 240) String cookedYieldAssumption) {
@@ -90,7 +91,7 @@ public class NutritionDtos {
         }
     }
 
-    public record NutritionPreviewRequest(@NotNull Long foodId, @Positive BigDecimal quantity, @NotNull FoodUnit unit) {
+    public record NutritionPreviewRequest(@NotNull Long foodId, @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, @NotNull FoodUnit unit) {
     }
 
     public record NutritionPreviewResponse(Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
@@ -100,12 +101,12 @@ public class NutritionDtos {
         }
     }
 
-    public record AddFoodLogRequest(@NotNull Long foodId, @NotNull MealType mealType, @Positive BigDecimal quantity,
+    public record AddFoodLogRequest(@NotNull Long foodId, @NotNull MealType mealType, @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity,
             @NotNull FoodUnit unit, LocalDate logDate) {
     }
 
     public record AddMealLogRequest(@NotNull MealItemType itemType, @NotNull Long itemId, @NotNull MealType mealType,
-            @Positive BigDecimal quantity, @NotNull FoodUnit unit, LocalDate logDate) {
+            @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, @NotNull FoodUnit unit, LocalDate logDate) {
     }
 
     public record BatchAddMealLogsRequest(
@@ -113,20 +114,20 @@ public class NutritionDtos {
     }
 
     public record AddRecipeMealLogRequest(@NotNull Long recipeId, @NotNull MealType mealType,
-            @Positive BigDecimal quantity, LocalDate logDate,
+            @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, LocalDate logDate,
             @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> ingredients) {
     }
 
-    public record UpdateFoodLogRequest(@NotNull MealType mealType, @Positive BigDecimal quantity,
+    public record UpdateFoodLogRequest(@NotNull MealType mealType, @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity,
             @NotNull FoodUnit unit, LocalDate logDate, Long itemId) {
     }
 
-    public record UpdateRecipeFoodLogRequest(@NotNull MealType mealType, @Positive BigDecimal quantity,
+    public record UpdateRecipeFoodLogRequest(@NotNull MealType mealType, @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity,
             LocalDate logDate, @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> recipeIngredients) {
     }
 
     public record UpdateRecipeLogIngredientsRequest(
-            @NotEmpty @Size(max = 50) List<@NotNull RecipeIngredientRequest> ingredients) {
+            @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> ingredients) {
     }
 
     public record FoodLogResponse(Long id, LocalDate logDate, MealType mealType, MealItemType itemType, FoodResponse food,
@@ -146,7 +147,7 @@ public class NutritionDtos {
 
     public record AiEstimateItem(
             @NotBlank @Size(min = 2, max = 120) String name,
-            @NotNull @Positive BigDecimal estimatedGrams,
+            @NotNull @Positive @Digits(integer = 36, fraction = 2) BigDecimal estimatedGrams,
             FoodCategory category,
             FoodPreparation preparation,
             @NotNull @PositiveOrZero BigDecimal proteinGrams,
@@ -196,7 +197,7 @@ public class NutritionDtos {
     public record ConfirmAiEstimateItem(
             @Positive Long foodId,
             @Valid AiEstimateFoodProposal proposal,
-            @NotNull @Positive @DecimalMax("3000") BigDecimal servedGrams) {
+            @NotNull @Positive @DecimalMax("3000") @Digits(integer = 36, fraction = 2) BigDecimal servedGrams) {
         @AssertTrue(message = "Debe informar exactamente uno de foodId o proposal.")
         public boolean hasExactlyOneFoodSource() {
             return (foodId == null) != (proposal == null);
@@ -273,7 +274,7 @@ public class NutritionDtos {
             @NotNull MealItemType itemType,
             Long itemId,
             @NotNull MealType mealType,
-            @NotNull @Positive BigDecimal quantity,
+            @NotNull @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity,
             @NotNull FoodUnit unit,
             String displayName,
             Integer calories,
@@ -301,14 +302,14 @@ public class NutritionDtos {
     public record ApplyDayPresetRequest(@NotNull LocalDate logDate, boolean replace) {
     }
 
-    public record RecipeIngredientRequest(@NotNull Long foodId, @Positive BigDecimal quantity, @NotNull FoodUnit unit) {
+    public record RecipeIngredientRequest(@NotNull Long foodId, @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, @NotNull FoodUnit unit) {
     }
 
     public record CreateRecipeRequest(
             @NotBlank @Size(min = 2, max = 120) String name,
             @Size(max = 500) String description,
             BigDecimal totalWeightGrams,
-            @Positive BigDecimal cookedTotalWeightGrams,
+            @Positive @Digits(integer = 36, fraction = 2) BigDecimal cookedTotalWeightGrams,
             boolean clearCookedTotalWeight,
             @NotEmpty @Size(max = 50) List<@NotNull RecipeIngredientRequest> ingredients) {
         @AssertTrue(message = "No se puede informar y borrar el peso cocido al mismo tiempo.")

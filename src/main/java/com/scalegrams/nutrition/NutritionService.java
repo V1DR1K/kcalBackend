@@ -741,7 +741,7 @@ public class NutritionService {
         if (request.clearCookedTotalWeight() || ingredientsChanged && request.cookedTotalWeightGrams() == null) {
             recipe.setCookedTotalWeightGrams(null);
         } else if (request.cookedTotalWeightGrams() != null) {
-            recipe.setCookedTotalWeightGrams(scale(request.cookedTotalWeightGrams()));
+            recipe.setCookedTotalWeightGrams(scaleWeight(request.cookedTotalWeightGrams()));
         }
     }
 
@@ -1370,7 +1370,7 @@ public class NutritionService {
         if (total.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("La receta necesita al menos un ingrediente con peso en gramos.");
         }
-        return scale(total);
+        return scaleWeight(total);
     }
 
     private BigDecimal ingredientWeightInGrams(Object ingredient) {
@@ -1484,6 +1484,12 @@ public class NutritionService {
 
     private static BigDecimal scale(BigDecimal value) {
         return value == null ? BigDecimal.ZERO.setScale(1, RoundingMode.HALF_UP) : value.setScale(1, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal scaleWeight(BigDecimal value) {
+        if (value == null) return null;
+        BigDecimal scaled = value.setScale(2, RoundingMode.HALF_UP);
+        return scaled.stripTrailingZeros().scale() < 1 ? scaled.setScale(1, RoundingMode.HALF_UP) : scaled;
     }
 
     private List<NutrientValueResponse> scaleRecipeNutrients(Recipe recipe, BigDecimal ratio) {
