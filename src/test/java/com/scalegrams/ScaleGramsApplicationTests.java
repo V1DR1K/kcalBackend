@@ -371,6 +371,48 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void foodSearchIgnoresCaseAndAccentsAcrossFoodFields() {
+		Map<String, Object> food = Map.ofEntries(
+				Map.entry("name", "Café con Leche"),
+				Map.entry("brand", "El Niño"),
+				Map.entry("category", "OTHER"),
+				Map.entry("baseUnit", "GRAM"),
+				Map.entry("baseQuantity", 100),
+				Map.entry("calories", 100),
+				Map.entry("proteinGrams", 10),
+				Map.entry("carbsGrams", 10),
+				Map.entry("fatGrams", 0),
+				Map.entry("preparation", "UNSPECIFIED"),
+				Map.entry("tags", Set.of("Desayuno")));
+		HttpHeaders headers = authHeaders();
+		ResponseEntity<String> created = rest.postForEntity("/api/foods", new HttpEntity<>(food, headers), String.class);
+
+		ResponseEntity<String> withoutAccents = rest.exchange("/api/foods?q=cafe&page=0&size=20", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> uppercase = rest.exchange("/api/foods?q=CAFE&page=0&size=20", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> brandWithoutAccent = rest.exchange("/api/foods?q=nino&page=0&size=20", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> tagWithoutAccent = rest.exchange("/api/foods?q=desayuno&page=0&size=20", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(withoutAccents.getBody()).contains("Café con Leche");
+		assertThat(uppercase.getBody()).contains("Café con Leche");
+		assertThat(brandWithoutAccent.getBody()).contains("Café con Leche");
+		assertThat(tagWithoutAccent.getBody()).contains("Café con Leche");
+
+		Map<String, Object> recipe = Map.of("name", "Crema de Ñandú", "description", "",
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM")));
+		ResponseEntity<String> createdRecipe = rest.postForEntity("/api/recipes", new HttpEntity<>(recipe, headers), String.class);
+		ResponseEntity<String> recipeSearch = rest.exchange("/api/recipes?q=nandu&page=0&size=20", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+
+		assertThat(createdRecipe.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(recipeSearch.getBody()).contains("Crema de Ñandú");
+	}
+
+	@Test
 	void usersCanExploreAndCopyRecipesWithoutTakingOwnershipOfTheOriginal() {
 		HttpHeaders alexHeaders = authHeaders("alex");
 		HttpHeaders ownerHeaders = authHeaders("Recetas Compartidas");

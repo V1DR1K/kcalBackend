@@ -12,13 +12,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface RecipeRepository extends JpaRepository<Recipe, Long> {
-    Page<Recipe> findByNameContainingIgnoreCase(String name, Pageable pageable);
+    Page<Recipe> findBySearchNameContaining(String name, Pageable pageable);
 
     Page<Recipe> findAll(Pageable pageable);
 
     Page<Recipe> findByCreatedById(Long createdById, Pageable pageable);
 
-    Page<Recipe> findByCreatedByIdAndNameContainingIgnoreCase(Long createdById, String name, Pageable pageable);
+    Page<Recipe> findByCreatedByIdAndSearchNameContaining(Long createdById, String name, Pageable pageable);
 
     @Query("select r.createdBy from Recipe r where r.createdBy.id <> :userId order by r.createdBy.fullName asc, r.createdBy.id asc")
     List<AppUser> findAuthorsExcluding(@Param("userId") Long userId);

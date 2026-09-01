@@ -21,6 +21,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.BatchSize;
+import com.scalegrams.common.SearchTextNormalizer;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 
 @Entity
 @BatchSize(size = 50)
@@ -34,6 +37,9 @@ public class Recipe {
 
     @Column(nullable = false, length = 120)
     private String name;
+
+    @Column(name = "search_name", nullable = false, columnDefinition = "text")
+    private String searchName = "";
 
     @Column(length = 500)
     private String description;
@@ -61,4 +67,15 @@ public class Recipe {
     @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true)
     @BatchSize(size = 50)
     private List<RecipeIngredient> ingredients = new ArrayList<>();
+
+    public void setName(String name) {
+        this.name = name;
+        this.searchName = SearchTextNormalizer.normalize(name);
+    }
+
+    @PrePersist
+    @PreUpdate
+    private void synchronizeSearchIndex() {
+        this.searchName = SearchTextNormalizer.normalize(name);
+    }
 }

@@ -35,6 +35,7 @@ import com.scalegrams.catalog.FoodUnit;
 import com.scalegrams.catalog.ModerationStatus;
 import com.scalegrams.common.BadRequestException;
 import com.scalegrams.common.NotFoundException;
+import com.scalegrams.common.SearchTextNormalizer;
 import com.scalegrams.externalfood.ExternalFoodCandidate;
 import com.scalegrams.externalfood.ExternalFoodLookupService;
 import com.scalegrams.externalfood.UsdaFoodDataProvider;
@@ -240,9 +241,9 @@ public class NutritionService {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
                 Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
         Page<Food> result;
-        boolean hasQuery = query != null && !query.isBlank();
+        query = SearchTextNormalizer.normalize(query);
+        boolean hasQuery = !query.isBlank();
         if (hasQuery) {
-            query = query.trim().replaceAll("\\s+", " ");
             if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
             if (query.length() < 2) return page(new org.springframework.data.domain.PageImpl<>(List.of(), pageable, 0));
         }
@@ -509,6 +510,7 @@ public class NutritionService {
         food.setLastSyncedAt(OffsetDateTime.now());
         if (candidate.tags() != null) candidate.tags().stream().map(this::clean).filter(tag -> tag != null)
                 .forEach(tag -> { if (food.getTags().size() < 10) food.getTags().add(tag); });
+        food.refreshSearchIndex();
         return foods.save(food);
     }
 
@@ -595,12 +597,12 @@ public class NutritionService {
     public PageResponse<RecipeResponse> searchRecipes(String query, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
                 Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
-        if (query != null && !query.isBlank()) {
-            query = query.trim();
+        query = SearchTextNormalizer.normalize(query);
+        if (!query.isBlank()) {
             if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
         }
-        Page<Recipe> result = query != null && !query.isBlank()
-                ? recipes.findByNameContainingIgnoreCase(query, pageable)
+        Page<Recipe> result = !query.isBlank()
+                ? recipes.findBySearchNameContaining(query, pageable)
                 : recipes.findAll(pageable);
         return page(result.map(this::toRecipeSummary));
     }
@@ -608,8 +610,9 @@ public class NutritionService {
     @Transactional(readOnly = true)
     public PageResponse<RecipeResponse> searchOwnedRecipes(AppUser user, String query, int page, int size) {
         Pageable pageable = recipePageable(page, size);
+        query = SearchTextNormalizer.normalize(query);
         Page<Recipe> result = hasRecipeQuery(query)
-                ? recipes.findByCreatedByIdAndNameContainingIgnoreCase(user.getId(), query.trim(), pageable)
+                ? recipes.findByCreatedByIdAndSearchNameContaining(user.getId(), query, pageable)
                 : recipes.findByCreatedById(user.getId(), pageable);
         return page(result.map(this::toRecipeSummary));
     }
@@ -626,8 +629,9 @@ public class NutritionService {
     @Transactional(readOnly = true)
     public PageResponse<RecipeResponse> searchRecipesByOwner(Long ownerId, String query, int page, int size) {
         Pageable pageable = recipePageable(page, size);
+        query = SearchTextNormalizer.normalize(query);
         Page<Recipe> result = hasRecipeQuery(query)
-                ? recipes.findByCreatedByIdAndNameContainingIgnoreCase(ownerId, query.trim(), pageable)
+                ? recipes.findByCreatedByIdAndSearchNameContaining(ownerId, query, pageable)
                 : recipes.findByCreatedById(ownerId, pageable);
         return page(result.map(this::toRecipeSummary));
     }
@@ -752,7 +756,7 @@ public class NutritionService {
 
     private boolean hasRecipeQuery(String query) {
         if (query == null || query.isBlank()) return false;
-        if (query.trim().length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
+        if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
         return true;
     }
 

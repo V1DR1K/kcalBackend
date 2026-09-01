@@ -26,6 +26,10 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.CascadeType;
 import com.scalegrams.nutrition.FoodNutrient;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
+import com.scalegrams.common.SearchTextNormalizer;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 
 @Entity
 @BatchSize(size = 50)
@@ -41,6 +45,15 @@ public class Food {
     private String name;
 
     private String brand;
+
+    @Column(name = "search_name", nullable = false, columnDefinition = "text")
+    private String searchName = "";
+
+    @Column(name = "search_brand", nullable = false, columnDefinition = "text")
+    private String searchBrand = "";
+
+    @Column(name = "search_tags", nullable = false, columnDefinition = "text")
+    private String searchTags = "";
 
     @Column(unique = true)
     private String barcode;
@@ -95,4 +108,34 @@ public class Food {
     @CollectionTable(name = "food_tags", joinColumns = @JoinColumn(name = "food_id"))
     @Column(name = "tag")
     private Set<String> tags = new LinkedHashSet<>();
+
+    public void setName(String name) {
+        this.name = name;
+        refreshSearchIndex();
+    }
+
+    public void setBrand(String brand) {
+        this.brand = brand;
+        refreshSearchIndex();
+    }
+
+    public void setTags(Set<String> tags) {
+        this.tags = tags == null ? new LinkedHashSet<>() : tags;
+        refreshSearchIndex();
+    }
+
+    public void refreshSearchIndex() {
+        this.searchName = SearchTextNormalizer.normalize(name);
+        this.searchBrand = SearchTextNormalizer.normalize(brand);
+        this.searchTags = tags == null ? "" : tags.stream()
+                .map(SearchTextNormalizer::normalize)
+                .filter(tag -> !tag.isBlank())
+                .collect(Collectors.joining(" "));
+    }
+
+    @PrePersist
+    @PreUpdate
+    private void synchronizeSearchIndex() {
+        refreshSearchIndex();
+    }
 }

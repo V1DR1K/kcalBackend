@@ -42,24 +42,24 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
     Page<Food> findByNameContainingIgnoreCaseAndCategory(String name, FoodCategory category, Pageable pageable);
 
     @Query("select f from Food f where f.deletedAt is null and f.moderationStatus = :status and (" +
-            "lower(f.name) like lower(concat('%', :q, '%')) or " +
-            "lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) or " +
-            "exists (select 1 from Food taggedFood join taggedFood.tags tag where taggedFood.id = f.id and lower(tag) like lower(concat('%', :q, '%')))) " +
-            "order by case when lower(f.name) = lower(:q) then 0 " +
-            "when lower(f.name) like lower(concat(:q, '%')) then 1 " +
-            "when lower(f.name) like lower(concat('%', :q, '%')) then 2 " +
-            "when lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) then 3 else 4 end, " +
+            "f.searchName like concat('%', :q, '%') or " +
+            "f.searchBrand like concat('%', :q, '%') or " +
+            "f.searchTags like concat('%', :q, '%')) " +
+            "order by case when f.searchName = :q then 0 " +
+            "when f.searchName like concat(:q, '%') then 1 " +
+            "when f.searchName like concat('%', :q, '%') then 2 " +
+            "when f.searchBrand like concat('%', :q, '%') then 3 else 4 end, " +
             "lower(f.name), f.id")
     Page<Food> search(@Param("q") String query, @Param("status") ModerationStatus status, Pageable pageable);
 
     @Query("select f from Food f where f.deletedAt is null and f.moderationStatus = :status and f.category = :category and (" +
-            "lower(f.name) like lower(concat('%', :q, '%')) or " +
-            "lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) or " +
-            "exists (select 1 from Food taggedFood join taggedFood.tags tag where taggedFood.id = f.id and lower(tag) like lower(concat('%', :q, '%')))) " +
-            "order by case when lower(f.name) = lower(:q) then 0 " +
-            "when lower(f.name) like lower(concat(:q, '%')) then 1 " +
-            "when lower(f.name) like lower(concat('%', :q, '%')) then 2 " +
-            "when lower(coalesce(f.brand, '')) like lower(concat('%', :q, '%')) then 3 else 4 end, " +
+            "f.searchName like concat('%', :q, '%') or " +
+            "f.searchBrand like concat('%', :q, '%') or " +
+            "f.searchTags like concat('%', :q, '%')) " +
+            "order by case when f.searchName = :q then 0 " +
+            "when f.searchName like concat(:q, '%') then 1 " +
+            "when f.searchName like concat('%', :q, '%') then 2 " +
+            "when f.searchBrand like concat('%', :q, '%') then 3 else 4 end, " +
             "lower(f.name), f.id")
     Page<Food> search(@Param("q") String query, @Param("category") FoodCategory category,
             @Param("status") ModerationStatus status, Pageable pageable);
