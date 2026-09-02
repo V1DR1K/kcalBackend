@@ -509,11 +509,26 @@ class ScaleGramsApplicationTests {
 		ResponseEntity<String> response = rest.postForEntity("/api/nutrition/ai-estimates/confirm", new HttpEntity<>(estimate, headers), String.class);
 
 		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(response.getBody()).startsWith("[").contains("\"itemType\":\"FOOD\"", "\"quantity\":150",
-				"\"quantity\":250", "\"unit\":\"GRAM\"", "\"proteinGrams\":50.0", "\"carbsGrams\":75.0",
-				"\"fatGrams\":25.0", "\"calories\":725", "\"source\":\"AI_ESTIMATE\"",
-				"\"sourceId\":\"food-log:", "\"moderationStatus\":\"APPROVED\"");
-		assertThat(countOccurrences(response.getBody(), "\"itemType\":\"FOOD\"")).isEqualTo(2);
+       assertThat(response.getBody()).startsWith("[").contains("\"itemType\":\"FOOD\"", "\"itemType\":\"AI_ESTIMATE\"",
+               "\"quantity\":150", "\"quantity\":1", "\"unit\":\"GRAM\"", "\"proteinGrams\":50.0",
+               "\"carbsGrams\":75.0", "\"fatGrams\":25.0", "\"calories\":725",
+               "\"source\":\"LOCAL\"");
+       assertThat(countOccurrences(response.getBody(), "\"itemType\":\"FOOD\"")).isEqualTo(1);
+		assertThat(foods.findAll()).noneMatch(food -> food.getName().equals("Hamburguesa de lentejas"));
+	}
+
+	@Test
+	void confirmsAiEstimateByReusingAnExactCatalogFood() {
+		HttpHeaders headers = authHeaders();
+		Map<String, Object> request = Map.of("mealType", "DINNER", "logDate", "2031-02-14", "items", List.of(
+				Map.of("proposal", Map.of("name", "Pechuga de pollo", "category", "MEAT", "preparation", "COOKED",
+						"proteinGrams", 20, "carbsGrams", 0, "fatGrams", 4), "servedGrams", 150)));
+
+		ResponseEntity<String> response = rest.postForEntity("/api/nutrition/ai-estimates/confirm", new HttpEntity<>(request, headers), String.class);
+
+		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(response.getBody()).contains("\"itemType\":\"FOOD\"", "\"id\":1", "\"proteinGrams\":46.5")
+				.doesNotContain("\"itemType\":\"AI_ESTIMATE\"");
 	}
 
 	@Test
@@ -538,7 +553,7 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
-	void userCanEditHistoricalAiEstimateAndSaveOneItemAsApprovedGlobalFood() {
+	void userCanEditHistoricalAiEstimateAndSaveOneItemAsApprovedGlobalFood() throws Exception {
 		HttpHeaders headers = authHeaders();
 		FoodLog log = new FoodLog();
 		log.setUser(users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow());
@@ -565,12 +580,16 @@ class ScaleGramsApplicationTests {
 		String snapshot = foodLogs.findById(id).orElseThrow().getAiEstimateDetails();
 		ResponseEntity<String> cataloged = rest.postForEntity("/api/nutrition/food-logs/" + id + "/ai-estimate/items/0/catalog",
 				new HttpEntity<>(Map.of("category", "MEAT", "preparation", "COOKED", "tags", Set.of("casero")), headers), String.class);
+		ResponseEntity<String> catalogedAgain = rest.postForEntity("/api/nutrition/food-logs/" + id + "/ai-estimate/items/0/catalog",
+				new HttpEntity<>(Map.of("category", "MEAT", "preparation", "COOKED", "tags", Set.of("casero")), headers), String.class);
 
 		assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(updated.getBody()).contains("\"mealType\":\"LUNCH\"", "\"calories\":250", "\\\"assumptions\\\":[\\\"Peso cocido\\\"]");
-		assertThat(cataloged.getStatusCode().is2xxSuccessful()).isTrue();
+       assertThat(cataloged.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(cataloged.getBody()).contains("\"baseQuantity\":100", "\"proteinGrams\":20.0", "\"fatGrams\":5.0",
 				"\"source\":\"AI_ESTIMATE\"", "\"moderationStatus\":\"APPROVED\"");
+		assertThat(catalogedAgain.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(catalogedAgain.getBody()).contains("\"id\":" + objectMapper.readTree(cataloged.getBody()).path("id").asLong());
 		assertThat(foodLogs.findById(id).orElseThrow().getAiEstimateDetails()).isEqualTo(snapshot);
 	}
 

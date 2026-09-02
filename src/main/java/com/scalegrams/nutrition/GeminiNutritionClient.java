@@ -98,6 +98,30 @@ public class GeminiNutritionClient {
                 inlineData(contentType, image)));
     }
 
+    public java.util.Optional<Long> chooseFoodMatch(String itemName, FoodCategory category,
+            FoodPreparation preparation, List<FoodMatchCandidate> candidates) {
+        try {
+            String candidateJson = objectMapper.writeValueAsString(candidates);
+            String prompt = """
+                    Elegí si el alimento identificado corresponde exactamente a uno de los candidatos del catálogo.
+                    Respondé únicamente JSON válido con el esquema {"foodId":null} o {"foodId":123}.
+                    No elijas un candidato que sea solamente parecido: si el corte, producto, marca o preparación
+                    es diferente, devolvé null. Solo podés devolver un ID incluido en la lista.
+                    Alimento identificado: "%s"
+                    Categoría: %s
+                    Preparación: %s
+                    Candidatos: %s
+                    """.formatted(itemName, category, preparation, candidateJson);
+            JsonNode result = objectMapper.readTree(stripCodeFence(responseText(generateContent(
+                    List.of(Map.of("text", prompt)), true))));
+            JsonNode foodId = result.path("foodId");
+            if (foodId.isNumber() && foodId.asLong() > 0) return java.util.Optional.of(foodId.asLong());
+        } catch (Exception ex) {
+            log.warn("Gemini food tie-breaker did not return a valid match: {}", ex.getClass().getSimpleName());
+        }
+        return java.util.Optional.empty();
+    }
+
     private AiNutritionResult nutritionResult(List<Map<String, Object>> parts) {
         try {
             JsonNode response = generateContent(parts, true);
@@ -348,6 +372,10 @@ public class GeminiNutritionClient {
     public record AiNutritionItem(String name, BigDecimal estimatedGrams, FoodCategory category,
             FoodPreparation preparation, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
             Map<String, BigDecimal> nutrients) {
+    }
+
+    public record FoodMatchCandidate(Long id, String name, FoodCategory category, FoodPreparation preparation,
+            Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams) {
     }
 
     public record CookedYieldEstimate(BigDecimal factor, String assumption) {

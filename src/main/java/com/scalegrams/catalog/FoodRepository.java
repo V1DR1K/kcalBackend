@@ -18,6 +18,17 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 
     boolean existsByBarcode(String barcode);
 
+    @Query("select f from Food f where f.deletedAt is null and f.moderationStatus = :status and f.searchName = :query")
+    java.util.List<Food> findActiveBySearchName(@Param("query") String query,
+            @Param("status") ModerationStatus status);
+
+    @Query("select f from Food f where f.deletedAt is null and f.moderationStatus = :status " +
+            "and f.searchName like concat('%', :token, '%') order by f.id")
+    java.util.List<Food> findActiveBySearchToken(@Param("token") String token,
+            @Param("status") ModerationStatus status, org.springframework.data.domain.Pageable pageable);
+
+    java.util.Optional<Food> findBySourceAndSourceId(String source, String sourceId);
+
     @EntityGraph(attributePaths = "tags")
     java.util.List<Food> findByPreparationGroupAndDeletedAtIsNullOrderByPreparationAsc(String preparationGroup);
 

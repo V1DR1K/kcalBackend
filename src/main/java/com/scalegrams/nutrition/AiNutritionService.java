@@ -25,12 +25,14 @@ public class AiNutritionService {
     private final AiEstimateUsageRepository usages;
     private final GeminiNutritionClient gemini;
     private final AiNutritionProperties properties;
+    private final AiFoodMatcher foodMatcher;
 
     public AiNutritionService(AiEstimateUsageRepository usages, GeminiNutritionClient gemini,
-            AiNutritionProperties properties) {
+            AiNutritionProperties properties, AiFoodMatcher foodMatcher) {
         this.usages = usages;
         this.gemini = gemini;
         this.properties = properties;
+        this.foodMatcher = foodMatcher;
     }
 
     @Transactional(readOnly = true)
@@ -87,6 +89,7 @@ public class AiNutritionService {
             List<AiEstimateItem> items = result.items().stream()
                     .map(item -> new AiEstimateItem(item.name(), item.estimatedGrams(), item.category(), item.preparation(), item.proteinGrams(), item.carbsGrams(), item.fatGrams(), item.nutrients()))
                     .toList();
+            items = foodMatcher.enrich(items);
             usage.setBlockedUntil(null);
             usage.setProviderStatus(null);
             usages.save(usage);

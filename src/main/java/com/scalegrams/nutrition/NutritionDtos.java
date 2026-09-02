@@ -153,10 +153,18 @@ public class NutritionDtos {
             @NotNull @PositiveOrZero BigDecimal proteinGrams,
             @NotNull @PositiveOrZero BigDecimal carbsGrams,
             @NotNull @PositiveOrZero BigDecimal fatGrams,
-            Map<String, BigDecimal> nutrients) {
+            Map<String, BigDecimal> nutrients,
+            Long catalogFoodId,
+            String catalogMatchType,
+            Integer catalogMatchConfidence) {
         public AiEstimateItem(String name, BigDecimal estimatedGrams, FoodCategory category, FoodPreparation preparation,
                 BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams) {
-            this(name, estimatedGrams, category, preparation, proteinGrams, carbsGrams, fatGrams, Map.of());
+            this(name, estimatedGrams, category, preparation, proteinGrams, carbsGrams, fatGrams, Map.of(), null, null, null);
+        }
+
+        public AiEstimateItem(String name, BigDecimal estimatedGrams, FoodCategory category, FoodPreparation preparation,
+                BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams, Map<String, BigDecimal> nutrients) {
+            this(name, estimatedGrams, category, preparation, proteinGrams, carbsGrams, fatGrams, nutrients, null, null, null);
         }
     }
 

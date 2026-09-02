@@ -101,12 +101,13 @@ public class NutritionService {
     private final ObjectMapper objectMapper;
     private final NutrientDefinitionRepository nutrientDefinitions;
     private final UsdaFoodDataProvider usda;
+    private final AiFoodMatcher aiFoodMatcher;
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
             DayPresetRepository dayPresets,
             WaterLogRepository waterLogs, ProfileService profileService,
             ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper,
-            NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda) {
+            NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda, AiFoodMatcher aiFoodMatcher) {
         this.foods = foods;
         this.recipes = recipes;
         this.foodLogs = foodLogs;
@@ -117,6 +118,7 @@ public class NutritionService {
         this.objectMapper = objectMapper;
         this.nutrientDefinitions = nutrientDefinitions;
         this.usda = usda;
+        this.aiFoodMatcher = aiFoodMatcher;
     }
 
     @Transactional(readOnly = true)
@@ -881,7 +883,8 @@ public class NutritionService {
 
     private FoodLogResponse confirmAiEstimateItem(AppUser user, MealType mealType, LocalDate logDate,
             ConfirmAiEstimateItem item) {
-        Food food = item.foodId() == null ? createAiEstimateFood(user, item.proposal()) : getFood(item.foodId());
+        Food food = item.foodId() == null ? aiFoodMatcher.resolve(item.proposal()).orElse(null) : getActiveFood(item.foodId());
+        if (food == null) return createAiEstimateLog(user, mealType, logDate, item.proposal(), item.servedGrams());
         NutritionPreviewResponse preview = preview(food, item.servedGrams(), FoodUnit.GRAM);
         FoodLog log = new FoodLog();
         log.setUser(user);
@@ -893,33 +896,47 @@ public class NutritionService {
         log.setLogDate(logDate);
         applyLogNutrition(log, preview);
         FoodLog savedLog = foodLogs.save(log);
-        if (item.proposal() != null) {
-            food.setSourceId("food-log:" + savedLog.getId());
-            foods.save(food);
-        }
         return toFoodLogResponse(savedLog);
     }
 
-    private Food createAiEstimateFood(AppUser user, AiEstimateFoodProposal proposal) {
-        Food food = new Food();
-        food.setName(proposal.name().trim());
-        food.setCategory(proposal.category());
-        food.setBaseUnit(FoodUnit.GRAM);
-        food.setBaseQuantity(BigDecimal.valueOf(100));
-        food.setProteinGrams(scale(proposal.proteinGrams()));
-        food.setCarbsGrams(scale(proposal.carbsGrams()));
-        food.setFatGrams(scale(proposal.fatGrams()));
-        food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
-        addAiNutrients(food, proposal.nutrients(), BigDecimal.ONE);
-        food.setPreparation(proposal.preparation() == null ? com.scalegrams.catalog.FoodPreparation.UNSPECIFIED
-                : proposal.preparation());
-        food.setPreparationSource("Estimado por IA");
-        initializeIdentityCookedYield(food);
-        food.setSource("AI_ESTIMATE");
-        food.setCreatedBy(user);
-        food.setCreatedAt(OffsetDateTime.now());
-        food.setModerationStatus(com.scalegrams.catalog.ModerationStatus.APPROVED);
-        return foods.save(food);
+    private FoodLogResponse createAiEstimateLog(AppUser user, MealType mealType, LocalDate logDate,
+            AiEstimateFoodProposal proposal, BigDecimal servedGrams) {
+        FoodLog log = new FoodLog();
+        log.setUser(user);
+        log.setItemType(MealItemType.AI_ESTIMATE);
+        log.setMealType(mealType);
+        log.setQuantity(BigDecimal.ONE);
+        log.setUnit(FoodUnit.PORTION);
+        log.setLogDate(logDate);
+        log.setAiEstimateName(proposal.name().trim());
+        BigDecimal ratio = servedGrams.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+        log.setProteinGrams(scale(proposal.proteinGrams().multiply(ratio)));
+        log.setCarbsGrams(scale(proposal.carbsGrams().multiply(ratio)));
+        log.setFatGrams(scale(proposal.fatGrams().multiply(ratio)));
+        log.setCalories(macroCalories(log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams()));
+        addAiLogNutrients(log, proposal.nutrients(), ratio);
+        try {
+            AiEstimateItem item = new AiEstimateItem(proposal.name(), servedGrams, proposal.category(), proposal.preparation(),
+                    proposal.proteinGrams().multiply(ratio), proposal.carbsGrams().multiply(ratio),
+                    proposal.fatGrams().multiply(ratio), proposal.nutrients());
+            log.setAiEstimateDetails(objectMapper.writeValueAsString(new AiEstimateDetails("", "", List.of(), List.of(item))));
+        } catch (JsonProcessingException ex) {
+            throw new BadRequestException("No se pudo guardar la estimación.");
+        }
+        return toFoodLogResponse(foodLogs.save(log));
+    }
+
+    private void addAiLogNutrients(FoodLog log, Map<String, BigDecimal> values, BigDecimal ratio) {
+        if (values == null) return;
+        values.forEach((code, value) -> nutrientDefinitions.findById(code).ifPresent(definition -> {
+            FoodLogNutrient nutrient = new FoodLogNutrient();
+            nutrient.setFoodLog(log);
+            nutrient.setDefinition(definition);
+            nutrient.setValue(scale(value.multiply(ratio)));
+            nutrient.setSource(NutrientSource.AI);
+            nutrient.setStatus(NutrientStatus.ESTIMATED);
+            log.getNutrientSnapshot().add(nutrient);
+        }));
     }
 
     @Transactional
@@ -944,6 +961,18 @@ public class NutritionService {
         }
         AiEstimateItem item = details.items().get(itemIndex);
         validateAiEstimateItems(List.of(item));
+        String sourceId = "food-log:" + log.getId() + ":item:" + itemIndex;
+        Optional<Food> saved = foods.findBySourceAndSourceId("AI_ESTIMATE", sourceId);
+        if (saved.isPresent()) {
+            Food food = saved.get();
+            if (food.getDeletedAt() != null) food.setDeletedAt(null);
+            return toFoodResponse(foods.save(food));
+        }
+        Food existing = aiFoodMatcher.resolve(new AiEstimateFoodProposal(item.name(), request.category(), request.preparation(),
+                item.proteinGrams().multiply(BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP)),
+                item.carbsGrams().multiply(BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP)),
+                item.fatGrams().multiply(BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP)), item.nutrients())).orElse(null);
+        if (existing != null) return toFoodResponse(existing);
         BigDecimal ratio = BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP);
         Food food = new Food();
         food.setName(item.name().trim());
@@ -959,7 +988,7 @@ public class NutritionService {
         food.setPreparationSource("Estimado por IA");
         initializeIdentityCookedYield(food);
         food.setSource("AI_ESTIMATE");
-        food.setSourceId("food-log:" + log.getId() + ":item:" + itemIndex);
+        food.setSourceId(sourceId);
         food.setCreatedBy(user);
         food.setCreatedAt(OffsetDateTime.now());
         food.setModerationStatus(com.scalegrams.catalog.ModerationStatus.APPROVED);
