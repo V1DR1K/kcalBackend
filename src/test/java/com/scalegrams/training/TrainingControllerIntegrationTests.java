@@ -146,6 +146,38 @@ class TrainingControllerIntegrationTests {
     }
 
     @Test
+    void createsGlobalExercisesThatAreVisibleAndSelectableForOtherUsers() {
+        HttpHeaders creatorHeaders = authHeaders("training-global-creator");
+        ResponseEntity<Map> created = rest.postForEntity("/api/training/exercises",
+                new HttpEntity<>(Map.of("name", "Ejercicio global compartido", "module", "GYM", "global", true), creatorHeaders), Map.class);
+        assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(created.getBody()).containsEntry("global", true).containsEntry("editable", false);
+
+        HttpHeaders otherHeaders = authHeaders("training-global-consumer");
+        ResponseEntity<Map> listed = rest.exchange(
+                "/api/training/exercises?module=GYM&size=50", HttpMethod.GET,
+                new HttpEntity<>(otherHeaders), Map.class);
+        assertThat(listed.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(listed.getBody().get("items").toString()).contains("Ejercicio global compartido");
+
+        ResponseEntity<Map> selectable = rest.exchange(
+                "/api/training/exercises/" + created.getBody().get("id"), HttpMethod.GET,
+                new HttpEntity<>(otherHeaders), Map.class);
+        assertThat(selectable.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(selectable.getBody()).containsEntry("global", true);
+
+        ResponseEntity<String> deniedUpdate = rest.exchange(
+                "/api/training/exercises/" + created.getBody().get("id"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Ejercicio global editado", "module", "GYM"), otherHeaders), String.class);
+        assertThat(deniedUpdate.getStatusCode().value()).isEqualTo(404);
+
+        ResponseEntity<Void> deniedDelete = rest.exchange(
+                "/api/training/exercises/" + created.getBody().get("id"), HttpMethod.DELETE,
+                new HttpEntity<>(otherHeaders), Void.class);
+        assertThat(deniedDelete.getStatusCode().value()).isEqualTo(404);
+    }
+
+    @Test
     void recordsTimeTargetsAndSecondsWithoutWeight() {
         HttpHeaders headers = authHeaders("training-time");
         ResponseEntity<Map> exercise = rest.postForEntity("/api/training/exercises",

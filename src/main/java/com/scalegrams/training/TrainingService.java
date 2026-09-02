@@ -179,20 +179,23 @@ public class TrainingService {
     @Transactional
     public TrainingExerciseResponse createExercise(AppUser user, UpsertExerciseRequest request) {
         String name = normalized(request.name());
-        TrainingExercise existing = exercises.findByOwnerAndModuleAndNameIgnoreCaseAndDeletedAtIsNull(user,
-                request.module(), name).orElse(null);
+        boolean global = Boolean.TRUE.equals(request.global());
+        TrainingExercise existing = global
+                ? exercises.findGlobalByModuleAndName(request.module(), name).orElse(null)
+                : exercises.findByOwnerAndModuleAndNameIgnoreCaseAndDeletedAtIsNull(user, request.module(), name)
+                        .orElse(null);
         if (existing != null) {
             return toExerciseResponse(existing);
         }
         TrainingExercise exercise = new TrainingExercise();
-        exercise.setOwner(user);
+        exercise.setOwner(global ? null : user);
         exercise.setName(name);
         exercise.setNormalizedName(normalizedKey(name));
         exercise.setModule(request.module());
         exercise.setDescription(blankToNull(request.description()));
-        exercise.setCategory(resolveCategory(user, request.module(), request.categoryId(), request.category()));
-        exercise.setGlobalExercise(false);
-        exercise.setCode(resolveExerciseCode(user, request.module(), name, request.code(), null));
+        exercise.setCategory(resolveCategory(user, request.module(), request.categoryId(), request.category(), global));
+        exercise.setGlobalExercise(global);
+        exercise.setCode(resolveExerciseCode(user, request.module(), name, request.code(), null, global));
         exercise.setPrimaryMuscles(normalizedValues(request.primaryMuscles()));
         exercise.setSecondaryMuscles(normalizedValues(request.secondaryMuscles()));
         exercise.setEquipment(request.equipment() == null ? defaultEquipment(request.module()) : request.equipment());
@@ -221,8 +224,8 @@ public class TrainingService {
         exercise.setNormalizedName(normalizedKey(name));
         exercise.setModule(request.module());
         exercise.setDescription(blankToNull(request.description()));
-        exercise.setCategory(resolveCategory(user, request.module(), request.categoryId(), request.category()));
-        exercise.setCode(resolveExerciseCode(user, request.module(), name, request.code(), exercise.getId()));
+        exercise.setCategory(resolveCategory(user, request.module(), request.categoryId(), request.category(), false));
+        exercise.setCode(resolveExerciseCode(user, request.module(), name, request.code(), exercise.getId(), false));
         exercise.setPrimaryMuscles(normalizedValues(request.primaryMuscles()));
         exercise.setSecondaryMuscles(normalizedValues(request.secondaryMuscles()));
         if (request.equipment() != null) exercise.setEquipment(request.equipment());
@@ -1312,12 +1315,16 @@ public class TrainingService {
         }
     }
 
-    private TrainingCategory resolveCategory(AppUser user, TrainingModule module, Long categoryId, String legacyName) {
+    private TrainingCategory resolveCategory(AppUser user, TrainingModule module, Long categoryId, String legacyName,
+            boolean global) {
         if (categoryId != null) {
             TrainingCategory category = categories.findSelectable(categoryId, user)
                     .orElseThrow(() -> new BadRequestException("La categoría no existe o no está disponible."));
             if (category.getModule() != module) {
                 throw new BadRequestException("La categoría pertenece a otro módulo de entrenamiento.");
+            }
+            if (global && !category.isSystemCategory()) {
+                throw new BadRequestException("Un ejercicio global debe usar una categoría base.");
             }
             if (!category.isActive()) {
                 throw new BadRequestException("La categoría está archivada.");
@@ -1326,23 +1333,28 @@ public class TrainingService {
         }
         if (legacyName != null && !legacyName.isBlank()) {
             String key = normalizedKey(legacyName);
-            return categories.findSystem(module, key)
-                    .or(() -> categories.findByOwnerAndModuleAndNormalizedNameAndDeletedAtIsNull(user, module, key))
-                    .filter(TrainingCategory::isActive)
+            var category = categories.findSystem(module, key);
+            if (!global) {
+                category = category.or(() -> categories.findByOwnerAndModuleAndNormalizedNameAndDeletedAtIsNull(user,
+                        module, key));
+            }
+            return category.filter(TrainingCategory::isActive)
                     .orElseThrow(() -> new BadRequestException("La categoría indicada no existe para este módulo."));
         }
         return categories.findSystem(module, normalizedKey("ACONDICIONAMIENTO"))
                 .orElseThrow(() -> new BadRequestException("No hay una categoría predeterminada disponible."));
     }
 
-    private String resolveExerciseCode(AppUser user, TrainingModule module, String name, String requested, Long excludedId) {
+    private String resolveExerciseCode(AppUser user, TrainingModule module, String name, String requested, Long excludedId,
+            boolean global) {
         String code = blankToNull(requested);
         if (code == null) {
             String slug = normalizedKey(name).replaceAll("[^a-z0-9]+", "-");
             slug = slug.replaceAll("^-|-$", "");
             if (slug.length() > 42) slug = slug.substring(0, 42);
+            String scope = global ? "global" : user.getId() == null ? "new" : user.getId().toString();
             code = "SG-" + module.name() + "-" + slug + "-" + Integer.toUnsignedString(
-                    (module.name() + ":" + normalizedKey(name) + ":" + (user.getId() == null ? "new" : user.getId())).hashCode(), 36);
+                    (module.name() + ":" + normalizedKey(name) + ":" + scope).hashCode(), 36);
         } else {
             code = code.toUpperCase(Locale.ROOT);
         }

@@ -34,6 +34,7 @@ public class TrainingDtos {
             @Size(max = 80) String category,
             @NotNull TrainingModule module,
             Boolean active,
+            Boolean global,
             Long categoryId,
             @Size(max = 80) String code,
             @Size(max = 80) @JsonDeserialize(using = StringOrStringListDeserializer.class) List<String> primaryMuscles,

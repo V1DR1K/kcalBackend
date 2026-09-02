@@ -53,6 +53,16 @@ public interface TrainingExerciseRepository extends JpaRepository<TrainingExerci
             TrainingModule module, String name);
 
     @Query("""
+            select exercise from TrainingExercise exercise
+            where exercise.systemExercise = true
+              and exercise.module = :module
+              and lower(exercise.name) = lower(:name)
+              and exercise.deletedAt is null
+            """)
+    Optional<TrainingExercise> findGlobalByModuleAndName(@Param("module") TrainingModule module,
+            @Param("name") String name);
+
+    @Query("""
             select count(exercise) > 0 from TrainingExercise exercise
             where exercise.owner = :owner
               and exercise.module = :module
