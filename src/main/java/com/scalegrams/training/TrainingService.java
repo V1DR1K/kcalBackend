@@ -39,6 +39,10 @@ import com.scalegrams.training.TrainingDtos.LegacyPlanDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingExerciseResponse;
 import com.scalegrams.training.TrainingDtos.TrainingCategoryResponse;
 import com.scalegrams.training.TrainingDtos.TrainingModuleResponse;
+import com.scalegrams.training.TrainingDtos.CardioRecordResponse;
+import com.scalegrams.training.TrainingDtos.CardioServiceResponse;
+import com.scalegrams.training.TrainingDtos.CardioSummaryResponse;
+import com.scalegrams.training.TrainingDtos.CreateCardioServiceRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseResponse;
 import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanDetailResponse;
 import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanResponse;
@@ -50,6 +54,7 @@ import com.scalegrams.training.TrainingDtos.TrainingSetRequest;
 import com.scalegrams.training.TrainingDtos.TrainingSetResponse;
 import com.scalegrams.training.TrainingDtos.UpdateTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.UpsertExerciseRequest;
+import com.scalegrams.training.TrainingDtos.UpsertCardioRecordRequest;
 import com.scalegrams.training.TrainingDtos.UpsertTrainingCategoryRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanRequest;
@@ -77,11 +82,14 @@ public class TrainingService {
     private final TrainingSessionRepository sessions;
     private final TrainingSessionExerciseRepository sessionExercises;
     private final TrainingSessionBaselineRepository baselines;
+    private final TrainingCardioRecordRepository cardioRecords;
+    private final TrainingCardioServiceEventRepository cardioServices;
 
     public TrainingService(TrainingExerciseRepository exercises, TrainingCategoryRepository categories, TrainingPlanRepository presets,
             TrainingPlanDayRepository days, TrainingPlanExerciseRepository presetExercises,
             TrainingSessionRepository sessions, TrainingSessionExerciseRepository sessionExercises,
-            TrainingSessionBaselineRepository baselines) {
+            TrainingSessionBaselineRepository baselines, TrainingCardioRecordRepository cardioRecords,
+            TrainingCardioServiceEventRepository cardioServices) {
         this.exercises = exercises;
         this.categories = categories;
         this.presets = presets;
@@ -90,6 +98,8 @@ public class TrainingService {
         this.sessions = sessions;
         this.sessionExercises = sessionExercises;
         this.baselines = baselines;
+        this.cardioRecords = cardioRecords;
+        this.cardioServices = cardioServices;
     }
 
     @Transactional(readOnly = true)
@@ -97,6 +107,60 @@ public class TrainingService {
         return List.of(
                 new TrainingModuleResponse(TrainingModule.GYM, "Gimnasio"),
                 new TrainingModuleResponse(TrainingModule.CALISTHENICS, "Calistenia"));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<CardioRecordResponse> cardio(AppUser user, int page, int size) {
+        Page<TrainingCardioRecord> result = cardioRecords.findByUser(user,
+                page(page, size, Sort.by(Sort.Order.desc("recordedAt"), Sort.Order.desc("id"))));
+        return page(result, this::toCardioRecordResponse);
+    }
+
+    @Transactional
+    public CardioRecordResponse createCardio(AppUser user, UpsertCardioRecordRequest request) {
+        TrainingCardioRecord record = new TrainingCardioRecord();
+        record.setUser(user);
+        applyCardioRecord(record, request);
+        return toCardioRecordResponse(cardioRecords.saveAndFlush(record));
+    }
+
+    @Transactional
+    public CardioRecordResponse updateCardio(AppUser user, Long id, UpsertCardioRecordRequest request) {
+        TrainingCardioRecord record = cardioRecords.findByIdAndUser(id, user)
+                .orElseThrow(() -> new NotFoundException("Registro de cardio no encontrado."));
+        applyCardioRecord(record, request);
+        return toCardioRecordResponse(record);
+    }
+
+    @Transactional
+    public void deleteCardio(AppUser user, Long id) {
+        TrainingCardioRecord record = cardioRecords.findByIdAndUser(id, user)
+                .orElseThrow(() -> new NotFoundException("Registro de cardio no encontrado."));
+        cardioRecords.delete(record);
+    }
+
+    @Transactional
+    public CardioServiceResponse createCardioService(AppUser user, CreateCardioServiceRequest request) {
+        validateNotFuture(request.servicedAt(), "La fecha de service no puede ser futura.");
+        TrainingCardioServiceEvent service = new TrainingCardioServiceEvent();
+        service.setUser(user);
+        service.setEquipment(request.equipment());
+        service.setServicedAt(request.servicedAt());
+        service.setNotes(blankToNull(request.notes()));
+        return toCardioServiceResponse(cardioServices.saveAndFlush(service));
+    }
+
+    @Transactional(readOnly = true)
+    public CardioSummaryResponse cardioSummary(AppUser user) {
+        TrainingEquipment equipment = TrainingEquipment.TREADMILL;
+        TrainingCardioServiceEvent latestService = cardioServices
+                .findFirstByUserAndEquipmentOrderByServicedAtDescIdDesc(user, equipment).orElse(null);
+        long totalMinutes = latestService == null
+                ? cardioRecords.sumDuration(user, equipment)
+                : cardioRecords.sumDurationAfter(user, equipment, latestService.getServicedAt());
+        long remainingMinutes = Math.max(1200L - totalMinutes, 0L);
+        return new CardioSummaryResponse(equipment, 1200, totalMinutes, remainingMinutes,
+                totalMinutes >= 1200L, latestService == null ? null : toCardioServiceResponse(latestService));
     }
 
     @Transactional(readOnly = true)
@@ -1466,6 +1530,26 @@ public class TrainingService {
         }
     }
 
+    private void applyCardioRecord(TrainingCardioRecord record, UpsertCardioRecordRequest request) {
+        validateNotFuture(request.recordedAt(), "La fecha del cardio no puede ser futura.");
+        TrainingEquipment equipment = request.equipment() == null ? TrainingEquipment.TREADMILL : request.equipment();
+        if (equipment != TrainingEquipment.TREADMILL) {
+            throw new BadRequestException("Por ahora los registros de cardio solo admiten cinta de correr.");
+        }
+        record.setEquipment(equipment);
+        record.setRecordedAt(request.recordedAt());
+        record.setDistanceKm(request.distanceKm());
+        record.setDurationMinutes(request.durationMinutes());
+        record.setInclined(request.inclined());
+        record.setUpdatedAt(OffsetDateTime.now());
+    }
+
+    private void validateNotFuture(OffsetDateTime timestamp, String message) {
+        if (timestamp.isAfter(OffsetDateTime.now())) {
+            throw new BadRequestException(message);
+        }
+    }
+
     private Integer resolveDuration(OffsetDateTime startedAt, OffsetDateTime finishedAt, Integer requested,
             Integer fallback) {
         if (requested != null) return requested;
@@ -1556,6 +1640,17 @@ public class TrainingService {
                 session.getCreatedAt(), session.getUpdatedAt(), session.getVersion(),
                 session.getExercises().stream().sorted(Comparator.comparingInt(TrainingSessionExercise::getPosition)
                         .thenComparing(TrainingSessionExercise::getId)).map(this::toSessionExerciseResponse).toList());
+    }
+
+    private CardioRecordResponse toCardioRecordResponse(TrainingCardioRecord record) {
+        return new CardioRecordResponse(record.getId(), record.getEquipment(), record.getRecordedAt(),
+                record.getDistanceKm(), record.getDurationMinutes(), record.isInclined(), record.getCreatedAt(),
+                record.getUpdatedAt());
+    }
+
+    private CardioServiceResponse toCardioServiceResponse(TrainingCardioServiceEvent service) {
+        return new CardioServiceResponse(service.getId(), service.getEquipment(), service.getServicedAt(),
+                service.getNotes(), service.getCreatedAt());
     }
 
     private TrainingSessionSummaryResponse toSessionSummaryResponse(TrainingSession session) {

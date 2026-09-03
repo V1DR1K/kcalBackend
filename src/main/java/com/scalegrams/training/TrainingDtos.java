@@ -20,6 +20,28 @@ public class TrainingDtos {
     public record TrainingModuleResponse(TrainingModule code, String label) {
     }
 
+    public record UpsertCardioRecordRequest(@NotNull OffsetDateTime recordedAt,
+            @NotNull @PositiveOrZero BigDecimal distanceKm, @NotNull @Positive Integer durationMinutes,
+            boolean inclined, TrainingEquipment equipment) {
+    }
+
+    public record CardioRecordResponse(Long id, TrainingEquipment equipment, OffsetDateTime recordedAt,
+            BigDecimal distanceKm, int durationMinutes, boolean inclined, OffsetDateTime createdAt,
+            OffsetDateTime updatedAt) {
+    }
+
+    public record CreateCardioServiceRequest(@NotNull TrainingEquipment equipment, @NotNull OffsetDateTime servicedAt,
+            @Size(max = 2000) String notes) {
+    }
+
+    public record CardioServiceResponse(Long id, TrainingEquipment equipment, OffsetDateTime servicedAt, String notes,
+            OffsetDateTime createdAt) {
+    }
+
+    public record CardioSummaryResponse(TrainingEquipment equipment, int thresholdMinutes, long totalDurationMinutes,
+            long remainingMinutes, boolean due, CardioServiceResponse latestService) {
+    }
+
     public record TrainingCategoryResponse(Long id, String name, TrainingModule module, boolean system,
             boolean editable, boolean active, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
     }

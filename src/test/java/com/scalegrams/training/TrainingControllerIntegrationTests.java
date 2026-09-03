@@ -380,6 +380,78 @@ class TrainingControllerIntegrationTests {
         assertThat((List<?>) reloadedDay.get("exercises")).hasSize(2);
     }
 
+    @Test
+    void persistsOwnsAndDeletesCardioRecords() {
+        HttpHeaders headers = authHeaders("training-cardio-crud");
+        Map<String, Object> request = Map.of(
+                "recordedAt", "2024-01-10T08:00:00Z",
+                "distanceKm", 6.25,
+                "durationMinutes", 42,
+                "inclined", true);
+
+        ResponseEntity<Map> created = rest.postForEntity("/api/training/cardio",
+                new HttpEntity<>(request, headers), Map.class);
+        assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(created.getBody()).containsEntry("equipment", "TREADMILL")
+                .containsEntry("durationMinutes", 42).containsEntry("inclined", true);
+
+        ResponseEntity<Map> listed = rest.exchange("/api/training/cardio?page=0&size=20", HttpMethod.GET,
+                new HttpEntity<>(headers), Map.class);
+        assertThat(listed.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat((List<?>) listed.getBody().get("items")).hasSize(1);
+
+        Map<String, Object> update = Map.of(
+                "recordedAt", "2024-01-10T08:00:00Z",
+                "distanceKm", 7.5,
+                "durationMinutes", 50,
+                "inclined", false);
+        ResponseEntity<Map> updated = rest.exchange("/api/training/cardio/" + created.getBody().get("id"),
+                HttpMethod.PUT, new HttpEntity<>(update, headers), Map.class);
+        assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(updated.getBody()).containsEntry("durationMinutes", 50).containsEntry("inclined", false);
+
+        ResponseEntity<String> denied = rest.exchange("/api/training/cardio/" + created.getBody().get("id"),
+                HttpMethod.DELETE, new HttpEntity<>(authHeaders("training-cardio-other")), String.class);
+        assertThat(denied.getStatusCode().value()).isEqualTo(404);
+
+        ResponseEntity<Void> deleted = rest.exchange("/api/training/cardio/" + created.getBody().get("id"),
+                HttpMethod.DELETE, new HttpEntity<>(headers), Void.class);
+        assertThat(deleted.getStatusCode().value()).isEqualTo(204);
+    }
+
+    @Test
+    void resetsTreadmillSummaryAfterLatestServiceAndUsesStrictCutoff() {
+        HttpHeaders headers = authHeaders("training-cardio-summary");
+        postCardio(headers, "2024-02-01T08:00:00Z", 800);
+        postCardio(headers, "2024-02-02T08:00:00Z", 500);
+
+        ResponseEntity<Map> beforeService = rest.exchange("/api/training/cardio/summary", HttpMethod.GET,
+                new HttpEntity<>(headers), Map.class);
+        assertThat(beforeService.getBody()).containsEntry("thresholdMinutes", 1200)
+                .containsEntry("totalDurationMinutes", 1300).containsEntry("remainingMinutes", 0)
+                .containsEntry("due", true);
+
+        ResponseEntity<Map> service = rest.postForEntity("/api/training/cardio/services",
+                new HttpEntity<>(Map.of("equipment", "TREADMILL", "servicedAt", "2024-03-01T08:00:00Z",
+                        "notes", "Correa ajustada"), headers), Map.class);
+        assertThat(service.getStatusCode().is2xxSuccessful()).isTrue();
+
+        postCardio(headers, "2024-03-01T08:00:00Z", 100);
+        postCardio(headers, "2024-03-02T08:00:00Z", 300);
+        ResponseEntity<Map> afterService = rest.exchange("/api/training/cardio/summary", HttpMethod.GET,
+                new HttpEntity<>(headers), Map.class);
+        assertThat(afterService.getBody()).containsEntry("totalDurationMinutes", 300)
+                .containsEntry("remainingMinutes", 900).containsEntry("due", false);
+        assertThat(afterService.getBody().get("latestService").toString()).contains("Correa ajustada");
+    }
+
+    private void postCardio(HttpHeaders headers, String recordedAt, int durationMinutes) {
+        ResponseEntity<Map> response = rest.postForEntity("/api/training/cardio",
+                new HttpEntity<>(Map.of("recordedAt", recordedAt, "distanceKm", 5, "durationMinutes", durationMinutes,
+                        "inclined", false), headers), Map.class);
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+    }
+
     private HttpHeaders authHeaders(String username) {
         ResponseEntity<LoginResponse> login = rest.postForEntity("/api/auth/login",
                 new LoginRequest(username, "central-password"), LoginResponse.class);

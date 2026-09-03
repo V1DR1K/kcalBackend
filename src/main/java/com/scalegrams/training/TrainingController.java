@@ -28,6 +28,10 @@ import com.scalegrams.training.TrainingDtos.TrainingDashboardResponse;
 import com.scalegrams.training.TrainingDtos.LegacyPlanDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingExerciseResponse;
 import com.scalegrams.training.TrainingDtos.TrainingModuleResponse;
+import com.scalegrams.training.TrainingDtos.CardioRecordResponse;
+import com.scalegrams.training.TrainingDtos.CardioServiceResponse;
+import com.scalegrams.training.TrainingDtos.CardioSummaryResponse;
+import com.scalegrams.training.TrainingDtos.CreateCardioServiceRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseResponse;
 import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanDetailResponse;
 import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanResponse;
@@ -43,6 +47,7 @@ import com.scalegrams.training.TrainingDtos.TrainingSetRequest;
 import com.scalegrams.training.TrainingDtos.TrainingSetResponse;
 import com.scalegrams.training.TrainingDtos.UpdateTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.UpsertExerciseRequest;
+import com.scalegrams.training.TrainingDtos.UpsertCardioRecordRequest;
 import com.scalegrams.training.TrainingDtos.UpsertTrainingCategoryRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanRequest;
@@ -65,6 +70,41 @@ public class TrainingController {
     @GetMapping("/modules")
     List<TrainingModuleResponse> modules() {
         return trainingService.modules();
+    }
+
+    @GetMapping("/cardio")
+    PageResponse<CardioRecordResponse> cardio(Authentication authentication,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return trainingService.cardio(currentUser.from(authentication), page, size);
+    }
+
+    @PostMapping("/cardio")
+    CardioRecordResponse createCardio(Authentication authentication,
+            @Valid @RequestBody UpsertCardioRecordRequest request) {
+        return trainingService.createCardio(currentUser.from(authentication), request);
+    }
+
+    @PutMapping("/cardio/{id}")
+    CardioRecordResponse updateCardio(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody UpsertCardioRecordRequest request) {
+        return trainingService.updateCardio(currentUser.from(authentication), id, request);
+    }
+
+    @DeleteMapping("/cardio/{id}")
+    ResponseEntity<Void> deleteCardio(Authentication authentication, @PathVariable Long id) {
+        trainingService.deleteCardio(currentUser.from(authentication), id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/cardio/services")
+    CardioServiceResponse createCardioService(Authentication authentication,
+            @Valid @RequestBody CreateCardioServiceRequest request) {
+        return trainingService.createCardioService(currentUser.from(authentication), request);
+    }
+
+    @GetMapping("/cardio/summary")
+    CardioSummaryResponse cardioSummary(Authentication authentication) {
+        return trainingService.cardioSummary(currentUser.from(authentication));
     }
 
     @GetMapping("/categories")
