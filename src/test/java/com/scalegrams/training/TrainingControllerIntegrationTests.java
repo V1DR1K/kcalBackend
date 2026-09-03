@@ -74,6 +74,23 @@ class TrainingControllerIntegrationTests {
     }
 
     @Test
+    void dashboardReturnsMostRecentCompletedSessionRegardlessOfRequestedDate() {
+        HttpHeaders headers = authHeaders("training-dashboard-recent");
+        ResponseEntity<Map> created = rest.postForEntity("/api/training/sessions",
+                new HttpEntity<>(Map.of("date", "2040-01-15", "module", "GYM"), headers), Map.class);
+        assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+
+        ResponseEntity<Map> completed = rest.postForEntity(
+                "/api/training/sessions/" + created.getBody().get("id") + "/complete",
+                new HttpEntity<>(Map.of("version", created.getBody().get("version")), headers), Map.class);
+        assertThat(completed.getStatusCode().is2xxSuccessful()).isTrue();
+
+        ResponseEntity<Map> dashboard = rest.exchange("/api/training/dashboard?date=2040-03-20", HttpMethod.GET,
+                new HttpEntity<>(headers), Map.class);
+        assertThat(dashboard.getBody().get("recentSession").toString()).contains("2040-01-15");
+    }
+
+    @Test
     void rejectsWeightsForCalisthenicsSessions() {
         HttpHeaders headers = authHeaders("training-calisthenics");
         ResponseEntity<Map> exercise = rest.postForEntity("/api/training/exercises",

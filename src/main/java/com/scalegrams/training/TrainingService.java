@@ -796,7 +796,8 @@ public class TrainingService {
                 .map(this::toPlanResponse)
                 .toList();
 
-        TrainingSessionSummaryResponse recentSession = sessions.search(user, date, date, date, null, null, null, null,
+        TrainingSessionSummaryResponse recentSession = sessions.search(user, null, null, null, null,
+                TrainingSessionStatus.COMPLETED, null, null,
                 page(0, 1, Sort.by(Sort.Order.desc("sessionDate"), Sort.Order.desc("id"))))
                 .stream()
                 .findFirst()
