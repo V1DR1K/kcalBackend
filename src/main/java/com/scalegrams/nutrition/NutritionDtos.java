@@ -326,6 +326,14 @@ public class NutritionDtos {
         }
     }
 
+    public record CreateRecipeFromMealRequest(
+            @NotBlank @Size(min = 2, max = 120) String name,
+            @Size(max = 500) String description,
+            @NotNull MealType mealType,
+            LocalDate logDate,
+            @Positive @Digits(integer = 36, fraction = 2) BigDecimal cookedTotalWeightGrams) {
+    }
+
     public record RecipeIngredientResponse(FoodResponse food, BigDecimal quantity, FoodUnit unit) {
     }
 
@@ -339,6 +347,9 @@ public class NutritionDtos {
             this(id, name, description, totalWeightGrams, totalWeightGrams, null, calories, proteinGrams, carbsGrams, fatGrams,
                     ingredients, List.of());
         }
+    }
+
+    public record RecipeFromMealResponse(RecipeResponse recipe, List<String> skippedItems) {
     }
 
     public record RecipeOwnerResponse(Long id, String fullName, long recipeCount) {

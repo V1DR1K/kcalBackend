@@ -14,9 +14,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.scalegrams.common.CurrentUser;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeRequest;
+import com.scalegrams.nutrition.NutritionDtos.CreateRecipeFromMealRequest;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewResponse;
 import com.scalegrams.nutrition.NutritionDtos.PageResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeOwnerResponse;
+import com.scalegrams.nutrition.NutritionDtos.RecipeFromMealResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeResponse;
 import com.scalegrams.nutrition.NutritionService;
 
@@ -65,6 +67,12 @@ public class RecipeController {
     @PostMapping
     RecipeResponse create(Authentication authentication, @Valid @RequestBody CreateRecipeRequest request) {
         return nutritionService.createRecipe(currentUser.from(authentication), request);
+    }
+
+    @PostMapping("/from-meal")
+    RecipeFromMealResponse createFromMeal(Authentication authentication,
+            @Valid @RequestBody CreateRecipeFromMealRequest request) {
+        return nutritionService.createRecipeFromMeal(currentUser.from(authentication), request);
     }
 
     @PostMapping("/{id}/copy")

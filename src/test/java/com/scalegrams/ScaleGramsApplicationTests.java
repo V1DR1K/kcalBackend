@@ -41,6 +41,7 @@ import com.scalegrams.nutrition.FoodLog;
 import com.scalegrams.nutrition.FoodLogRepository;
 import com.scalegrams.nutrition.MealItemType;
 import com.scalegrams.nutrition.MealType;
+import com.scalegrams.recipe.RecipeRepository;
 import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
 import com.scalegrams.user.UserRepository;
 
@@ -63,6 +64,9 @@ class ScaleGramsApplicationTests {
 
 	@Autowired
 	FoodLogRepository foodLogs;
+
+	@Autowired
+	RecipeRepository recipes;
 
 	@Autowired
 	FoodRepository foods;
@@ -788,6 +792,115 @@ class ScaleGramsApplicationTests {
 		assertThat(portions.getBody()).contains("\"proteinGrams\":62.0", "\"unit\":\"PORTION\"");
 		assertThat(invalidGrams.getStatusCode().is4xxClientError()).isTrue();
 		assertThat(invalidGrams.getBody()).contains("peso total cocido");
+	}
+
+	@Test
+	void createsRecipeFromMealCombiningRepeatedFoodsAndSkippingUncatalogedAi() {
+		HttpHeaders headers = authHeaders();
+		String date = "2034-01-10";
+		Map<String, Object> foodLog = Map.of("itemType", "FOOD", "itemId", 1, "mealType", "LUNCH",
+				"quantity", 100, "unit", "GRAM", "logDate", date);
+		rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(foodLog, headers), String.class);
+		rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(Map.of("itemType", "FOOD", "itemId", 1,
+				"mealType", "LUNCH", "quantity", 50, "unit", "GRAM", "logDate", date), headers), String.class);
+
+		FoodLog aiLog = new FoodLog();
+		aiLog.setUser(users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow());
+		aiLog.setItemType(MealItemType.AI_ESTIMATE);
+		aiLog.setMealType(MealType.LUNCH);
+		aiLog.setLogDate(java.time.LocalDate.parse(date));
+		aiLog.setQuantity(BigDecimal.ONE);
+		aiLog.setUnit(FoodUnit.PORTION);
+		aiLog.setCalories(100);
+		aiLog.setProteinGrams(BigDecimal.TEN);
+		aiLog.setCarbsGrams(BigDecimal.TEN);
+		aiLog.setFatGrams(BigDecimal.ZERO);
+		aiLog.setAiEstimateName("IA sin catálogo");
+		foodLogs.save(aiLog);
+
+		ResponseEntity<String> response = rest.postForEntity("/api/recipes/from-meal", new HttpEntity<>(Map.of(
+				"name", "Almuerzo combinado", "description", "Creada desde el almuerzo", "mealType", "LUNCH",
+				"logDate", date), headers), String.class);
+
+		assertThat(response.getStatusCode().value()).isEqualTo(200);
+		assertThat(response.getBody()).contains("\"skippedItems\":[\"IA sin catálogo\"]",
+				"\"name\":\"Almuerzo combinado\"", "\"quantity\":150.00");
+	}
+
+	@Test
+	void createsRecipeFromMealFlatteningPortionsAndCapturedCookedGrams() {
+		HttpHeaders headers = authHeaders();
+		ResponseEntity<Map> source = rest.postForEntity("/api/recipes", new HttpEntity<>(Map.of(
+				"name", "Fuente cocida", "cookedTotalWeightGrams", 80,
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM"))), headers), Map.class);
+		Object recipeId = source.getBody().get("id");
+
+		rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(Map.of("itemType", "RECIPE", "itemId", recipeId,
+				"mealType", "BREAKFAST", "quantity", 2, "unit", "PORTION", "logDate", "2034-01-11"), headers), String.class);
+		ResponseEntity<String> portions = rest.postForEntity("/api/recipes/from-meal", new HttpEntity<>(Map.of(
+				"name", "Dos porciones", "mealType", "BREAKFAST", "logDate", "2034-01-11"), headers), String.class);
+
+		rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(Map.of("itemType", "RECIPE", "itemId", recipeId,
+				"mealType", "LUNCH", "quantity", 40, "unit", "GRAM", "logDate", "2034-01-12"), headers), String.class);
+		ResponseEntity<String> grams = rest.postForEntity("/api/recipes/from-meal", new HttpEntity<>(Map.of(
+				"name", "Media receta", "mealType", "LUNCH", "logDate", "2034-01-12"), headers), String.class);
+
+		assertThat(portions.getStatusCode().value()).isEqualTo(200);
+		assertThat(portions.getBody()).contains("\"quantity\":200.00");
+		assertThat(grams.getStatusCode().value()).isEqualTo(200);
+		assertThat(grams.getBody()).contains("\"quantity\":50.00");
+	}
+
+	@Test
+	void createsRecipeFromMealUsingAdjustedRecipeIngredientsPerPortion() {
+		HttpHeaders headers = authHeaders();
+		ResponseEntity<Map> source = rest.postForEntity("/api/recipes", new HttpEntity<>(Map.of("name", "Base ajustable",
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM"))), headers), Map.class);
+		Object recipeId = source.getBody().get("id");
+		rest.postForEntity("/api/nutrition/meal-logs/recipe", new HttpEntity<>(Map.of("recipeId", recipeId,
+				"mealType", "DINNER", "quantity", 2, "logDate", "2034-01-13",
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 200, "unit", "GRAM"))), headers), String.class);
+
+		ResponseEntity<String> response = rest.postForEntity("/api/recipes/from-meal", new HttpEntity<>(Map.of(
+				"name", "Ajuste por porciones", "mealType", "DINNER", "logDate", "2034-01-13"), headers), String.class);
+
+		assertThat(response.getStatusCode().value()).isEqualTo(200);
+		assertThat(response.getBody()).contains("\"quantity\":400.00");
+	}
+
+	@Test
+	void recipeFromMealIsAuthorizedAndOnlyUsesTheAuthenticatedUsersLogs() {
+		ResponseEntity<String> unauthenticated = rest.postForEntity("/api/recipes/from-meal", new HttpEntity<>(Map.of(
+				"name", "Sin sesión", "mealType", "LUNCH")), String.class);
+		HttpHeaders alexHeaders = authHeaders("alex");
+		rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(Map.of("itemType", "FOOD", "itemId", 1,
+				"mealType", "LUNCH", "quantity", 100, "unit", "GRAM", "logDate", "2034-01-14"), alexHeaders), String.class);
+		ResponseEntity<String> otherUser = rest.postForEntity("/api/recipes/from-meal", new HttpEntity<>(Map.of(
+				"name", "No debe ver", "mealType", "LUNCH", "logDate", "2034-01-14"), authHeaders("Recetas Compartidas")), String.class);
+
+		assertThat(unauthenticated.getStatusCode().value()).isEqualTo(401);
+		assertThat(otherUser.getStatusCode().value()).isEqualTo(400);
+		assertThat(otherUser.getBody()).contains("No hay registros");
+	}
+
+	@Test
+	void recipeFromMealRejectsDeletedFoodAndDoesNotPersistTheRecipe() {
+		HttpHeaders headers = authHeaders();
+		ResponseEntity<Map> createdFood = rest.postForEntity("/api/foods", new HttpEntity<>(Map.of(
+				"name", "Alimento a eliminar para receta", "category", "OTHER", "baseUnit", "GRAM",
+				"baseQuantity", 100, "calories", 100, "proteinGrams", 10, "carbsGrams", 0, "fatGrams", 0,
+				"preparation", "UNSPECIFIED"), headers), Map.class);
+		Object foodId = createdFood.getBody().get("id");
+		String date = "2034-01-15";
+		rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(Map.of("itemType", "FOOD", "itemId", foodId,
+				"mealType", "DINNER", "quantity", 100, "unit", "GRAM", "logDate", date), headers), String.class);
+		rest.exchange("/api/foods/" + foodId, HttpMethod.DELETE, new HttpEntity<>(headers), Void.class);
+
+		ResponseEntity<String> response = rest.postForEntity("/api/recipes/from-meal", new HttpEntity<>(Map.of(
+				"name", "No debe persistir", "mealType", "DINNER", "logDate", date), headers), String.class);
+
+		assertThat(response.getStatusCode().value()).isEqualTo(404);
+		assertThat(recipes.findAll()).noneMatch(recipe -> "No debe persistir".equals(recipe.getName()));
 	}
 
 	@Test

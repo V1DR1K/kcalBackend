@@ -50,6 +50,7 @@ import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateItem;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateFoodProposal;
 import com.scalegrams.nutrition.NutritionDtos.CreateFoodRequest;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeRequest;
+import com.scalegrams.nutrition.NutritionDtos.CreateRecipeFromMealRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddRecipeMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.DashboardResponse;
 import com.scalegrams.nutrition.NutritionDtos.CreateDayPresetRequest;
@@ -74,6 +75,7 @@ import com.scalegrams.nutrition.NutritionDtos.PageResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientRequest;
 import com.scalegrams.nutrition.NutritionDtos.RecipeResponse;
+import com.scalegrams.nutrition.NutritionDtos.RecipeFromMealResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeOwnerResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecentMealResponse;
 import com.scalegrams.nutrition.NutritionDtos.NutrientValueResponse;
@@ -654,6 +656,127 @@ public class NutritionService {
         applyRecipeTotals(recipe);
         return toRecipeResponse(recipes.save(recipe));
     }
+
+    @Transactional
+    public RecipeFromMealResponse createRecipeFromMeal(AppUser user, CreateRecipeFromMealRequest request) {
+        LocalDate logDate = request.logDate() == null ? LocalDate.now() : request.logDate();
+        List<FoodLog> logs = foodLogsForRecipeCreation(user, request.mealType(), logDate);
+        if (logs.isEmpty()) {
+            throw new BadRequestException("No hay registros para esa comida y fecha.");
+        }
+
+        Map<RecipeIngredientKey, AggregatedRecipeIngredient> aggregated = new LinkedHashMap<>();
+        List<String> skippedItems = new ArrayList<>();
+        for (FoodLog log : logs) {
+            if (log.getItemType() == MealItemType.AI_ESTIMATE && log.getFood() == null) {
+                skippedItems.add(log.getAiEstimateName() == null ? "Estimación de IA" : log.getAiEstimateName());
+                continue;
+            }
+            if (log.getItemType() == MealItemType.FOOD || log.getItemType() == MealItemType.AI_ESTIMATE) {
+                addAggregatedIngredient(aggregated, requireActiveFood(log.getFood()), log.getQuantity(), log.getUnit());
+            } else if (log.getItemType() == MealItemType.RECIPE) {
+                flattenRecipeLog(log, aggregated);
+            } else {
+                throw new BadRequestException("El registro de comida tiene un tipo inválido.");
+            }
+        }
+        if (aggregated.isEmpty()) {
+            throw new BadRequestException("No quedan ingredientes válidos para crear la receta.");
+        }
+
+        List<RecipeIngredientRequest> ingredients = aggregated.values().stream()
+                .map(item -> new RecipeIngredientRequest(item.food().getId(), item.quantity(), item.unit()))
+                .toList();
+        CreateRecipeRequest recipeRequest = new CreateRecipeRequest(request.name(), request.description(), null,
+                request.cookedTotalWeightGrams(), false, ingredients);
+        Recipe recipe = new Recipe();
+        recipe.setName(request.name().trim());
+        recipe.setDescription(clean(request.description()));
+        recipe.setCreatedBy(user);
+        replaceRecipeIngredients(recipe, recipeRequest, false);
+        applyRecipeWeights(recipe, recipeRequest, true);
+        applyRecipeTotals(recipe);
+        RecipeResponse response = toRecipeResponse(recipes.save(recipe));
+        return new RecipeFromMealResponse(response, List.copyOf(skippedItems));
+    }
+
+    private List<FoodLog> foodLogsForRecipeCreation(AppUser user, MealType mealType, LocalDate logDate) {
+        List<FoodLog> logs = foodLogs.findByUserAndMealTypeAndLogDateWithRecipeIngredients(user, mealType, logDate);
+        if (!logs.isEmpty()) {
+            // Hibernate cannot fetch two List associations in one query. The second graph initializes
+            // adjusted ingredients in the same persistence context without dropping recipe ingredients.
+            foodLogs.findByUserAndMealTypeAndLogDateWithAdjustedIngredients(user, mealType, logDate);
+        }
+        return logs;
+    }
+
+    private void flattenRecipeLog(FoodLog log, Map<RecipeIngredientKey, AggregatedRecipeIngredient> target) {
+        Recipe recipe = log.getRecipe();
+        if (recipe == null) {
+            throw new BadRequestException("El registro de receta no tiene una receta asociada.");
+        }
+        if (!log.getRecipeIngredients().isEmpty()) {
+            if (log.getUnit() != FoodUnit.PORTION) {
+                throw new BadRequestException("No se pueden usar recetas ajustadas registradas en gramos cocidos.");
+            }
+            for (FoodLogRecipeIngredient ingredient : log.getRecipeIngredients()) {
+                addAggregatedIngredient(target, requireActiveFood(ingredient.getFood()),
+                        multiplyIngredientQuantity(ingredient.getQuantity(), log.getQuantity()), ingredient.getUnit());
+            }
+            return;
+        }
+
+        BigDecimal multiplier;
+        if (log.getUnit() == FoodUnit.PORTION) {
+            multiplier = log.getQuantity();
+        } else if (log.getUnit() == FoodUnit.GRAM) {
+            BigDecimal cookedWeight = log.getRecipeCookedTotalWeightGrams();
+            if (cookedWeight == null || cookedWeight.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BadRequestException("La receta necesita un peso total cocido capturado para aplanarse en gramos.");
+            }
+            multiplier = log.getQuantity().divide(cookedWeight, 8, RoundingMode.HALF_UP);
+        } else {
+            throw new BadRequestException("Las recetas solo se pueden aplanar por porción o por gramos cocidos.");
+        }
+        for (RecipeIngredient ingredient : recipe.getIngredients()) {
+            addAggregatedIngredient(target, requireActiveFood(ingredient.getFood()),
+                    multiplyIngredientQuantity(ingredient.getQuantity(), multiplier), ingredient.getUnit());
+        }
+    }
+
+    private void addAggregatedIngredient(Map<RecipeIngredientKey, AggregatedRecipeIngredient> target, Food food,
+            BigDecimal quantity, FoodUnit unit) {
+        if (quantity == null || unit == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Un registro de comida contiene una cantidad o unidad inválida.");
+        }
+        RecipeIngredientKey key = new RecipeIngredientKey(food.getId(), unit);
+        AggregatedRecipeIngredient current = target.get(key);
+        if (current == null) {
+            target.put(key, new AggregatedRecipeIngredient(food, quantity, unit));
+        } else {
+            target.put(key, new AggregatedRecipeIngredient(food, current.quantity().add(quantity), unit));
+        }
+    }
+
+    private BigDecimal multiplyIngredientQuantity(BigDecimal quantity, BigDecimal multiplier) {
+        if (quantity == null || multiplier == null || quantity.compareTo(BigDecimal.ZERO) <= 0
+                || multiplier.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Una receta registrada contiene una cantidad inválida.");
+        }
+        return quantity.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private Food requireActiveFood(Food food) {
+        if (food == null) throw new NotFoundException("El registro de comida no tiene un alimento asociado.");
+        if (food.getDeletedAt() != null) {
+            throw new NotFoundException("El alimento usado por la comida fue eliminado y no puede convertirse en ingrediente.");
+        }
+        return food;
+    }
+
+    private record RecipeIngredientKey(Long foodId, FoodUnit unit) { }
+
+    private record AggregatedRecipeIngredient(Food food, BigDecimal quantity, FoodUnit unit) { }
 
     @Transactional
     public RecipeResponse copyRecipe(AppUser user, Long id) {

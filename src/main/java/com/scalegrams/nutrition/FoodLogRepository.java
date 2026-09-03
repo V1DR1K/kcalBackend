@@ -22,6 +22,16 @@ public interface FoodLogRepository extends JpaRepository<FoodLog, Long> {
 
     List<FoodLog> findByUserAndMealTypeAndLogDate(AppUser user, MealType mealType, LocalDate logDate);
 
+    @EntityGraph(attributePaths = {"food", "food.tags", "recipe", "recipe.ingredients", "recipe.ingredients.food"})
+    @Query("select log from FoodLog log where log.user = :user and log.mealType = :mealType and log.logDate = :logDate")
+    List<FoodLog> findByUserAndMealTypeAndLogDateWithRecipeIngredients(@Param("user") AppUser user,
+            @Param("mealType") MealType mealType, @Param("logDate") LocalDate logDate);
+
+    @EntityGraph(attributePaths = {"food", "food.tags", "recipe", "recipeIngredients", "recipeIngredients.food"})
+    @Query("select log from FoodLog log where log.user = :user and log.mealType = :mealType and log.logDate = :logDate")
+    List<FoodLog> findByUserAndMealTypeAndLogDateWithAdjustedIngredients(@Param("user") AppUser user,
+            @Param("mealType") MealType mealType, @Param("logDate") LocalDate logDate);
+
     boolean existsByRecipeId(Long recipeId);
 
     @Query("""
