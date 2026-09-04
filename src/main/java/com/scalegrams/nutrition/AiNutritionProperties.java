@@ -16,5 +16,5 @@ public class AiNutritionProperties {
     private String model = "gemini-3.5-flash";
     private int maxImageBytes = 5_242_880;
     private int maxAudioBytes = 2_097_152;
-    private int dailyLimit = 10;
+    private int dailyLimit = 99;
 }
