@@ -1041,7 +1041,9 @@ public class NutritionService {
         try {
             AiEstimateItem item = new AiEstimateItem(proposal.name(), servedGrams, proposal.category(), proposal.preparation(),
                     proposal.proteinGrams().multiply(ratio), proposal.carbsGrams().multiply(ratio),
-                    proposal.fatGrams().multiply(ratio), proposal.nutrients());
+                    proposal.fatGrams().multiply(ratio), proposal.nutrients() == null ? Map.of()
+                            : proposal.nutrients().entrySet().stream().collect(Collectors.toMap(
+                                    Map.Entry::getKey, entry -> scale(entry.getValue().multiply(ratio)))));
             log.setAiEstimateDetails(objectMapper.writeValueAsString(new AiEstimateDetails("", "", List.of(), List.of(item))));
         } catch (JsonProcessingException ex) {
             throw new BadRequestException("No se pudo guardar la estimación.");
@@ -1077,19 +1079,32 @@ public class NutritionService {
     @Transactional
     public FoodResponse saveAiEstimateItemToCatalog(AppUser user, Long logId, int itemIndex,
             SaveAiEstimateItemRequest request) {
-        FoodLog log = ownedAiEstimateLog(user, logId);
+        FoodLog log = foodLogs.findOwnedForCatalog(logId, user)
+                .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));
+        if (log.getItemType() != MealItemType.AI_ESTIMATE) {
+            throw new BadRequestException("Este registro no corresponde a una estimación de IA.");
+        }
         AiEstimateDetails details = readAiEstimateDetails(log);
         if (itemIndex < 0 || itemIndex >= details.items().size()) {
             throw new BadRequestException("El item de la estimación no existe.");
         }
         AiEstimateItem item = details.items().get(itemIndex);
         validateAiEstimateItems(List.of(item));
+        FoodPreparation preparation = request.preparation() == null ? FoodPreparation.UNSPECIFIED : request.preparation();
+        Optional<Food> identity = foods.findActiveBySearchName(SearchTextNormalizer.normalize(item.name()), ModerationStatus.APPROVED)
+                .stream().filter(food -> "AI_ESTIMATE".equals(food.getSource())
+                        && food.getCategory() == request.category()
+                        && (food.getPreparation() == null ? FoodPreparation.UNSPECIFIED : food.getPreparation()) == preparation
+                        && (food.getBrand() == null || food.getBrand().isBlank())).findFirst();
+        if (identity.isPresent()) return toFoodResponse(identity.get());
         String sourceId = "food-log:" + log.getId() + ":item:" + itemIndex;
         Optional<Food> saved = foods.findBySourceAndSourceId("AI_ESTIMATE", sourceId);
         if (saved.isPresent()) {
             Food food = saved.get();
-            if (food.getDeletedAt() != null) food.setDeletedAt(null);
-            return toFoodResponse(foods.save(food));
+            if (food.getDeletedAt() != null) {
+                throw new BadRequestException("Esta ficha fue archivada. Buscá el alimento vigente en el catálogo.");
+            }
+            return toFoodResponse(food);
         }
         Food existing = aiFoodMatcher.resolve(new AiEstimateFoodProposal(item.name(), request.category(), request.preparation(),
                 item.proteinGrams().multiply(BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP)),
@@ -1139,6 +1154,18 @@ public class NutritionService {
         log.setCalories(macroCalories(log.getProteinGrams(), log.getCarbsGrams(), log.getFatGrams()));
         log.setAiEstimateName(name.trim());
         log.setAiEstimateConfidence(Math.max(0, Math.min(100, confidence)));
+        Map<String, BigDecimal> nutrientTotals = new LinkedHashMap<>();
+        normalizedItems.forEach(item -> {
+            if (item.nutrients() != null) item.nutrients().forEach((code, value) ->
+                    nutrientTotals.merge(code, value, BigDecimal::add));
+        });
+        log.getNutrientSnapshot().removeIf(nutrient -> !nutrientTotals.containsKey(nutrient.getDefinition().getCode()));
+        log.getNutrientSnapshot().forEach(nutrient -> {
+            nutrient.setValue(scale(nutrientTotals.remove(nutrient.getDefinition().getCode())));
+            nutrient.setSource(NutrientSource.AI);
+            nutrient.setStatus(NutrientStatus.ESTIMATED);
+        });
+        addAiLogNutrients(log, nutrientTotals, BigDecimal.ONE);
         try {
             log.setAiEstimateDetails(objectMapper.writeValueAsString(new AiEstimateDetails(description, context,
                     assumptions == null ? List.of() : assumptions, normalizedItems)));

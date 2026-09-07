@@ -20,6 +20,10 @@ public interface FoodLogRepository extends JpaRepository<FoodLog, Long> {
 
     Optional<FoodLog> findByIdAndUser(Long id, AppUser user);
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select log from FoodLog log where log.id = :id and log.user = :user")
+    Optional<FoodLog> findOwnedForCatalog(@Param("id") Long id, @Param("user") AppUser user);
+
     List<FoodLog> findByUserAndMealTypeAndLogDate(AppUser user, MealType mealType, LocalDate logDate);
 
     @EntityGraph(attributePaths = {"food", "food.tags", "recipe", "recipe.ingredients", "recipe.ingredients.food"})

@@ -524,14 +524,23 @@ class ScaleGramsApplicationTests {
 	@Test
 	void confirmsAiEstimateByReusingAnExactCatalogFood() {
 		HttpHeaders headers = authHeaders();
+		com.scalegrams.catalog.Food generic = new com.scalegrams.catalog.Food();
+		generic.setName("Pollo genérico de prueba");
+		generic.setCategory(FoodCategory.MEAT);
+		generic.setPreparation(com.scalegrams.catalog.FoodPreparation.COOKED);
+		generic.setProteinGrams(BigDecimal.valueOf(31));
+		generic.setCarbsGrams(BigDecimal.ZERO);
+		generic.setFatGrams(BigDecimal.valueOf(3.6));
+		generic.setCalories(165);
+		generic = foods.save(generic);
 		Map<String, Object> request = Map.of("mealType", "DINNER", "logDate", "2031-02-14", "items", List.of(
-				Map.of("proposal", Map.of("name", "Pechuga de pollo", "category", "MEAT", "preparation", "COOKED",
+				Map.of("proposal", Map.of("name", "Pollo genérico de prueba", "category", "MEAT", "preparation", "COOKED",
 						"proteinGrams", 20, "carbsGrams", 0, "fatGrams", 4), "servedGrams", 150)));
 
 		ResponseEntity<String> response = rest.postForEntity("/api/nutrition/ai-estimates/confirm", new HttpEntity<>(request, headers), String.class);
 
 		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(response.getBody()).contains("\"itemType\":\"FOOD\"", "\"id\":1", "\"proteinGrams\":46.5")
+		assertThat(response.getBody()).contains("\"itemType\":\"FOOD\"", "\"id\":" + generic.getId(), "\"proteinGrams\":46.5")
 				.doesNotContain("\"itemType\":\"AI_ESTIMATE\"");
 	}
 
@@ -597,7 +606,64 @@ class ScaleGramsApplicationTests {
 		assertThat(foodLogs.findById(id).orElseThrow().getAiEstimateDetails()).isEqualTo(snapshot);
 	}
 
+    @Test
+    void aiNutrientsStayConsistentAcrossServingEditsAndRepeatedCatalogSaves() throws Exception {
+        HttpHeaders headers = authHeaders();
+        Map<String, Object> proposal = Map.of("name", "Estimación única de prueba nutricional", "category", "OTHER",
+                "preparation", "UNSPECIFIED", "proteinGrams", 10, "carbsGrams", 20, "fatGrams", 5,
+                "nutrients", Map.of("SODIUM", 40));
+        ResponseEntity<String> created = rest.postForEntity("/api/nutrition/ai-estimates/confirm",
+                new HttpEntity<>(Map.of("mealType", "LUNCH", "items", List.of(Map.of("proposal", proposal, "servedGrams", 250))), headers), String.class);
+        assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+        var row = objectMapper.readTree(created.getBody()).get(0);
+        long id = row.path("id").asLong();
+        var details = objectMapper.readTree(row.path("aiEstimateDetails").asText());
+        assertThat(details.path("items").get(0).path("nutrients").path("SODIUM").decimalValue()).isEqualByComparingTo("100");
+        Map<String, Object> updated = Map.of("name", "Estimación nutricional", "mealType", "LUNCH", "confidence", 75,
+                "items", List.of(Map.of("name", proposal.get("name"), "category", "OTHER", "preparation", "UNSPECIFIED",
+                        "estimatedGrams", 100, "proteinGrams", 10, "carbsGrams", 20, "fatGrams", 5, "nutrients", Map.of("SODIUM", 40))));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            ResponseEntity<String> response = rest.exchange("/api/nutrition/food-logs/" + id + "/ai-estimate", HttpMethod.PUT,
+                    new HttpEntity<>(updated, headers), String.class);
+            assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+            var updatedDetails = objectMapper.readTree(response.getBody()).path("aiEstimateDetails").asText();
+            assertThat(objectMapper.readTree(updatedDetails).path("items").get(0).path("nutrients").path("SODIUM").decimalValue())
+                    .isEqualByComparingTo("40");
+        }
+        var first = rest.postForEntity("/api/nutrition/food-logs/" + id + "/ai-estimate/items/0/catalog",
+                new HttpEntity<>(Map.of("category", "OTHER", "preparation", "UNSPECIFIED"), headers), String.class);
+        assertThat(first.getStatusCode().is2xxSuccessful()).isTrue();
+        var again = rest.postForEntity("/api/nutrition/food-logs/" + id + "/ai-estimate/items/0/catalog",
+                new HttpEntity<>(Map.of("category", "OTHER", "preparation", "UNSPECIFIED"), headers), String.class);
+        assertThat(again.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(objectMapper.readTree(again.getBody()).path("id")).isEqualTo(objectMapper.readTree(first.getBody()).path("id"));
+    }
 	@Test
+	void aiNutrientsAreScaledAndCanBeEditedTwice() throws Exception {
+        HttpHeaders headers = authHeaders();
+        var proposal = Map.of("name", "Prueba de nutrientes estimados", "category", "OTHER", "preparation", "UNSPECIFIED",
+                "proteinGrams", 10, "carbsGrams", 20, "fatGrams", 5, "nutrients", Map.of("SODIUM", 40));
+        var created = rest.postForEntity("/api/nutrition/ai-estimates/confirm",
+                new HttpEntity<>(Map.of("mealType", "LUNCH", "items", List.of(Map.of("proposal", proposal, "servedGrams", 250))), headers), String.class);
+        assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+        var row = objectMapper.readTree(created.getBody()).get(0);
+        long id = row.path("id").asLong();
+        var details = objectMapper.readTree(row.path("aiEstimateDetails").asText());
+        assertThat(details.path("items").get(0).path("nutrients").path("SODIUM").decimalValue()).isEqualByComparingTo("100");
+        var update = Map.of("name", "Prueba nutricional", "mealType", "LUNCH", "confidence", 75,
+                "items", List.of(Map.of("name", "Prueba de nutrientes estimados", "estimatedGrams", 100,
+                        "proteinGrams", 10, "carbsGrams", 20, "fatGrams", 5, "nutrients", Map.of("SODIUM", 40))));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            var response = rest.exchange("/api/nutrition/food-logs/" + id + "/ai-estimate", HttpMethod.PUT,
+                    new HttpEntity<>(update, headers), String.class);
+            assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+            var updatedDetails = objectMapper.readTree(response.getBody()).path("aiEstimateDetails").asText();
+            assertThat(objectMapper.readTree(updatedDetails).path("items").get(0).path("nutrients").path("SODIUM").decimalValue())
+                    .isEqualByComparingTo("40");
+        }
+    }
+
+    @Test
 	void batchAcceptsFoodAndRecipeReferencesUsedByMealCopy() {
 		HttpHeaders headers = authHeaders();
 		Map<String, Object> recipe = Map.of(
