@@ -2,6 +2,7 @@ package com.scalegrams.training;
 
 import java.time.OffsetDateTime;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -16,6 +17,9 @@ public interface TrainingCardioRecordRepository extends JpaRepository<TrainingCa
     Page<TrainingCardioRecord> findByUser(AppUser user, Pageable pageable);
 
     Optional<TrainingCardioRecord> findByIdAndUser(Long id, AppUser user);
+
+    List<TrainingCardioRecord> findByUserAndEquipmentAndRecordedAtGreaterThanEqualAndRecordedAtLessThan(
+            AppUser user, TrainingEquipment equipment, OffsetDateTime from, OffsetDateTime to);
 
     @Query("""
             select coalesce(sum(record.durationMinutes), 0)

@@ -21,8 +21,8 @@ public class TrainingDtos {
     }
 
     public record UpsertCardioRecordRequest(@NotNull OffsetDateTime recordedAt,
-            @NotNull @PositiveOrZero BigDecimal distanceKm, @NotNull @Positive Integer durationMinutes,
-            boolean inclined, TrainingEquipment equipment) {
+            @PositiveOrZero BigDecimal speedKmh, @PositiveOrZero BigDecimal distanceKm,
+            @NotNull @Positive Integer durationMinutes, boolean inclined, TrainingEquipment equipment) {
     }
 
     public record CardioRecordResponse(Long id, TrainingEquipment equipment, OffsetDateTime recordedAt,
@@ -40,7 +40,15 @@ public class TrainingDtos {
 
     public record CardioSummaryResponse(TrainingEquipment equipment, int thresholdMinutes, long totalDurationMinutes,
             long remainingMinutes, boolean due, BigDecimal totalDistanceKm, Long totalEstimatedSteps,
-            CardioServiceResponse latestService) {
+            BigDecimal profileHeightCm, CardioServiceResponse latestService) {
+    }
+
+    public record CardioDaySummaryResponse(LocalDate date, BigDecimal distanceKm, Long estimatedSteps,
+            long sessionCount) {
+    }
+
+    public record WeeklyCardioSummaryResponse(LocalDate from, LocalDate to, List<CardioDaySummaryResponse> days,
+            BigDecimal totalDistanceKm, Long totalEstimatedSteps, boolean stepsAvailable) {
     }
 
     public record TrainingCategoryResponse(Long id, String name, TrainingModule module, boolean system,
@@ -228,7 +236,8 @@ public class TrainingDtos {
             TrainingModule module, boolean recommended, Long sessionId, TrainingSessionStatus sessionStatus) {
     }
 
-    public record WeeklyTrainingSummaryResponse(long sessionCount, long totalMinutes, long totalSets) {
+    public record WeeklyTrainingSummaryResponse(long sessionCount, long totalMinutes, long totalSets,
+            WeeklyCardioSummaryResponse cardio) {
     }
 
     public record TrainingDashboardResponse(LocalDate date, List<TrainingPlanResponse> plans,

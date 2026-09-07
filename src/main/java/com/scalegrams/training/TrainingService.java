@@ -3,8 +3,11 @@ package com.scalegrams.training;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.DayOfWeek;
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.math.RoundingMode;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
@@ -42,7 +45,9 @@ import com.scalegrams.training.TrainingDtos.TrainingModuleResponse;
 import com.scalegrams.training.TrainingDtos.CardioRecordResponse;
 import com.scalegrams.training.TrainingDtos.CardioServiceResponse;
 import com.scalegrams.training.TrainingDtos.CardioSummaryResponse;
+import com.scalegrams.training.TrainingDtos.CardioDaySummaryResponse;
 import com.scalegrams.training.TrainingDtos.CreateCardioServiceRequest;
+import com.scalegrams.training.TrainingDtos.WeeklyCardioSummaryResponse;
 import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseResponse;
 import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanDetailResponse;
 import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanResponse;
@@ -75,6 +80,7 @@ import com.scalegrams.user.AppUser;
 @Service
 public class TrainingService {
     private static final BigDecimal STEP_LENGTH_FACTOR = new BigDecimal("0.415");
+    private static final ZoneId DEFAULT_TIME_ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
     private final TrainingExerciseRepository exercises;
     private final TrainingCategoryRepository categories;
     private final TrainingPlanRepository presets;
@@ -163,9 +169,37 @@ public class TrainingService {
                 ? cardioRecords.sumDistance(user, equipment)
                 : cardioRecords.sumDistanceAfter(user, equipment, latestService.getServicedAt());
         long remainingMinutes = Math.max(1200L - totalMinutes, 0L);
+        BigDecimal allTimeDistance = cardioRecords.sumDistance(user, equipment);
         return new CardioSummaryResponse(equipment, 1200, totalMinutes, remainingMinutes,
-                totalMinutes >= 1200L, totalDistance, estimatedSteps(totalDistance, user.getHeightCm()),
+                totalMinutes >= 1200L, totalDistance, estimatedSteps(allTimeDistance, user.getHeightCm()),
+                user.getHeightCm(),
                 latestService == null ? null : toCardioServiceResponse(latestService));
+    }
+
+    @Transactional(readOnly = true)
+    public WeeklyCardioSummaryResponse cardioWeekly(AppUser user, LocalDate date, String timeZone) {
+        ZoneId zone = resolveTimeZone(timeZone);
+        LocalDate anchor = date == null ? LocalDate.now(zone) : date;
+        LocalDate from = anchor.with(DayOfWeek.MONDAY);
+        LocalDate to = from.plusDays(6);
+        OffsetDateTime fromInstant = from.atStartOfDay(zone).toOffsetDateTime();
+        OffsetDateTime toInstant = to.plusDays(1).atStartOfDay(zone).toOffsetDateTime();
+        List<TrainingCardioRecord> records = cardioRecords
+                .findByUserAndEquipmentAndRecordedAtGreaterThanEqualAndRecordedAtLessThan(user,
+                        TrainingEquipment.TREADMILL, fromInstant, toInstant);
+        Map<LocalDate, List<TrainingCardioRecord>> byDate = records.stream()
+                .collect(Collectors.groupingBy(record -> record.getRecordedAt().atZoneSameInstant(zone).toLocalDate()));
+        List<CardioDaySummaryResponse> days = from.datesUntil(to.plusDays(1)).map(day -> {
+            List<TrainingCardioRecord> dayRecords = byDate.getOrDefault(day, List.of());
+            BigDecimal distance = dayRecords.stream().map(TrainingCardioRecord::getDistanceKm)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            return new CardioDaySummaryResponse(day, distance,
+                    estimatedSteps(distance, user.getHeightCm()), dayRecords.size());
+        }).toList();
+        BigDecimal totalDistance = records.stream().map(TrainingCardioRecord::getDistanceKm)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new WeeklyCardioSummaryResponse(from, to, days, totalDistance,
+                estimatedSteps(totalDistance, user.getHeightCm()), user.getHeightCm() != null);
     }
 
     @Transactional(readOnly = true)
@@ -857,8 +891,9 @@ public class TrainingService {
     }
 
     @Transactional(readOnly = true)
-    public TrainingDashboardResponse dashboard(AppUser user, LocalDate date) {
-        date = date == null ? LocalDate.now() : date;
+    public TrainingDashboardResponse dashboard(AppUser user, LocalDate date, String timeZone) {
+        ZoneId zone = resolveTimeZone(timeZone);
+        date = date == null ? LocalDate.now(zone) : date;
         List<TrainingPlanResponse> routines = presets.search(user, null, true, page(0, 5, Sort.unsorted()))
                 .stream()
                 .limit(4)
@@ -896,7 +931,7 @@ public class TrainingService {
                 .toList();
 
         WeeklyTrainingSummaryResponse weeklySummary = new WeeklyTrainingSummaryResponse(
-                sessionCount, totalMinutes, totalSets);
+                sessionCount, totalMinutes, totalSets, cardioWeekly(user, date, timeZone));
 
         return new TrainingDashboardResponse(date, routines, recentSession, weeklySummary,
                 exercises, schedulesForDate(user, date));
@@ -1543,7 +1578,7 @@ public class TrainingService {
         }
         record.setEquipment(equipment);
         record.setRecordedAt(request.recordedAt());
-        record.setDistanceKm(request.distanceKm());
+        record.setDistanceKm(resolveCardioDistance(request));
         record.setDurationMinutes(request.durationMinutes());
         record.setInclined(request.inclined());
         record.setUpdatedAt(OffsetDateTime.now());
@@ -1657,6 +1692,28 @@ public class TrainingService {
     private BigDecimal speedKmh(BigDecimal distanceKm, int durationMinutes) {
         if (distanceKm == null || durationMinutes <= 0) return null;
         return distanceKm.multiply(BigDecimal.valueOf(60)).divide(BigDecimal.valueOf(durationMinutes), 2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal resolveCardioDistance(UpsertCardioRecordRequest request) {
+        boolean hasSpeed = request.speedKmh() != null;
+        boolean hasDistance = request.distanceKm() != null;
+        if (hasSpeed == hasDistance) {
+            throw new BadRequestException("Informá velocidad o distancia, junto con el tiempo.");
+        }
+        if (hasSpeed) {
+            return request.speedKmh().multiply(BigDecimal.valueOf(request.durationMinutes()))
+                    .divide(BigDecimal.valueOf(60), 3, RoundingMode.HALF_UP);
+        }
+        return request.distanceKm().setScale(3, RoundingMode.HALF_UP);
+    }
+
+    private ZoneId resolveTimeZone(String value) {
+        if (value == null || value.isBlank()) return DEFAULT_TIME_ZONE;
+        try {
+            return ZoneId.of(value);
+        } catch (DateTimeException ignored) {
+            return DEFAULT_TIME_ZONE;
+        }
     }
 
     private Long estimatedSteps(BigDecimal distanceKm, BigDecimal heightCm) {

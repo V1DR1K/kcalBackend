@@ -31,6 +31,7 @@ import com.scalegrams.training.TrainingDtos.TrainingModuleResponse;
 import com.scalegrams.training.TrainingDtos.CardioRecordResponse;
 import com.scalegrams.training.TrainingDtos.CardioServiceResponse;
 import com.scalegrams.training.TrainingDtos.CardioSummaryResponse;
+import com.scalegrams.training.TrainingDtos.WeeklyCardioSummaryResponse;
 import com.scalegrams.training.TrainingDtos.CreateCardioServiceRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseResponse;
 import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanDetailResponse;
@@ -105,6 +106,13 @@ public class TrainingController {
     @GetMapping("/cardio/summary")
     CardioSummaryResponse cardioSummary(Authentication authentication) {
         return trainingService.cardioSummary(currentUser.from(authentication));
+    }
+
+    @GetMapping("/cardio/weekly")
+    WeeklyCardioSummaryResponse cardioWeekly(Authentication authentication,
+            @RequestParam(required = false) LocalDate date,
+            @RequestParam(required = false, defaultValue = "America/Argentina/Buenos_Aires") String timeZone) {
+        return trainingService.cardioWeekly(currentUser.from(authentication), date, timeZone);
     }
 
     @GetMapping("/categories")
@@ -359,7 +367,8 @@ public class TrainingController {
     }
 
     @GetMapping("/dashboard")
-    TrainingDashboardResponse dashboard(Authentication authentication, @RequestParam(required = false) LocalDate date) {
-        return trainingService.dashboard(currentUser.from(authentication), date);
+    TrainingDashboardResponse dashboard(Authentication authentication, @RequestParam(required = false) LocalDate date,
+            @RequestParam(required = false, defaultValue = "America/Argentina/Buenos_Aires") String timeZone) {
+        return trainingService.dashboard(currentUser.from(authentication), date, timeZone);
     }
 }

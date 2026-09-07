@@ -388,7 +388,7 @@ class TrainingControllerIntegrationTests {
         assertThat(profile.getStatusCode().is2xxSuccessful()).isTrue();
         Map<String, Object> request = Map.of(
                 "recordedAt", "2024-01-10T08:00:00Z",
-                "distanceKm", 6.25,
+                "speedKmh", 8.93,
                 "durationMinutes", 42,
                 "inclined", true);
 
@@ -397,7 +397,7 @@ class TrainingControllerIntegrationTests {
         assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(created.getBody()).containsEntry("equipment", "TREADMILL")
                 .containsEntry("durationMinutes", 42).containsEntry("inclined", true)
-                .containsEntry("speedKmh", 8.93).containsEntry("estimatedSteps", 8367);
+                .containsEntry("speedKmh", 8.93).containsEntry("estimatedSteps", 8368);
 
         ResponseEntity<Map> listed = rest.exchange("/api/training/cardio?page=0&size=20", HttpMethod.GET,
                 new HttpEntity<>(headers), Map.class);
@@ -406,7 +406,7 @@ class TrainingControllerIntegrationTests {
 
         Map<String, Object> update = Map.of(
                 "recordedAt", "2024-01-10T08:00:00Z",
-                "distanceKm", 7.5,
+                "speedKmh", 9.0,
                 "durationMinutes", 50,
                 "inclined", false);
         ResponseEntity<Map> updated = rest.exchange("/api/training/cardio/" + created.getBody().get("id"),
@@ -450,9 +450,32 @@ class TrainingControllerIntegrationTests {
         ResponseEntity<Map> afterService = rest.exchange("/api/training/cardio/summary", HttpMethod.GET,
                 new HttpEntity<>(headers), Map.class);
         assertThat(afterService.getBody()).containsEntry("totalDurationMinutes", 300)
-                .containsEntry("totalEstimatedSteps", 6693).containsEntry("remainingMinutes", 900)
+                .containsEntry("totalEstimatedSteps", 26774).containsEntry("remainingMinutes", 900)
                 .containsEntry("due", false);
         assertThat(afterService.getBody().get("latestService").toString()).contains("Correa ajustada");
+    }
+
+    @Test
+    void groupsWeeklyCardioByTheRequestedLocalTimezoneAndKeepsStepsAcrossService() {
+        HttpHeaders headers = authHeaders("training-cardio-weekly");
+        rest.exchange("/api/profile", HttpMethod.PATCH,
+                new HttpEntity<>(Map.of("heightCm", 180), headers), Map.class);
+        postCardio(headers, "2024-02-05T03:30:00Z", 60);
+        postCardio(headers, "2024-02-12T02:30:00Z", 60);
+
+        ResponseEntity<Map> weekly = rest.exchange(
+                "/api/training/cardio/weekly?date=2024-02-07&timeZone=America/Argentina/Buenos_Aires",
+                HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(weekly.getStatusCode().is2xxSuccessful()).isTrue();
+        Map<String, Object> weeklyBody = weekly.getBody();
+        assertThat(weeklyBody.get("from")).isEqualTo("2024-02-05");
+        assertThat(weeklyBody.get("to")).isEqualTo("2024-02-11");
+        assertThat(weeklyBody.get("stepsAvailable")).isEqualTo(true);
+        assertThat((List<?>) weeklyBody.get("days")).hasSize(7);
+        assertThat(weeklyBody.get("totalEstimatedSteps").toString()).isEqualTo("13387");
+        Map<?, ?> sunday = (Map<?, ?>) ((List<?>) weeklyBody.get("days")).get(6);
+        assertThat(sunday.get("date")).isEqualTo("2024-02-11");
+        assertThat(sunday.get("sessionCount")).isEqualTo(1);
     }
 
     private void postCardio(HttpHeaders headers, String recordedAt, int durationMinutes) {
