@@ -44,6 +44,7 @@ import com.scalegrams.nutrition.NutritionDtos.AddFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddWaterRequest;
 import com.scalegrams.nutrition.NutritionDtos.ApplyDayPresetRequest;
 import com.scalegrams.nutrition.NutritionDtos.BatchAddMealLogsRequest;
+import com.scalegrams.nutrition.NutritionDtos.BatchAddMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateItem;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateItem;
@@ -939,7 +940,39 @@ public class NutritionService {
 
     @Transactional
     public List<FoodLogResponse> addMealLogs(AppUser user, BatchAddMealLogsRequest request) {
-        return request.logs().stream().map(item -> addMealLog(user, item, true)).toList();
+        return request.logs().stream().map(item -> item.itemType() == MealItemType.AI_ESTIMATE
+                ? copyAiEstimate(user, item)
+                : addMealLog(user, new AddMealLogRequest(item.itemType(), item.itemId(), item.mealType(), item.quantity(), item.unit(), item.logDate()), true)).toList();
+    }
+
+    private FoodLogResponse copyAiEstimate(AppUser user, BatchAddMealLogRequest request) {
+        FoodLog log = new FoodLog();
+        log.setUser(user);
+        log.setItemType(MealItemType.AI_ESTIMATE);
+        log.setMealType(request.mealType());
+        log.setQuantity(request.quantity());
+        log.setUnit(request.unit());
+        log.setLogDate(request.logDate() == null ? LocalDate.now() : request.logDate());
+        log.setCalories(request.calories() == null ? macroCalories(request.proteinGrams(), request.carbsGrams(), request.fatGrams()) : request.calories());
+        log.setProteinGrams(request.proteinGrams() == null ? BigDecimal.ZERO : request.proteinGrams());
+        log.setCarbsGrams(request.carbsGrams() == null ? BigDecimal.ZERO : request.carbsGrams());
+        log.setFatGrams(request.fatGrams() == null ? BigDecimal.ZERO : request.fatGrams());
+        log.setAiEstimateName(request.displayName() == null ? "Comida estimada" : request.displayName());
+        log.setAiEstimateConfidence(request.aiEstimateConfidence());
+        log.setAiEstimateDetails(request.aiEstimateDetails());
+        for (NutrientValueResponse nutrient : request.nutrients() == null ? List.<NutrientValueResponse>of() : request.nutrients()) {
+            if (nutrient.code() == null) continue;
+            nutrientDefinitions.findById(nutrient.code()).ifPresent(definition -> {
+                FoodLogNutrient copy = new FoodLogNutrient();
+                copy.setFoodLog(log);
+                copy.setDefinition(definition);
+                copy.setValue(nutrient.value());
+                copy.setSource(parseSource(nutrient.source()));
+                copy.setStatus(parseStatus(nutrient.status()));
+                log.getNutrientSnapshot().add(copy);
+            });
+        }
+        return toFoodLogResponse(foodLogs.save(log));
     }
 
     @Transactional(readOnly = true)

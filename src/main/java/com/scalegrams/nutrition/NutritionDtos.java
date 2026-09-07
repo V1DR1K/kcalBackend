@@ -110,7 +110,18 @@ public class NutritionDtos {
     }
 
     public record BatchAddMealLogsRequest(
-            @NotEmpty @Size(max = 50) List<@NotNull @Valid AddMealLogRequest> logs) {
+            @NotEmpty @Size(max = 50) List<@NotNull @Valid BatchAddMealLogRequest> logs) {
+    }
+
+    public record BatchAddMealLogRequest(@NotNull MealItemType itemType, @Positive Long itemId, @NotNull MealType mealType,
+            @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, @NotNull FoodUnit unit, LocalDate logDate,
+            @Size(max = 120) String displayName, @PositiveOrZero Integer aiEstimateConfidence, @Size(max = 20000) String aiEstimateDetails,
+            @PositiveOrZero Integer calories, @PositiveOrZero BigDecimal proteinGrams, @PositiveOrZero BigDecimal carbsGrams,
+            @PositiveOrZero BigDecimal fatGrams, List<NutrientValueResponse> nutrients) {
+        @AssertTrue(message = "El registro debe tener una referencia válida.")
+        public boolean hasValidItemReference() {
+            return itemType == MealItemType.AI_ESTIMATE ? itemId == null : itemId != null;
+        }
     }
 
     public record AddRecipeMealLogRequest(@NotNull Long recipeId, @NotNull MealType mealType,

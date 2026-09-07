@@ -209,6 +209,27 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void batchCopiesAiEstimateWithoutDroppingItsNutrition() {
+		String targetDate = "2035-06-02";
+		HttpHeaders headers = authHeaders("avril");
+		Map<String, Object> aiLog = Map.ofEntries(
+				Map.entry("itemType", "AI_ESTIMATE"), Map.entry("mealType", "DINNER"), Map.entry("quantity", 1),
+				Map.entry("unit", "PORTION"), Map.entry("logDate", targetDate), Map.entry("displayName", "Plato estimado"),
+				Map.entry("aiEstimateConfidence", 88), Map.entry("aiEstimateDetails", "{\"items\":[]}"),
+				Map.entry("calories", 480), Map.entry("proteinGrams", 30), Map.entry("carbsGrams", 40),
+				Map.entry("fatGrams", 16), Map.entry("nutrients", List.of()));
+
+		ResponseEntity<List> copied = rest.postForEntity("/api/nutrition/meal-logs/batch",
+				new HttpEntity<>(Map.of("logs", List.of(aiLog)), headers), List.class);
+
+		assertThat(copied.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(copied.getBody()).hasSize(1);
+		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard?date=" + targetDate,
+				HttpMethod.GET, new HttpEntity<>(headers), String.class);
+		assertThat(dashboard.getBody()).contains("Plato estimado", "\"mealType\":\"DINNER\"", "\"calories\":424");
+	}
+
+	@Test
 	void weightHistoryUpsertsAndDeletesAndProfileWeightCreatesTodaysEntry() {
 		HttpHeaders headers = authHeaders();
 
