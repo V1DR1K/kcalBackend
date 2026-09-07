@@ -452,6 +452,41 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void usersCanShareAMealBracketAndAcceptItOnlyOncePerRecipient() throws Exception {
+		String sourceDate = "2035-05-20";
+		String targetDate = "2035-05-21";
+		HttpHeaders ownerHeaders = authHeaders("alex");
+		HttpHeaders recipientHeaders = authHeaders("avril");
+
+		ResponseEntity<String> sourceLog = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(Map.of(
+				"itemType", "FOOD", "itemId", 1, "mealType", "LUNCH", "quantity", 200,
+				"unit", "GRAM", "logDate", sourceDate), ownerHeaders), String.class);
+		assertThat(sourceLog.getStatusCode().is2xxSuccessful()).isTrue();
+
+		ResponseEntity<Map> created = rest.postForEntity("/api/nutrition/meal-shares", new HttpEntity<>(Map.of(
+				"sourceDate", sourceDate, "mealType", "LUNCH"), ownerHeaders), Map.class);
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+		String token = (String) created.getBody().get("token");
+
+		ResponseEntity<String> preview = rest.exchange("/api/nutrition/meal-shares/" + token, HttpMethod.GET,
+				new HttpEntity<>(recipientHeaders), String.class);
+		assertThat(preview.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(preview.getBody()).contains("\"sourceMealType\":\"LUNCH\"", "\"name\":\"Pechuga de Pollo\"");
+
+		ResponseEntity<Map> accepted = rest.postForEntity("/api/nutrition/meal-shares/" + token + "/accept",
+				new HttpEntity<>(Map.of("targetDate", targetDate, "mealType", "DINNER"), recipientHeaders), Map.class);
+		assertThat(accepted.getStatusCode().is2xxSuccessful()).isTrue();
+
+		ResponseEntity<String> duplicate = rest.postForEntity("/api/nutrition/meal-shares/" + token + "/accept",
+				new HttpEntity<>(Map.of("targetDate", targetDate, "mealType", "DINNER"), recipientHeaders), String.class);
+		assertThat(duplicate.getStatusCode().value()).isEqualTo(409);
+
+		ResponseEntity<String> recipientDay = rest.exchange("/api/nutrition/dashboard?date=" + targetDate,
+				HttpMethod.GET, new HttpEntity<>(recipientHeaders), String.class);
+		assertThat(recipientDay.getBody()).contains("\"mealType\":\"DINNER\"", "\"quantity\":200");
+	}
+
+	@Test
 	void authenticatedUsersCanContributeApprovedGlobalFoods() {
 		Map<String, Object> food = Map.of("name", "Privado", "category", "OTHER", "baseUnit", "GRAM",
 				"baseQuantity", 100, "calories", 100, "proteinGrams", 1, "carbsGrams", 1, "fatGrams", 1,
