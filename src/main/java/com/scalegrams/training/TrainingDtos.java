@@ -26,7 +26,7 @@ public class TrainingDtos {
     }
 
     public record CardioRecordResponse(Long id, TrainingEquipment equipment, OffsetDateTime recordedAt,
-            BigDecimal distanceKm, int durationMinutes, boolean inclined, OffsetDateTime createdAt,
+            BigDecimal distanceKm, int durationMinutes, boolean inclined, BigDecimal speedKmh, Long estimatedSteps, OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {
     }
 
@@ -39,7 +39,8 @@ public class TrainingDtos {
     }
 
     public record CardioSummaryResponse(TrainingEquipment equipment, int thresholdMinutes, long totalDurationMinutes,
-            long remainingMinutes, boolean due, CardioServiceResponse latestService) {
+            long remainingMinutes, boolean due, BigDecimal totalDistanceKm, Long totalEstimatedSteps,
+            CardioServiceResponse latestService) {
     }
 
     public record TrainingCategoryResponse(Long id, String name, TrainingModule module, boolean system,

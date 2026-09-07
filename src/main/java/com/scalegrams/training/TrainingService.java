@@ -74,6 +74,7 @@ import com.scalegrams.user.AppUser;
 
 @Service
 public class TrainingService {
+    private static final BigDecimal STEP_LENGTH_FACTOR = new BigDecimal("0.415");
     private final TrainingExerciseRepository exercises;
     private final TrainingCategoryRepository categories;
     private final TrainingPlanRepository presets;
@@ -158,9 +159,13 @@ public class TrainingService {
         long totalMinutes = latestService == null
                 ? cardioRecords.sumDuration(user, equipment)
                 : cardioRecords.sumDurationAfter(user, equipment, latestService.getServicedAt());
+        BigDecimal totalDistance = latestService == null
+                ? cardioRecords.sumDistance(user, equipment)
+                : cardioRecords.sumDistanceAfter(user, equipment, latestService.getServicedAt());
         long remainingMinutes = Math.max(1200L - totalMinutes, 0L);
         return new CardioSummaryResponse(equipment, 1200, totalMinutes, remainingMinutes,
-                totalMinutes >= 1200L, latestService == null ? null : toCardioServiceResponse(latestService));
+                totalMinutes >= 1200L, totalDistance, estimatedSteps(totalDistance, user.getHeightCm()),
+                latestService == null ? null : toCardioServiceResponse(latestService));
     }
 
     @Transactional(readOnly = true)
@@ -1644,8 +1649,21 @@ public class TrainingService {
 
     private CardioRecordResponse toCardioRecordResponse(TrainingCardioRecord record) {
         return new CardioRecordResponse(record.getId(), record.getEquipment(), record.getRecordedAt(),
-                record.getDistanceKm(), record.getDurationMinutes(), record.isInclined(), record.getCreatedAt(),
+                record.getDistanceKm(), record.getDurationMinutes(), record.isInclined(), speedKmh(record.getDistanceKm(), record.getDurationMinutes()),
+                estimatedSteps(record.getDistanceKm(), record.getUser().getHeightCm()), record.getCreatedAt(),
                 record.getUpdatedAt());
+    }
+
+    private BigDecimal speedKmh(BigDecimal distanceKm, int durationMinutes) {
+        if (distanceKm == null || durationMinutes <= 0) return null;
+        return distanceKm.multiply(BigDecimal.valueOf(60)).divide(BigDecimal.valueOf(durationMinutes), 2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private Long estimatedSteps(BigDecimal distanceKm, BigDecimal heightCm) {
+        if (distanceKm == null || heightCm == null || heightCm.signum() <= 0) return null;
+        BigDecimal stepLengthMeters = heightCm.multiply(STEP_LENGTH_FACTOR).movePointLeft(2);
+        if (stepLengthMeters.signum() <= 0) return null;
+        return distanceKm.movePointRight(3).divide(stepLengthMeters, 0, java.math.RoundingMode.HALF_UP).longValue();
     }
 
     private CardioServiceResponse toCardioServiceResponse(TrainingCardioServiceEvent service) {

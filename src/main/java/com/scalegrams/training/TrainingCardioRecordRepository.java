@@ -1,6 +1,7 @@
 package com.scalegrams.training;
 
 import java.time.OffsetDateTime;
+import java.math.BigDecimal;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -33,4 +34,22 @@ public interface TrainingCardioRecordRepository extends JpaRepository<TrainingCa
               and record.equipment = :equipment
             """)
     long sumDuration(@Param("user") AppUser user, @Param("equipment") TrainingEquipment equipment);
+
+    @Query("""
+            select coalesce(sum(record.distanceKm), 0)
+            from TrainingCardioRecord record
+            where record.user = :user
+              and record.equipment = :equipment
+            """)
+    BigDecimal sumDistance(@Param("user") AppUser user, @Param("equipment") TrainingEquipment equipment);
+
+    @Query("""
+            select coalesce(sum(record.distanceKm), 0)
+            from TrainingCardioRecord record
+            where record.user = :user
+              and record.equipment = :equipment
+              and record.recordedAt > :recordedAt
+            """)
+    BigDecimal sumDistanceAfter(@Param("user") AppUser user, @Param("equipment") TrainingEquipment equipment,
+            @Param("recordedAt") OffsetDateTime recordedAt);
 }
