@@ -168,23 +168,18 @@ public class NutritionService {
         LocalDate date = request.logDate();
         List<DayPresetItemRequest> items = readPresetItems(preset.getItemsJson());
         if (request.replace()) foodLogs.deleteAll(foodLogs.findByUserAndLogDate(user, date));
-        for (DayPresetItemRequest item : items) {
+        for (int presetIndex = 0; presetIndex < items.size(); presetIndex++) {
+            DayPresetItemRequest item = items.get(presetIndex);
             if (item.itemType() == MealItemType.AI_ESTIMATE) {
-                FoodLog log = new FoodLog();
-                log.setUser(user);
-                log.setItemType(MealItemType.AI_ESTIMATE);
-                log.setMealType(item.mealType());
-                log.setQuantity(item.quantity());
-                log.setUnit(item.unit());
-                log.setLogDate(date);
-                log.setCalories(item.calories());
-                log.setProteinGrams(item.proteinGrams());
-                log.setCarbsGrams(item.carbsGrams());
-                log.setFatGrams(item.fatGrams());
-                log.setAiEstimateName(item.displayName());
-                log.setAiEstimateConfidence(item.aiEstimateConfidence());
-                log.setAiEstimateDetails(item.aiEstimateDetails());
-                foodLogs.save(log);
+                List<AiEstimateItem> aiItems = aiEstimateItems(item);
+                for (int itemIndex = 0; itemIndex < aiItems.size(); itemIndex++) {
+                    AiEstimateItem aiItem = aiItems.get(itemIndex);
+                    Food food = materializeAiEstimateItem(user,
+                            "day-preset:" + preset.getId() + ":item:" + presetIndex + ":ai:" + itemIndex, aiItem);
+                    BigDecimal quantity = aiItem.estimatedGrams().multiply(item.quantity());
+                    addMealLog(user, new AddMealLogRequest(MealItemType.FOOD, food.getId(), item.mealType(),
+                            quantity, FoodUnit.GRAM, date), true);
+                }
             } else {
                 addMealLog(user, new AddMealLogRequest(item.itemType(), item.itemId(), item.mealType(),
                         item.quantity(), item.unit(), date));
@@ -670,7 +665,15 @@ public class NutritionService {
         List<String> skippedItems = new ArrayList<>();
         for (FoodLog log : logs) {
             if (log.getItemType() == MealItemType.AI_ESTIMATE && log.getFood() == null) {
-                skippedItems.add(log.getAiEstimateName() == null ? "Estimación de IA" : log.getAiEstimateName());
+                List<AiEstimateItem> aiItems = aiEstimateItems(log);
+                for (int itemIndex = 0; itemIndex < aiItems.size(); itemIndex++) {
+                    AiEstimateItem aiItem = aiItems.get(itemIndex);
+                    Food food = materializeAiEstimateItem(user,
+                            "food-log:" + log.getId() + ":item:" + itemIndex, aiItem);
+                    BigDecimal multiplier = log.getQuantity() == null ? BigDecimal.ONE : log.getQuantity();
+                    addAggregatedIngredient(aggregated, food,
+                            aiItem.estimatedGrams().multiply(multiplier), FoodUnit.GRAM);
+                }
                 continue;
             }
             if (log.getItemType() == MealItemType.FOOD || log.getItemType() == MealItemType.AI_ESTIMATE) {
@@ -773,6 +776,42 @@ public class NutritionService {
             throw new NotFoundException("El alimento usado por la comida fue eliminado y no puede convertirse en ingrediente.");
         }
         return food;
+    }
+
+    private List<AiEstimateItem> aiEstimateItems(FoodLog log) {
+        AiEstimateDetails details = readAiEstimateDetails(log);
+        if (details.items() != null && !details.items().isEmpty()) return details.items();
+        return List.of(fallbackAiEstimateItem(log));
+    }
+
+    private List<AiEstimateItem> aiEstimateItems(DayPresetItemRequest item) {
+        try {
+            if (item.aiEstimateDetails() != null && !item.aiEstimateDetails().isBlank()) {
+                AiEstimateDetails details = objectMapper.readValue(item.aiEstimateDetails(), AiEstimateDetails.class);
+                if (details.items() != null && !details.items().isEmpty()) return details.items();
+            }
+        } catch (JsonProcessingException ex) {
+            throw new BadRequestException("No se pudo leer la estimación guardada en el preset.");
+        }
+        Map<String, BigDecimal> nutrients = (item.nutrients() == null ? List.<NutrientValueResponse>of() : item.nutrients()).stream()
+                .filter(nutrient -> nutrient.code() != null && nutrient.value() != null)
+                .collect(Collectors.toMap(NutrientValueResponse::code, NutrientValueResponse::value, (left, right) -> right,
+                        LinkedHashMap::new));
+        return List.of(new AiEstimateItem(item.displayName() == null ? "Comida estimada" : item.displayName(),
+                BigDecimal.valueOf(100), FoodCategory.OTHER, FoodPreparation.UNSPECIFIED,
+                item.proteinGrams(), item.carbsGrams(), item.fatGrams(), nutrients));
+    }
+
+    private AiEstimateItem fallbackAiEstimateItem(FoodLog log) {
+        Map<String, BigDecimal> nutrients = log.getNutrientSnapshot().stream()
+                .filter(nutrient -> nutrient.getDefinition() != null && nutrient.getValue() != null)
+                .collect(Collectors.toMap(nutrient -> nutrient.getDefinition().getCode(), FoodLogNutrient::getValue,
+                        (left, right) -> right, LinkedHashMap::new));
+        return new AiEstimateItem(log.getAiEstimateName() == null ? "Comida estimada" : log.getAiEstimateName(),
+                BigDecimal.valueOf(100), FoodCategory.OTHER, FoodPreparation.UNSPECIFIED,
+                log.getProteinGrams() == null ? BigDecimal.ZERO : log.getProteinGrams(),
+                log.getCarbsGrams() == null ? BigDecimal.ZERO : log.getCarbsGrams(),
+                log.getFatGrams() == null ? BigDecimal.ZERO : log.getFatGrams(), nutrients);
     }
 
     private record RecipeIngredientKey(Long foodId, FoodUnit unit) { }
@@ -1006,7 +1045,9 @@ public class NutritionService {
 
     private String recentMealItemSignature(FoodLog log) {
         String item = log.getItemType() + ":" + (log.getFood() == null
-                ? log.getRecipe() == null ? "" : log.getRecipe().getId()
+                ? log.getRecipe() == null
+                        ? log.getAiEstimateName() + ":" + (log.getAiEstimateDetails() == null ? "" : log.getAiEstimateDetails())
+                        : log.getRecipe().getId()
                 : log.getFood().getId());
         String ingredients = log.getRecipeIngredients().stream()
                 .map(ingredient -> ingredient.getFood().getId() + "=" + ingredient.getQuantity() + "=" + ingredient.getUnit())
@@ -1123,31 +1164,40 @@ public class NutritionService {
         }
         AiEstimateItem item = details.items().get(itemIndex);
         validateAiEstimateItems(List.of(item));
-        FoodPreparation preparation = request.preparation() == null ? FoodPreparation.UNSPECIFIED : request.preparation();
+        String sourceId = "food-log:" + log.getId() + ":item:" + itemIndex;
+        Food food = materializeAiEstimateItem(user, sourceId, new AiEstimateItem(item.name(), item.estimatedGrams(),
+                request.category(), request.preparation(), item.proteinGrams(), item.carbsGrams(), item.fatGrams(), item.nutrients()));
+        if (request.tags() != null) {
+            food.setTags(request.tags().stream()
+                    .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
+            food = foods.save(food);
+        }
+        return toFoodResponse(food);
+    }
+
+    private Food materializeAiEstimateItem(AppUser user, String sourceId, AiEstimateItem item) {
+        FoodCategory category = item.category() == null ? FoodCategory.OTHER : item.category();
+        FoodPreparation preparation = item.preparation() == null ? FoodPreparation.UNSPECIFIED : item.preparation();
         Optional<Food> identity = foods.findActiveBySearchName(SearchTextNormalizer.normalize(item.name()), ModerationStatus.APPROVED)
                 .stream().filter(food -> "AI_ESTIMATE".equals(food.getSource())
-                        && food.getCategory() == request.category()
+                        && food.getCategory() == category
                         && (food.getPreparation() == null ? FoodPreparation.UNSPECIFIED : food.getPreparation()) == preparation
                         && (food.getBrand() == null || food.getBrand().isBlank())).findFirst();
-        if (identity.isPresent()) return toFoodResponse(identity.get());
-        String sourceId = "food-log:" + log.getId() + ":item:" + itemIndex;
+        if (identity.isPresent()) return identity.get();
         Optional<Food> saved = foods.findBySourceAndSourceId("AI_ESTIMATE", sourceId);
         if (saved.isPresent()) {
             Food food = saved.get();
             if (food.getDeletedAt() != null) {
                 throw new BadRequestException("Esta ficha fue archivada. Buscá el alimento vigente en el catálogo.");
             }
-            return toFoodResponse(food);
+            return food;
         }
-        Food existing = aiFoodMatcher.resolve(new AiEstimateFoodProposal(item.name(), request.category(), request.preparation(),
-                item.proteinGrams().multiply(BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP)),
-                item.carbsGrams().multiply(BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP)),
-                item.fatGrams().multiply(BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP)), item.nutrients())).orElse(null);
-        if (existing != null) return toFoodResponse(existing);
-        BigDecimal ratio = BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP);
+        validateAiEstimateItems(List.of(item));
+        BigDecimal estimatedGrams = item.estimatedGrams().max(BigDecimal.ONE);
+        BigDecimal ratio = BigDecimal.valueOf(100).divide(estimatedGrams, 4, RoundingMode.HALF_UP);
         Food food = new Food();
         food.setName(item.name().trim());
-        food.setCategory(request.category());
+        food.setCategory(category);
         food.setBaseUnit(FoodUnit.GRAM);
         food.setBaseQuantity(BigDecimal.valueOf(100));
         food.setProteinGrams(scale(item.proteinGrams().multiply(ratio)));
@@ -1155,19 +1205,15 @@ public class NutritionService {
         food.setFatGrams(scale(item.fatGrams().multiply(ratio)));
         food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
         addAiNutrients(food, item.nutrients(), ratio);
-        food.setPreparation(request.preparation() == null ? com.scalegrams.catalog.FoodPreparation.UNSPECIFIED : request.preparation());
+        food.setPreparation(preparation);
         food.setPreparationSource("Estimado por IA");
         initializeIdentityCookedYield(food);
         food.setSource("AI_ESTIMATE");
         food.setSourceId(sourceId);
         food.setCreatedBy(user);
         food.setCreatedAt(OffsetDateTime.now());
-        food.setModerationStatus(com.scalegrams.catalog.ModerationStatus.APPROVED);
-        if (request.tags() != null) {
-            food.setTags(request.tags().stream()
-                    .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
-        }
-        return toFoodResponse(foods.save(food));
+        food.setModerationStatus(ModerationStatus.APPROVED);
+        return foods.save(food);
     }
 
     private void applyAiEstimate(FoodLog log, String name, String description, String context, int confidence,
@@ -1235,6 +1281,9 @@ public class NutritionService {
     }
 
     private AiEstimateDetails readAiEstimateDetails(FoodLog log) {
+        if (log.getAiEstimateDetails() == null || log.getAiEstimateDetails().isBlank()) {
+            return new AiEstimateDetails("", "", List.of(), List.of());
+        }
         try {
             return objectMapper.readValue(log.getAiEstimateDetails(), AiEstimateDetails.class);
         } catch (JsonProcessingException ex) {

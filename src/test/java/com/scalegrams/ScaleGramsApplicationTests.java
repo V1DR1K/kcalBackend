@@ -41,6 +41,8 @@ import com.scalegrams.nutrition.FoodLog;
 import com.scalegrams.nutrition.FoodLogRepository;
 import com.scalegrams.nutrition.MealItemType;
 import com.scalegrams.nutrition.MealType;
+import com.scalegrams.nutrition.NutrientDefinition;
+import com.scalegrams.nutrition.NutrientDefinitionRepository;
 import com.scalegrams.recipe.RecipeRepository;
 import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
 import com.scalegrams.user.UserRepository;
@@ -74,6 +76,9 @@ class ScaleGramsApplicationTests {
 	@Autowired
 	UserRepository users;
 
+	@Autowired
+	NutrientDefinitionRepository nutrientDefinitions;
+
 	@BeforeEach
 	void resetMocks() {
 		reset(externalFoodLookup);
@@ -81,6 +86,16 @@ class ScaleGramsApplicationTests {
 		when(centralAuth.login(anyString(), anyString())).thenAnswer(invocation -> centralToken(invocation.getArgument(0, String.class)));
 		when(centralAuth.refresh(anyString())).thenReturn(centralToken("alex"));
 		when(centralJwt.subject(anyString())).thenAnswer(invocation -> UUID.nameUUIDFromBytes(invocation.getArgument(0, String.class).getBytes()));
+		nutrientDefinitions.findById("SODIUM").orElseGet(() -> {
+			NutrientDefinition sodium = new NutrientDefinition();
+			sodium.setCode("SODIUM");
+			sodium.setName("Sodio");
+			sodium.setNutrientGroup("MINERAL");
+			sodium.setUnit("mg");
+			sodium.setDisplayOrder(310);
+			sodium.setVisible(true);
+			return nutrientDefinitions.save(sodium);
+		});
 	}
 
 	private CentralAuthClient.TokenResponse centralToken(String username) {
@@ -217,7 +232,8 @@ class ScaleGramsApplicationTests {
 				Map.entry("unit", "PORTION"), Map.entry("logDate", targetDate), Map.entry("displayName", "Plato estimado"),
 				Map.entry("aiEstimateConfidence", 88), Map.entry("aiEstimateDetails", "{\"items\":[]}"),
 				Map.entry("calories", 480), Map.entry("proteinGrams", 30), Map.entry("carbsGrams", 40),
-				Map.entry("fatGrams", 16), Map.entry("nutrients", List.of()));
+				Map.entry("fatGrams", 16), Map.entry("nutrients", List.of(Map.of("code", "SODIUM", "name", "Sodio",
+						"group", "Minerales", "unit", "mg", "value", 40, "source", "AI", "status", "ESTIMATED"))));
 
 		ResponseEntity<List> copied = rest.postForEntity("/api/nutrition/meal-logs/batch",
 				new HttpEntity<>(Map.of("logs", List.of(aiLog)), headers), List.class);
@@ -226,7 +242,7 @@ class ScaleGramsApplicationTests {
 		assertThat(copied.getBody()).hasSize(1);
 		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard?date=" + targetDate,
 				HttpMethod.GET, new HttpEntity<>(headers), String.class);
-		assertThat(dashboard.getBody()).contains("Plato estimado", "\"mealType\":\"DINNER\"", "\"calories\":424");
+		assertThat(dashboard.getBody()).contains("Plato estimado", "\"mealType\":\"DINNER\"", "\"calories\":424", "SODIUM");
 	}
 
 	@Test
@@ -931,7 +947,7 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
-	void createsRecipeFromMealCombiningRepeatedFoodsAndSkippingUncatalogedAi() {
+	void createsRecipeFromMealCombiningRepeatedFoodsAndMaterializingAi() {
 		HttpHeaders headers = authHeaders();
 		String date = "2034-01-10";
 		Map<String, Object> foodLog = Map.of("itemType", "FOOD", "itemId", 1, "mealType", "LUNCH",
@@ -959,9 +975,36 @@ class ScaleGramsApplicationTests {
 				"logDate", date), headers), String.class);
 
 		assertThat(response.getStatusCode().value()).isEqualTo(200);
-		assertThat(response.getBody()).contains("\"skippedItems\":[\"IA sin catálogo\"]",
-				"\"name\":\"Almuerzo combinado\"", "\"quantity\":150.00");
+ 		assertThat(response.getBody()).doesNotContain("\"skippedItems\":[\"IA sin catálogo\"]")
+ 				.contains("\"name\":\"Almuerzo combinado\"", "\"quantity\":150.00", "\"name\":\"IA sin catálogo\"",
+ 						"\"source\":\"AI_ESTIMATE\"");
 	}
+
+ 	@Test
+ 	void applyingAiPresetMaterializesTheEstimateWithItsNutrients() {
+ 		HttpHeaders headers = authHeaders();
+ 		Map<String, Object> nutrient = Map.of("code", "SODIUM", "name", "Sodio", "group", "Minerales",
+ 				"unit", "mg", "value", 25, "source", "AI", "status", "ESTIMATED");
+ 		Map<String, Object> item = Map.ofEntries(
+ 				Map.entry("itemType", "AI_ESTIMATE"), Map.entry("mealType", "BREAKFAST"),
+ 				Map.entry("quantity", 1), Map.entry("unit", "PORTION"), Map.entry("displayName", "Desayuno IA"),
+ 				Map.entry("calories", 200), Map.entry("proteinGrams", 10), Map.entry("carbsGrams", 20),
+ 				Map.entry("fatGrams", 5), Map.entry("aiEstimateConfidence", 90),
+ 				Map.entry("aiEstimateDetails", "{\"items\":[{\"name\":\"Avena IA\",\"estimatedGrams\":100,\"category\":\"OTHER\",\"preparation\":\"UNSPECIFIED\",\"proteinGrams\":10,\"carbsGrams\":20,\"fatGrams\":5,\"nutrients\":{\"SODIUM\":25}}]}"),
+ 				Map.entry("nutrients", List.of(nutrient)));
+
+ 		ResponseEntity<Map> created = rest.postForEntity("/api/nutrition/day-presets",
+ 				new HttpEntity<>(Map.of("name", "Desayuno IA", "items", List.of(item)), headers), Map.class);
+ 		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+
+ 		ResponseEntity<Void> applied = rest.postForEntity("/api/nutrition/day-presets/" + created.getBody().get("id") + "/apply",
+ 				new HttpEntity<>(Map.of("logDate", "2034-01-11", "replace", false), headers), Void.class);
+ 		assertThat(applied.getStatusCode().is2xxSuccessful()).isTrue();
+
+ 		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard?date=2034-01-11", HttpMethod.GET,
+ 				new HttpEntity<>(headers), String.class);
+ 		assertThat(dashboard.getBody()).contains("\"itemType\":\"FOOD\"", "\"source\":\"AI_ESTIMATE\"", "Avena IA", "SODIUM");
+ 	}
 
 	@Test
 	void createsRecipeFromMealFlatteningPortionsAndCapturedCookedGrams() {

@@ -301,7 +301,8 @@ public class NutritionDtos {
             @NotNull @PositiveOrZero BigDecimal carbsGrams,
             @NotNull @PositiveOrZero BigDecimal fatGrams,
             Integer aiEstimateConfidence,
-            String aiEstimateDetails) {
+            String aiEstimateDetails,
+            List<NutrientValueResponse> nutrients) {
     }
 
     public record CreateDayPresetRequest(
