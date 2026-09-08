@@ -91,6 +91,21 @@ class TrainingControllerIntegrationTests {
     }
 
     @Test
+    void dashboardUsesTheLastSevenCalendarDaysForTrainingTotals() {
+        HttpHeaders headers = authHeaders("training-dashboard-window");
+        postCompletedSession(headers, "2040-02-29");
+        postCompletedSession(headers, "2040-03-01");
+        postCompletedSession(headers, "2040-03-07");
+        postCompletedSession(headers, "2040-03-08");
+
+        ResponseEntity<Map> dashboard = rest.exchange("/api/training/dashboard?date=2040-03-07", HttpMethod.GET,
+                new HttpEntity<>(headers), Map.class);
+        assertThat(dashboard.getStatusCode().is2xxSuccessful()).isTrue();
+        Map<?, ?> weeklySummary = (Map<?, ?>) dashboard.getBody().get("weeklySummary");
+        assertThat(weeklySummary.get("sessionCount")).isEqualTo(2);
+    }
+
+    @Test
     void rejectsWeightsForCalisthenicsSessions() {
         HttpHeaders headers = authHeaders("training-calisthenics");
         ResponseEntity<Map> exercise = rest.postForEntity("/api/training/exercises",
@@ -460,22 +475,37 @@ class TrainingControllerIntegrationTests {
         HttpHeaders headers = authHeaders("training-cardio-weekly");
         rest.exchange("/api/profile", HttpMethod.PATCH,
                 new HttpEntity<>(Map.of("heightCm", 180), headers), Map.class);
+        postCardio(headers, "2024-02-01T03:00:00Z", 60);
         postCardio(headers, "2024-02-05T03:30:00Z", 60);
         postCardio(headers, "2024-02-12T02:30:00Z", 60);
+        postCardio(headers, "2024-02-08T03:00:00Z", 60);
 
         ResponseEntity<Map> weekly = rest.exchange(
                 "/api/training/cardio/weekly?date=2024-02-07&timeZone=America/Argentina/Buenos_Aires",
                 HttpMethod.GET, new HttpEntity<>(headers), Map.class);
         assertThat(weekly.getStatusCode().is2xxSuccessful()).isTrue();
         Map<String, Object> weeklyBody = weekly.getBody();
-        assertThat(weeklyBody.get("from")).isEqualTo("2024-02-05");
-        assertThat(weeklyBody.get("to")).isEqualTo("2024-02-11");
+        assertThat(weeklyBody.get("from")).isEqualTo("2024-02-01");
+        assertThat(weeklyBody.get("to")).isEqualTo("2024-02-07");
         assertThat(weeklyBody.get("stepsAvailable")).isEqualTo(true);
         assertThat((List<?>) weeklyBody.get("days")).hasSize(7);
         assertThat(weeklyBody.get("totalEstimatedSteps").toString()).isEqualTo("13387");
-        Map<?, ?> sunday = (Map<?, ?>) ((List<?>) weeklyBody.get("days")).get(6);
-        assertThat(sunday.get("date")).isEqualTo("2024-02-11");
-        assertThat(sunday.get("sessionCount")).isEqualTo(1);
+        Map<?, ?> firstDay = (Map<?, ?>) ((List<?>) weeklyBody.get("days")).get(0);
+        assertThat(firstDay.get("date")).isEqualTo("2024-02-01");
+        assertThat(firstDay.get("sessionCount")).isEqualTo(1);
+        Map<?, ?> today = (Map<?, ?>) ((List<?>) weeklyBody.get("days")).get(6);
+        assertThat(today.get("date")).isEqualTo("2024-02-07");
+        assertThat(today.get("sessionCount")).isEqualTo(0);
+    }
+
+    private void postCompletedSession(HttpHeaders headers, String date) {
+        ResponseEntity<Map> created = rest.postForEntity("/api/training/sessions",
+                new HttpEntity<>(Map.of("date", date, "module", "GYM"), headers), Map.class);
+        assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+        ResponseEntity<Map> completed = rest.postForEntity(
+                "/api/training/sessions/" + created.getBody().get("id") + "/complete",
+                new HttpEntity<>(Map.of("version", created.getBody().get("version")), headers), Map.class);
+        assertThat(completed.getStatusCode().is2xxSuccessful()).isTrue();
     }
 
     private void postCardio(HttpHeaders headers, String recordedAt, int durationMinutes) {

@@ -257,6 +257,20 @@ class ScaleGramsApplicationTests {
 		assertThat(patched.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(patched.getBody().get("weightKg")).hasToString("80.0");
 
+		ResponseEntity<Map> heightPatched = rest.exchange("/api/profile", HttpMethod.PATCH,
+				new HttpEntity<>(Map.of("heightCm", 182.5), headers), Map.class);
+		assertThat(heightPatched.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(heightPatched.getBody().get("heightCm")).hasToString("182.5");
+
+		ResponseEntity<Map> reloadedProfile = rest.exchange("/api/profile", HttpMethod.GET,
+				new HttpEntity<>(headers), Map.class);
+		assertThat(reloadedProfile.getBody().get("heightCm")).hasToString("182.5");
+
+		ResponseEntity<String> invalidHeight = rest.exchange("/api/profile", HttpMethod.PATCH,
+				new HttpEntity<>(Map.of("heightCm", 0), headers), String.class);
+		assertThat(invalidHeight.getStatusCode().value()).isEqualTo(400);
+		assertThat(invalidHeight.getBody()).contains("heightCm");
+
 		ResponseEntity<List> afterPatch = rest.exchange("/api/profile/weight-entries", HttpMethod.GET,
 				new HttpEntity<>(headers), List.class);
 		assertThat(afterPatch.getBody()).hasSize(2);

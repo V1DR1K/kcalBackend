@@ -180,8 +180,8 @@ public class TrainingService {
     public WeeklyCardioSummaryResponse cardioWeekly(AppUser user, LocalDate date, String timeZone) {
         ZoneId zone = resolveTimeZone(timeZone);
         LocalDate anchor = date == null ? LocalDate.now(zone) : date;
-        LocalDate from = anchor.with(DayOfWeek.MONDAY);
-        LocalDate to = from.plusDays(6);
+        LocalDate from = anchor.minusDays(6);
+        LocalDate to = anchor;
         OffsetDateTime fromInstant = from.atStartOfDay(zone).toOffsetDateTime();
         OffsetDateTime toInstant = to.plusDays(1).atStartOfDay(zone).toOffsetDateTime();
         List<TrainingCardioRecord> records = cardioRecords
@@ -908,8 +908,8 @@ public class TrainingService {
                 .map(this::toSessionSummaryResponse)
                 .orElse(null);
 
-        LocalDate weekStart = date.with(DayOfWeek.MONDAY);
-        LocalDate weekEnd = weekStart.plusDays(6);
+        LocalDate weekStart = date.minusDays(6);
+        LocalDate weekEnd = date;
         List<TrainingSession> weekSessions = sessions.search(user, weekStart, weekEnd, null, null, null, null, null,
                 page(0, 50, Sort.by(Sort.Order.desc("sessionDate"), Sort.Order.desc("id")))).getContent();
         long sessionCount = weekSessions.stream()
