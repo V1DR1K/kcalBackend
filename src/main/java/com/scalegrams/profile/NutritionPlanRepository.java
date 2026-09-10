@@ -16,6 +16,16 @@ public interface NutritionPlanRepository extends JpaRepository<NutritionPlan, Lo
 
     Optional<NutritionPlan> findByIdAndUserAndActiveTrue(Long id, AppUser user);
 
+    @Query("""
+            select count(plan) > 0 from NutritionPlan plan
+            where plan.user = :user
+              and plan.active = true
+              and lower(trim(plan.name)) = lower(trim(:name))
+              and (:excludedId is null or plan.id <> :excludedId)
+            """)
+    boolean existsActiveName(@Param("user") AppUser user, @Param("name") String name,
+            @Param("excludedId") Long excludedId);
+
     default Optional<NutritionPlan> findActiveForUserAndDate(AppUser user, LocalDate date) {
         return findActiveForUserAndDate(user, date, Pageable.ofSize(1)).stream().findFirst();
     }

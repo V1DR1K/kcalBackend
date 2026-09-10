@@ -224,6 +224,22 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void rejectsDuplicateActiveNutritionPlanNamesIgnoringCaseAndWhitespace() {
+		HttpHeaders headers = authHeaders("duplicate-plan-user");
+		NutritionPlanRequest first = new NutritionPlanRequest("Plan de fuerza", 2200, 30, 45, 25, "2040-01-01", null);
+		ResponseEntity<NutritionPlanResponse> created = rest.postForEntity("/api/profile/nutrition-plans",
+				new HttpEntity<>(first, headers), NutritionPlanResponse.class);
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+
+		NutritionPlanRequest duplicate = new NutritionPlanRequest("  plan DE FUERZA ", 2400, 25, 50, 25, "2041-01-01", null);
+		ResponseEntity<String> response = rest.postForEntity("/api/profile/nutrition-plans",
+				new HttpEntity<>(duplicate, headers), String.class);
+
+		assertThat(response.getStatusCode().value()).isEqualTo(400);
+		assertThat(response.getBody()).contains("Ya existe un plan con ese nombre.");
+	}
+
+	@Test
 	void batchCopiesAiEstimateWithoutDroppingItsNutrition() {
 		String targetDate = "2035-06-02";
 		HttpHeaders headers = authHeaders("avril");

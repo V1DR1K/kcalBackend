@@ -107,12 +107,12 @@ public class ProfileService {
 
     @Transactional
     public NutritionPlanResponse createPlan(AppUser user, UpsertNutritionPlanRequest request) {
-        validatePlan(request);
         LocalDate previousEnd = request.startDate().minusDays(1);
         NutritionPlan sameDay = nutritionPlans.findActiveForUserAndDate(user, request.startDate()).stream()
                 .filter(plan -> plan.getEndDate() == null || !plan.getEndDate().isBefore(request.startDate()))
                 .filter(plan -> plan.getStartDate().equals(request.startDate()))
                 .findFirst().orElse(null);
+        validatePlan(user, request, sameDay == null ? null : sameDay.getId());
         NutritionPlan plan;
         if (sameDay != null) {
             plan = sameDay;
@@ -135,9 +135,9 @@ public class ProfileService {
 
     @Transactional
     public NutritionPlanResponse updatePlan(AppUser user, Long id, UpsertNutritionPlanRequest request) {
-        validatePlan(request);
         NutritionPlan plan = nutritionPlans.findByIdAndUserAndActiveTrue(id, user)
                 .orElseThrow(() -> new NotFoundException("Plan alimenticio no encontrado."));
+        validatePlan(user, request, plan.getId());
         applyPlan(plan, request);
         syncUserFallback(user, plan);
         users.save(user);
@@ -188,7 +188,11 @@ public class ProfileService {
                 user.getProteinGoalGrams(), user.getCarbsGoalGrams(), user.getFatGoalGrams(), user.getWaterGoalLiters());
     }
 
-    private void validatePlan(UpsertNutritionPlanRequest request) {
+    private void validatePlan(AppUser user, UpsertNutritionPlanRequest request, Long excludedId) {
+        String normalizedName = request.name().trim();
+        if (nutritionPlans.existsActiveName(user, normalizedName, excludedId)) {
+            throw new BadRequestException("Ya existe un plan con ese nombre.");
+        }
         if (request.endDate() != null && request.endDate().isBefore(request.startDate())) {
             throw new BadRequestException("La fecha fin no puede ser anterior al inicio.");
         }
