@@ -137,6 +137,7 @@ public class NutritionService {
         DayPreset preset = new DayPreset();
         preset.setUser(user);
         preset.setName(name);
+        preset.setDescription(cleanPresetDescription(request.description()));
         preset.setItemsJson(writePresetItems(validatePresetItems(request.items())));
         preset.setCreatedAt(OffsetDateTime.now());
         preset.setUpdatedAt(OffsetDateTime.now());
@@ -149,6 +150,7 @@ public class NutritionService {
         String name = normalizedPresetName(request.name());
         ensurePresetNameAvailable(user, name, id);
         preset.setName(name);
+        preset.setDescription(cleanPresetDescription(request.description()));
         preset.setItemsJson(writePresetItems(validatePresetItems(request.items())));
         preset.setUpdatedAt(OffsetDateTime.now());
         return toDayPresetResponse(dayPresets.save(preset));
@@ -198,6 +200,11 @@ public class NutritionService {
         return name;
     }
 
+    private String cleanPresetDescription(String value) {
+        String description = value == null ? "" : value.trim();
+        return description.isBlank() ? null : description;
+    }
+
     private void ensurePresetNameAvailable(AppUser user, String name, Long ignoredId) {
         boolean taken = dayPresets.existsActiveName(user, name);
         if (taken && (ignoredId == null || dayPresets.findByIdAndUserAndDeletedAtIsNull(ignoredId, user)
@@ -232,7 +239,7 @@ public class NutritionService {
         List<DayPresetItemRequest> items = readPresetItems(preset.getItemsJson());
         Map<String, Integer> mealCounts = items.stream().collect(Collectors.groupingBy(item -> item.mealType().name(),
                 LinkedHashMap::new, Collectors.collectingAndThen(Collectors.counting(), Long::intValue)));
-        return new DayPresetResponse(preset.getId(), preset.getName(), preset.getCreatedAt(), preset.getUpdatedAt(),
+        return new DayPresetResponse(preset.getId(), preset.getName(), preset.getDescription(), preset.getCreatedAt(), preset.getUpdatedAt(),
                 items, items.size(), mealCounts);
     }
 

@@ -296,6 +296,7 @@ public class NutritionDtos {
             @NotNull @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity,
             @NotNull FoodUnit unit,
             String displayName,
+            String imageUrl,
             Integer calories,
             @NotNull @PositiveOrZero BigDecimal proteinGrams,
             @NotNull @PositiveOrZero BigDecimal carbsGrams,
@@ -307,15 +308,17 @@ public class NutritionDtos {
 
     public record CreateDayPresetRequest(
             @NotBlank @Size(min = 1, max = 120) String name,
+            @Size(max = 240) String description,
             @NotEmpty @Size(max = 200) List<@NotNull @Valid DayPresetItemRequest> items) {
     }
 
     public record UpdateDayPresetRequest(
             @NotBlank @Size(min = 1, max = 120) String name,
+            @Size(max = 240) String description,
             @NotEmpty @Size(max = 200) List<@NotNull @Valid DayPresetItemRequest> items) {
     }
 
-    public record DayPresetResponse(Long id, String name, OffsetDateTime createdAt, OffsetDateTime updatedAt,
+    public record DayPresetResponse(Long id, String name, String description, OffsetDateTime createdAt, OffsetDateTime updatedAt,
             List<DayPresetItemRequest> items, int itemCount, Map<String, Integer> mealCounts) {
     }
 

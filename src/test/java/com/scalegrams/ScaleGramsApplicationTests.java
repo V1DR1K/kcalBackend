@@ -985,17 +985,21 @@ class ScaleGramsApplicationTests {
  		HttpHeaders headers = authHeaders();
  		Map<String, Object> nutrient = Map.of("code", "SODIUM", "name", "Sodio", "group", "Minerales",
  				"unit", "mg", "value", 25, "source", "AI", "status", "ESTIMATED");
- 		Map<String, Object> item = Map.ofEntries(
- 				Map.entry("itemType", "AI_ESTIMATE"), Map.entry("mealType", "BREAKFAST"),
- 				Map.entry("quantity", 1), Map.entry("unit", "PORTION"), Map.entry("displayName", "Desayuno IA"),
+		Map<String, Object> item = Map.ofEntries(
+				Map.entry("itemType", "AI_ESTIMATE"), Map.entry("mealType", "BREAKFAST"),
+				Map.entry("quantity", 1), Map.entry("unit", "PORTION"), Map.entry("displayName", "Desayuno IA"),
+				Map.entry("imageUrl", "/category-assets/oat.webp"),
  				Map.entry("calories", 200), Map.entry("proteinGrams", 10), Map.entry("carbsGrams", 20),
  				Map.entry("fatGrams", 5), Map.entry("aiEstimateConfidence", 90),
  				Map.entry("aiEstimateDetails", "{\"items\":[{\"name\":\"Avena IA\",\"estimatedGrams\":100,\"category\":\"OTHER\",\"preparation\":\"UNSPECIFIED\",\"proteinGrams\":10,\"carbsGrams\":20,\"fatGrams\":5,\"nutrients\":{\"SODIUM\":25}}]}"),
  				Map.entry("nutrients", List.of(nutrient)));
 
- 		ResponseEntity<Map> created = rest.postForEntity("/api/nutrition/day-presets",
- 				new HttpEntity<>(Map.of("name", "Desayuno IA", "items", List.of(item)), headers), Map.class);
- 		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+		ResponseEntity<Map> created = rest.postForEntity("/api/nutrition/day-presets",
+				new HttpEntity<>(Map.of("name", "Desayuno IA", "description", "Una mañana rápida", "items", List.of(item)), headers), Map.class);
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(created.getBody()).containsEntry("description", "Una mañana rápida");
+		assertThat((java.util.List<Map<String, Object>>) created.getBody().get("items"))
+				.anySatisfy(savedItem -> assertThat(savedItem).containsEntry("imageUrl", "/category-assets/oat.webp"));
 
  		ResponseEntity<Void> applied = rest.postForEntity("/api/nutrition/day-presets/" + created.getBody().get("id") + "/apply",
  				new HttpEntity<>(Map.of("logDate", "2034-01-11", "replace", false), headers), Void.class);

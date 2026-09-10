@@ -32,6 +32,9 @@ public class DayPreset {
     @Column(nullable = false, length = 120)
     private String name;
 
+    @Column(length = 240)
+    private String description;
+
     @Column(name = "items_json", nullable = false, columnDefinition = "LONGTEXT")
     private String itemsJson;
 
