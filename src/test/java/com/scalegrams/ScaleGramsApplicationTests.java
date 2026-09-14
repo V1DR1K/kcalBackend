@@ -554,6 +554,39 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void usersCanAcceptLegacyAiMealShares() {
+		String sourceDate = "2035-05-22";
+		String targetDate = "2035-05-23";
+		var owner = users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow();
+		FoodLog log = new FoodLog();
+		log.setUser(owner);
+		log.setItemType(MealItemType.AI_ESTIMATE);
+		log.setMealType(MealType.LUNCH);
+		log.setLogDate(java.time.LocalDate.parse(sourceDate));
+		log.setQuantity(BigDecimal.ONE);
+		log.setUnit(FoodUnit.PORTION);
+		log.setCalories(420);
+		log.setProteinGrams(BigDecimal.valueOf(28));
+		log.setCarbsGrams(BigDecimal.valueOf(35));
+		log.setFatGrams(BigDecimal.valueOf(14));
+		log.setAiEstimateName("Plato IA legado");
+		log.setAiEstimateConfidence(82);
+		foodLogs.save(log);
+
+		ResponseEntity<Map> created = rest.postForEntity("/api/nutrition/meal-shares",
+				new HttpEntity<>(Map.of("sourceDate", sourceDate, "mealType", "LUNCH"), authHeaders("alex")), Map.class);
+		String token = (String) created.getBody().get("token");
+		ResponseEntity<Map> accepted = rest.postForEntity("/api/nutrition/meal-shares/" + token + "/accept",
+				new HttpEntity<>(Map.of("targetDate", targetDate, "mealType", "DINNER"), authHeaders("avril")), Map.class);
+
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(accepted.getStatusCode().is2xxSuccessful()).isTrue();
+		ResponseEntity<String> recipientDay = rest.exchange("/api/nutrition/dashboard?date=" + targetDate,
+				HttpMethod.GET, new HttpEntity<>(authHeaders("avril")), String.class);
+		assertThat(recipientDay.getBody()).contains("Plato IA legado", "\"mealType\":\"DINNER\"", "\"calories\":378");
+	}
+
+	@Test
 	void authenticatedUsersCanContributeApprovedGlobalFoods() {
 		Map<String, Object> food = Map.of("name", "Privado", "category", "OTHER", "baseUnit", "GRAM",
 				"baseQuantity", 100, "calories", 100, "proteinGrams", 1, "carbsGrams", 1, "fatGrams", 1,

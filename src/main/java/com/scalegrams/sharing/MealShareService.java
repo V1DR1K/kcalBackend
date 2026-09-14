@@ -110,12 +110,17 @@ public class MealShareService {
     }
 
     private FoodLog createFoodLog(AppUser recipient, AcceptMealShareRequest request, SharedMealItem item) {
+        Food food = item.foodId() == null ? null : foods.findById(item.foodId()).orElse(null);
+        var recipe = item.recipeId() == null ? null : recipes.findById(item.recipeId()).orElse(null);
+        MealItemType itemType = item.itemType();
+        if (itemType == MealItemType.FOOD && food == null) itemType = MealItemType.AI_ESTIMATE;
+        if (itemType == MealItemType.RECIPE && recipe == null) itemType = MealItemType.AI_ESTIMATE;
+
         FoodLog log = new FoodLog();
         log.setUser(recipient);
-        log.setItemType(item.itemType());
-        log.setFood(item.foodId() == null ? null : foods.findById(item.foodId()).orElse(null));
-        log.setRecipe(item.recipeId() == null ? null : recipes.findById(item.recipeId())
-                .orElseThrow(() -> new NotFoundException("La receta compartida ya no existe.")));
+        log.setItemType(itemType);
+        log.setFood(itemType == MealItemType.FOOD ? food : null);
+        log.setRecipe(itemType == MealItemType.RECIPE ? recipe : null);
         log.setMealType(request.mealType());
         log.setLogDate(request.targetDate());
         log.setQuantity(item.quantity());
@@ -127,7 +132,7 @@ public class MealShareService {
         log.setAiEstimateName(item.displayName());
         log.setAiEstimateConfidence(item.aiEstimateConfidence());
         log.setAiEstimateDetails(item.aiEstimateDetails());
-        for (SharedNutrient nutrient : item.nutrients()) {
+        for (SharedNutrient nutrient : item.nutrients() == null ? List.<SharedNutrient>of() : item.nutrients()) {
             nutrientDefinitions.findById(nutrient.code()).ifPresent(definition -> {
                 FoodLogNutrient copy = new FoodLogNutrient();
                 copy.setFoodLog(log);
@@ -138,7 +143,8 @@ public class MealShareService {
                 log.getNutrientSnapshot().add(copy);
             });
         }
-        for (SharedRecipeIngredient ingredient : item.recipeIngredients()) {
+        for (SharedRecipeIngredient ingredient : itemType == MealItemType.RECIPE && item.recipeIngredients() != null
+                ? item.recipeIngredients() : List.<SharedRecipeIngredient>of()) {
             FoodLogRecipeIngredient copy = new FoodLogRecipeIngredient();
             copy.setFoodLog(log);
             copy.setFood(foods.findById(ingredient.foodId()).orElseThrow(() -> new NotFoundException("Un ingrediente compartido ya no existe.")));
