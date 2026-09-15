@@ -61,10 +61,12 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/training")
 public class TrainingController {
     private final TrainingService trainingService;
+    private final TrainingPlanService trainingPlanService;
     private final CurrentUser currentUser;
 
-    public TrainingController(TrainingService trainingService, CurrentUser currentUser) {
+    public TrainingController(TrainingService trainingService, TrainingPlanService trainingPlanService, CurrentUser currentUser) {
         this.trainingService = trainingService;
+        this.trainingPlanService = trainingPlanService;
         this.currentUser = currentUser;
     }
 
@@ -190,48 +192,48 @@ public class TrainingController {
             @RequestParam(required = false) TrainingModule module,
             @RequestParam(defaultValue = "false") boolean includeInactive,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return trainingService.plans(currentUser.from(authentication), module, includeInactive, page, size);
+        return trainingPlanService.search(currentUser.from(authentication), module, includeInactive, page, size);
     }
 
     @GetMapping("/plans/{id}")
     TrainingPlanDetailResponse plan(Authentication authentication, @PathVariable Long id) {
-        return trainingService.plan(currentUser.from(authentication), id);
+        return trainingPlanService.find(currentUser.from(authentication), id);
     }
 
     @PostMapping("/plans")
     TrainingPlanDetailResponse createPlan(Authentication authentication,
             @Valid @RequestBody UpsertTrainingPlanRequest request) {
-        return trainingService.createPlan(currentUser.from(authentication), request);
+        return trainingPlanService.create(currentUser.from(authentication), request);
     }
 
     @PutMapping("/plans/{id}")
     TrainingPlanDetailResponse updatePlan(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody UpsertTrainingPlanRequest request) {
-        return trainingService.updatePlan(currentUser.from(authentication), id, request);
+        return trainingPlanService.update(currentUser.from(authentication), id, request);
     }
 
     @DeleteMapping("/plans/{id}")
     ResponseEntity<Void> deletePlan(Authentication authentication, @PathVariable Long id) {
-        trainingService.deletePreset(currentUser.from(authentication), id);
+        trainingPlanService.delete(currentUser.from(authentication), id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/plans/{id}/duplicate")
     TrainingPlanDetailResponse duplicatePlan(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody DuplicateTrainingPlanRequest request) {
-        return trainingService.duplicatePlan(currentUser.from(authentication), id, request);
+        return trainingPlanService.duplicate(currentUser.from(authentication), id, request);
     }
 
     @GetMapping("/plans/{id}/resolve")
     TrainingPlanResolutionResponse resolvePlan(Authentication authentication, @PathVariable Long id,
             @RequestParam LocalDate date) {
-        return trainingService.resolvePlan(currentUser.from(authentication), id, date);
+        return trainingPlanService.resolve(currentUser.from(authentication), id, date);
     }
 
     @PostMapping("/plans/{id}/skip")
     TrainingSessionResponse skipPlanSession(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody SkipTrainingPlanSessionRequest request) {
-        return trainingService.skipPlanSession(currentUser.from(authentication), id, request);
+        return trainingPlanService.skipSession(currentUser.from(authentication), id, request);
     }
 
     @GetMapping("/presets/{id}")

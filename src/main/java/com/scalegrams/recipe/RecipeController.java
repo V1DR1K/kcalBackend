@@ -20,18 +20,17 @@ import com.scalegrams.nutrition.NutritionDtos.PageResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeOwnerResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeFromMealResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeResponse;
-import com.scalegrams.nutrition.NutritionService;
 
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/recipes")
 public class RecipeController {
-    private final NutritionService nutritionService;
+    private final RecipeService recipeService;
     private final CurrentUser currentUser;
 
-    public RecipeController(NutritionService nutritionService, CurrentUser currentUser) {
-        this.nutritionService = nutritionService;
+    public RecipeController(RecipeService recipeService, CurrentUser currentUser) {
+        this.recipeService = recipeService;
         this.currentUser = currentUser;
     }
 
@@ -39,61 +38,61 @@ public class RecipeController {
     PageResponse<RecipeResponse> search(@RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return nutritionService.searchRecipes(q, page, size);
+        return recipeService.search(q, page, size);
     }
 
     @GetMapping("/{id}")
     RecipeResponse find(@PathVariable Long id) {
-        return nutritionService.findRecipe(id);
+        return recipeService.find(id);
     }
 
     @GetMapping("/mine")
     PageResponse<RecipeResponse> mine(Authentication authentication, @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return nutritionService.searchOwnedRecipes(currentUser.from(authentication), q, page, size);
+        return recipeService.searchOwned(currentUser.from(authentication), q, page, size);
     }
 
     @GetMapping("/explore/users")
     java.util.List<RecipeOwnerResponse> authors(Authentication authentication) {
-        return nutritionService.recipeAuthors(currentUser.from(authentication));
+        return recipeService.authors(currentUser.from(authentication));
     }
 
     @GetMapping("/explore/users/{ownerId}")
     PageResponse<RecipeResponse> byAuthor(@PathVariable Long ownerId, @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return nutritionService.searchRecipesByOwner(ownerId, q, page, size);
+        return recipeService.searchByOwner(ownerId, q, page, size);
     }
 
     @PostMapping
     RecipeResponse create(Authentication authentication, @Valid @RequestBody CreateRecipeRequest request) {
-        return nutritionService.createRecipe(currentUser.from(authentication), request);
+        return recipeService.create(currentUser.from(authentication), request);
     }
 
     @PostMapping("/from-meal")
     RecipeFromMealResponse createFromMeal(Authentication authentication,
             @Valid @RequestBody CreateRecipeFromMealRequest request) {
-        return nutritionService.createRecipeFromMeal(currentUser.from(authentication), request);
+        return recipeService.createFromMeal(currentUser.from(authentication), request);
     }
 
     @PostMapping("/{id}/copy")
     RecipeResponse copy(Authentication authentication, @PathVariable Long id) {
-        return nutritionService.copyRecipe(currentUser.from(authentication), id);
+        return recipeService.copy(currentUser.from(authentication), id);
     }
 
     @PutMapping("/{id}")
     RecipeResponse update(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody CreateRecipeRequest request) {
-        return nutritionService.updateOwnedRecipe(currentUser.from(authentication), id, request);
+        return recipeService.update(currentUser.from(authentication), id, request);
     }
 
     @DeleteMapping("/{id}")
     ResponseEntity<Void> delete(Authentication authentication, @PathVariable Long id) {
-        nutritionService.deleteOwnedRecipe(currentUser.from(authentication), id);
+        recipeService.delete(currentUser.from(authentication), id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/preview")
     NutritionPreviewResponse preview(@Valid @RequestBody CreateRecipeRequest request) {
-        return nutritionService.previewRecipe(request);
+        return recipeService.preview(request);
     }
 }

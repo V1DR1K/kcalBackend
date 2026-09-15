@@ -24,6 +24,7 @@ import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.BatchSize;
 
 @Entity
 @Table(name = "training_preset")
@@ -78,6 +79,7 @@ public class TrainingPlan {
     private OffsetDateTime deletedAt;
 
     @OneToMany(mappedBy = "plan", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 32)
     @OrderBy("position ASC, id ASC")
     private List<TrainingPlanDay> days = new ArrayList<>();
 }

@@ -23,6 +23,7 @@ import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.BatchSize;
 
 @Entity
 @Table(name = "training_day")
@@ -67,6 +68,7 @@ public class TrainingPlanDay {
     private OffsetDateTime deletedAt;
 
     @OneToMany(mappedBy = "planDay", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 32)
     @OrderBy("position ASC, id ASC")
     private List<TrainingPlanExercise> exercises = new ArrayList<>();
 }
