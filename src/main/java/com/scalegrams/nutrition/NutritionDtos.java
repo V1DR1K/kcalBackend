@@ -325,7 +325,16 @@ public class NutritionDtos {
     public record ApplyDayPresetRequest(@NotNull LocalDate logDate, boolean replace) {
     }
 
-    public record RecipeIngredientRequest(@NotNull Long foodId, @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, @NotNull FoodUnit unit) {
+    public record RecipeIngredientRequest(@Positive Long foodId, @Positive Long recipeId,
+            @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, @NotNull FoodUnit unit) {
+        public RecipeIngredientRequest(Long foodId, BigDecimal quantity, FoodUnit unit) {
+            this(foodId, null, quantity, unit);
+        }
+
+        @AssertTrue(message = "Cada ingrediente debe referenciar un alimento o una receta, pero no ambos.")
+        public boolean hasSingleReference() {
+            return (foodId != null) ^ (recipeId != null);
+        }
     }
 
     public record CreateRecipeRequest(
@@ -349,7 +358,12 @@ public class NutritionDtos {
             @Positive @Digits(integer = 36, fraction = 2) BigDecimal cookedTotalWeightGrams) {
     }
 
-    public record RecipeIngredientResponse(FoodResponse food, BigDecimal quantity, FoodUnit unit) {
+    public record RecipeIngredientResponse(FoodResponse food, RecipeReferenceResponse recipe, BigDecimal quantity, FoodUnit unit) {
+    }
+
+    public record RecipeReferenceResponse(Long id, String name, String description, BigDecimal rawTotalWeightGrams,
+            BigDecimal cookedTotalWeightGrams, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams,
+            BigDecimal fatGrams) {
     }
 
     public record RecipeResponse(Long id, String name, String description, BigDecimal totalWeightGrams,

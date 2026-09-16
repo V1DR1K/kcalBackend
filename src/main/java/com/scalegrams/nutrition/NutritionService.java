@@ -8,6 +8,7 @@ import java.time.YearMonth;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -75,6 +76,7 @@ import com.scalegrams.nutrition.NutritionDtos.SaveAiEstimateItemRequest;
 import com.scalegrams.nutrition.NutritionDtos.PageResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientRequest;
+import com.scalegrams.nutrition.NutritionDtos.RecipeReferenceResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeFromMealResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeOwnerResponse;
@@ -749,10 +751,32 @@ public class NutritionService {
         } else {
             throw new BadRequestException("Las recetas solo se pueden aplanar por porción o por gramos cocidos.");
         }
-        for (RecipeIngredient ingredient : recipe.getIngredients()) {
-            addAggregatedIngredient(target, requireActiveFood(ingredient.getFood()),
-                    multiplyIngredientQuantity(ingredient.getQuantity(), multiplier), ingredient.getUnit());
+        flattenRecipeIngredients(recipe, multiplier, target, new HashSet<>());
+    }
+
+    private void flattenRecipeIngredients(Recipe recipe, BigDecimal multiplier,
+            Map<RecipeIngredientKey, AggregatedRecipeIngredient> target, Set<Long> visited) {
+        if (recipe == null || recipe.getId() == null || !visited.add(recipe.getId())) {
+            throw new BadRequestException("No se puede aplanar una receta con referencias circulares.");
         }
+        for (RecipeIngredient ingredient : recipe.getIngredients()) {
+            BigDecimal scaledQuantity = multiplyIngredientQuantity(ingredient.getQuantity(), multiplier);
+            if (ingredient.getFood() != null) {
+                addAggregatedIngredient(target, requireActiveFood(ingredient.getFood()), scaledQuantity, ingredient.getUnit());
+                continue;
+            }
+            Recipe nested = ingredient.getIngredientRecipe();
+            if (nested == null) throw new BadRequestException("La receta contiene un ingrediente sin referencia.");
+            BigDecimal nestedWeight = recipeIngredientWeight(nested);
+            BigDecimal nestedMultiplier = ingredient.getQuantity().multiply(multiplier)
+                    .divide(nestedWeight, 8, RoundingMode.HALF_UP);
+            flattenRecipeIngredients(nested, nestedMultiplier, target, new HashSet<>(visited));
+        }
+    }
+
+    private BigDecimal recipeIngredientWeight(Recipe recipe) {
+        BigDecimal weight = recipeIngredientWeight(recipe);
+        return weight;
     }
 
     private void addAggregatedIngredient(Map<RecipeIngredientKey, AggregatedRecipeIngredient> target, Food food,
@@ -843,6 +867,7 @@ public class NutritionService {
             RecipeIngredient ingredient = new RecipeIngredient();
             ingredient.setRecipe(copy);
             ingredient.setFood(sourceIngredient.getFood());
+            ingredient.setIngredientRecipe(sourceIngredient.getIngredientRecipe());
             ingredient.setQuantity(sourceIngredient.getQuantity());
             ingredient.setUnit(sourceIngredient.getUnit());
             copy.getIngredients().add(ingredient);
@@ -874,6 +899,9 @@ public class NutritionService {
         if (foodLogs.existsByRecipeId(id)) {
             throw new BadRequestException("No se puede borrar una receta que ya tiene registros en comidas.");
         }
+        if (recipes.existsReferencingRecipe(id)) {
+            throw new BadRequestException("No se puede borrar una receta usada como ingrediente en otra receta.");
+        }
         recipes.delete(recipe);
     }
 
@@ -882,7 +910,13 @@ public class NutritionService {
         for (var item : request.ingredients()) {
             RecipeIngredient ingredient = new RecipeIngredient();
             ingredient.setRecipe(recipe);
-            ingredient.setFood(allowDeletedFoods ? getFood(item.foodId()) : getActiveFood(item.foodId()));
+            if (item.foodId() != null) {
+                ingredient.setFood(allowDeletedFoods ? getFood(item.foodId()) : getActiveFood(item.foodId()));
+            } else {
+                Recipe ingredientRecipe = getRecipe(item.recipeId());
+                validateRecipeIngredient(recipe, ingredientRecipe, item.unit());
+                ingredient.setIngredientRecipe(ingredientRecipe);
+            }
             ingredient.setQuantity(item.quantity());
             ingredient.setUnit(item.unit());
             recipe.getIngredients().add(ingredient);
@@ -896,7 +930,10 @@ public class NutritionService {
             int match = -1;
             for (int index = 0; index < remaining.size(); index++) {
                 RecipeIngredient ingredient = remaining.get(index);
-                if (ingredient.getFood().getId().equals(request.foodId())
+                boolean sameReference = request.foodId() != null
+                        ? ingredient.getFood() != null && ingredient.getFood().getId().equals(request.foodId())
+                        : ingredient.getIngredientRecipe() != null && ingredient.getIngredientRecipe().getId().equals(request.recipeId());
+                if (sameReference
                     && ingredient.getUnit() == request.unit()
                     && ingredient.getQuantity().compareTo(request.quantity()) == 0) {
                     match = index;
@@ -938,7 +975,13 @@ public class NutritionService {
         for (var item : request.ingredients()) {
             RecipeIngredient ingredient = new RecipeIngredient();
             ingredient.setRecipe(recipe);
-            ingredient.setFood(getActiveFood(item.foodId()));
+            if (item.foodId() != null) {
+                ingredient.setFood(getActiveFood(item.foodId()));
+            } else {
+                Recipe ingredientRecipe = getRecipe(item.recipeId());
+                validateRecipeIngredient(recipe, ingredientRecipe, item.unit());
+                ingredient.setIngredientRecipe(ingredientRecipe);
+            }
             ingredient.setQuantity(item.quantity());
             ingredient.setUnit(item.unit());
             recipe.getIngredients().add(ingredient);
@@ -1370,6 +1413,9 @@ public class NutritionService {
     }
 
     private void replaceRecipeLogIngredients(FoodLog log, Recipe recipe, List<RecipeIngredientRequest> requests) {
+        if (recipe.getIngredients().stream().anyMatch(item -> item.getIngredientRecipe() != null)) {
+            throw new BadRequestException("No se pueden ajustar recetas usadas como ingredientes en un registro diario.");
+        }
         Set<Long> baseFoodIds = recipe.getIngredients().stream().map(item -> item.getFood().getId()).collect(Collectors.toSet());
         Set<Long> requestedFoodIds = requests.stream().map(RecipeIngredientRequest::foodId).collect(Collectors.toSet());
         if (requestedFoodIds.size() != requests.size() || !requestedFoodIds.equals(baseFoodIds)) {
@@ -1485,6 +1531,25 @@ public class NutritionService {
         return recipes.findById(recipeId).orElseThrow(() -> new NotFoundException("Receta no encontrada."));
     }
 
+    private void validateRecipeIngredient(Recipe parent, Recipe ingredientRecipe, FoodUnit unit) {
+        if (unit != FoodUnit.GRAM) {
+            throw new BadRequestException("Las recetas usadas como ingredientes se expresan en gramos.");
+        }
+        if (parent.getId() != null && referencesRecipe(ingredientRecipe, parent.getId(), new HashSet<>())) {
+            throw new BadRequestException("No se puede agregar una receta que genera una referencia circular.");
+        }
+    }
+
+    private boolean referencesRecipe(Recipe source, Long targetId, Set<Long> visited) {
+        if (source == null || source.getId() == null || !visited.add(source.getId())) return false;
+        for (RecipeIngredient ingredient : source.getIngredients()) {
+            Recipe nested = ingredient.getIngredientRecipe();
+            if (nested == null) continue;
+            if (targetId.equals(nested.getId()) || referencesRecipe(nested, targetId, visited)) return true;
+        }
+        return false;
+    }
+
     private FoodLog ownedRecipeLog(AppUser user, Long logId) {
         FoodLog log = foodLogs.findByIdAndUser(logId, user)
                 .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));
@@ -1526,6 +1591,27 @@ public class NutritionService {
                 protein,
                 carbs,
                 fat,
+                scaleRecipeNutrients(recipe, ratio));
+    }
+
+    private NutritionPreviewResponse previewIngredient(RecipeIngredient ingredient) {
+        if (ingredient.getFood() != null) return preview(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit());
+        if (ingredient.getIngredientRecipe() != null) return previewRecipeIngredient(ingredient.getIngredientRecipe(), ingredient.getQuantity(), ingredient.getUnit());
+        throw new BadRequestException("La receta contiene un ingrediente sin referencia.");
+    }
+
+    private NutritionPreviewResponse previewRecipeIngredient(Recipe recipe, BigDecimal quantity, FoodUnit unit) {
+        if (unit != FoodUnit.GRAM) throw new BadRequestException("Las recetas usadas como ingredientes se expresan en gramos.");
+        BigDecimal weight = recipe.getCookedTotalWeightGrams() != null
+                ? recipe.getCookedTotalWeightGrams() : recipe.getRawTotalWeightGrams();
+        if (weight == null || weight.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("La receta usada como ingrediente no tiene un peso válido.");
+        }
+        BigDecimal ratio = quantity.divide(weight, 4, RoundingMode.HALF_UP);
+        BigDecimal protein = scale(recipe.getProteinGrams().multiply(ratio));
+        BigDecimal carbs = scale(recipe.getCarbsGrams().multiply(ratio));
+        BigDecimal fat = scale(recipe.getFatGrams().multiply(ratio));
+        return new NutritionPreviewResponse(macroCalories(protein, carbs, fat), protein, carbs, fat,
                 scaleRecipeNutrients(recipe, ratio));
     }
 
@@ -1623,7 +1709,7 @@ public class NutritionService {
         BigDecimal carbs = BigDecimal.ZERO;
         BigDecimal fat = BigDecimal.ZERO;
         for (RecipeIngredient ingredient : recipe.getIngredients()) {
-            NutritionPreviewResponse preview = preview(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit());
+            NutritionPreviewResponse preview = previewIngredient(ingredient);
             protein = protein.add(preview.proteinGrams());
             carbs = carbs.add(preview.carbsGrams());
             fat = fat.add(preview.fatGrams());
@@ -1647,18 +1733,25 @@ public class NutritionService {
 
     private BigDecimal ingredientWeightInGrams(Object ingredient) {
         Food food;
+        Recipe recipe;
         BigDecimal quantity;
         FoodUnit unit;
         if (ingredient instanceof RecipeIngredient item) {
             food = item.getFood();
+            recipe = item.getIngredientRecipe();
             quantity = item.getQuantity();
             unit = item.getUnit();
         } else if (ingredient instanceof FoodLogRecipeIngredient item) {
             food = item.getFood();
+            recipe = null;
             quantity = item.getQuantity();
             unit = item.getUnit();
         } else {
             throw new IllegalArgumentException("Ingrediente de receta no soportado.");
+        }
+        if (recipe != null) {
+            if (unit != FoodUnit.GRAM) throw new BadRequestException("Las recetas usadas como ingredientes se expresan en gramos.");
+            return quantity;
         }
         if (unit == FoodUnit.GRAM) return quantity;
         if ((unit == FoodUnit.UNIT || unit == FoodUnit.PORTION) && food.getServingWeightGrams() != null) {
@@ -1718,7 +1811,7 @@ public class NutritionService {
         BigDecimal rawTotalWeight = BigDecimal.ZERO;
         Map<String, NutrientValueResponse> nutrients = new LinkedHashMap<>();
         List<RecipeIngredientResponse> ingredients = log.getRecipeIngredients().stream().map(item -> {
-            return new RecipeIngredientResponse(toFoodResponse(item.getFood()), item.getQuantity(), item.getUnit());
+            return new RecipeIngredientResponse(toFoodResponse(item.getFood()), null, item.getQuantity(), item.getUnit());
         }).toList();
         for (FoodLogRecipeIngredient ingredient : log.getRecipeIngredients()) {
             NutritionPreviewResponse preview = preview(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit());
@@ -1739,8 +1832,21 @@ public class NutritionService {
                 recipe.getRawTotalWeightGrams(), recipe.getCookedTotalWeightGrams(),
                 macroCalories(recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams()), recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams(),
                 recipe.getIngredients().stream()
-                        .map(item -> new RecipeIngredientResponse(toFoodResponse(item.getFood()), item.getQuantity(), item.getUnit()))
+                        .map(this::toRecipeIngredientResponse)
                         .toList(), scaleRecipeNutrients(recipe, BigDecimal.ONE));
+    }
+
+    private RecipeIngredientResponse toRecipeIngredientResponse(RecipeIngredient item) {
+        return new RecipeIngredientResponse(toFoodResponse(item.getFood()), toRecipeReference(item.getIngredientRecipe()),
+                item.getQuantity(), item.getUnit());
+    }
+
+    private RecipeReferenceResponse toRecipeReference(Recipe recipe) {
+        if (recipe == null) return null;
+        return new RecipeReferenceResponse(recipe.getId(), recipe.getName(), recipe.getDescription(),
+                recipe.getRawTotalWeightGrams(), recipe.getCookedTotalWeightGrams(),
+                macroCalories(recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams()),
+                recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams());
     }
 
     private RecipeResponse toRecipeSummary(Recipe recipe) {
@@ -1767,7 +1873,7 @@ public class NutritionService {
     private List<NutrientValueResponse> scaleRecipeNutrients(Recipe recipe, BigDecimal ratio) {
         Map<String, NutrientValueResponse> values = new LinkedHashMap<>();
         for (RecipeIngredient ingredient : recipe.getIngredients()) {
-            mergeNutrients(values, preview(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit()).nutrients());
+            mergeNutrients(values, previewIngredient(ingredient).nutrients());
         }
         return scaleNutrientResponses(values.values().stream().toList(), ratio);
     }

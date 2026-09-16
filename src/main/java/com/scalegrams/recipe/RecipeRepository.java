@@ -25,7 +25,10 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
 
     long countByCreatedById(Long createdById);
 
+    @Query("select count(r) > 0 from Recipe r join r.ingredients ingredient where ingredient.ingredientRecipe.id = :recipeId")
+    boolean existsReferencingRecipe(@Param("recipeId") Long recipeId);
+
     @Override
-    @EntityGraph(attributePaths = {"ingredients", "ingredients.food"})
+    @EntityGraph(attributePaths = {"ingredients", "ingredients.food", "ingredients.ingredientRecipe"})
     Optional<Recipe> findById(Long id);
 }

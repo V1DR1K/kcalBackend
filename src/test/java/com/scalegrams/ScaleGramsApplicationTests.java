@@ -902,6 +902,36 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void canUseARecipeAsIngredientAndRejectCircularReferences() {
+		HttpHeaders headers = authHeaders();
+		ResponseEntity<Map> yogurt = rest.postForEntity("/api/recipes", new HttpEntity<>(Map.of(
+				"name", "Yogurt casero",
+				"ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM"))), headers), Map.class);
+		Object yogurtId = yogurt.getBody().get("id");
+
+		ResponseEntity<Map> bowl = rest.postForEntity("/api/recipes", new HttpEntity<>(Map.of(
+				"name", "Bowl con yogurt",
+				"ingredients", List.of(Map.of("recipeId", yogurtId, "quantity", 150, "unit", "GRAM"))), headers), Map.class);
+		ResponseEntity<String> detail = rest.exchange("/api/recipes/" + bowl.getBody().get("id"), HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		ResponseEntity<String> deleteReferenced = rest.exchange("/api/recipes/" + yogurtId, HttpMethod.DELETE,
+				new HttpEntity<>(headers), String.class);
+
+		ResponseEntity<String> circular = rest.exchange("/api/recipes/" + yogurtId, HttpMethod.PUT,
+				new HttpEntity<>(Map.of("name", "Yogurt casero", "ingredients", List.of(
+						Map.of("recipeId", bowl.getBody().get("id"), "quantity", 100, "unit", "GRAM"))), headers), String.class);
+
+		assertThat(yogurt.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(bowl.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(detail.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(detail.getBody()).contains("\"recipe\":{", "\"name\":\"Yogurt casero\"", "\"quantity\":150.00");
+		assertThat(deleteReferenced.getStatusCode().value()).isEqualTo(400);
+		assertThat(deleteReferenced.getBody()).contains("usada como ingrediente");
+		assertThat(circular.getStatusCode().value()).isEqualTo(400);
+		assertThat(circular.getBody()).contains("referencia circular");
+	}
+
+	@Test
 	void userCanAdjustRecipeIngredientsForOneDayWithoutChangingTheBaseRecipe() {
 		HttpHeaders headers = authHeaders();
 		String date = "2032-03-12";
