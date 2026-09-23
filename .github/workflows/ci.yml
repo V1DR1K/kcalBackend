@@ -41,6 +41,9 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
         run: ssh "$VPS_USER@$VPS_HOST" "cd /opt/projects/scalegrams/back/scalegrams-backend && git fetch origin main && git diff --quiet && git diff --cached --quiet && git checkout main && git pull --ff-only origin main && test \"\$(git rev-parse HEAD)\" = '${{ github.sha }}' && GIT_HASH=\$(git rev-parse --short HEAD) /opt/infra/bin/deploy-service scalegrams api"
       - name: Verify production host identity
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           html=""
           for attempt in {1..8}; do
@@ -51,13 +54,4 @@ jobs:
             sleep 5
           done
           grep -q '<title>ScaleGrams</title>' <<<"$html"
-
-          health=""
-          for attempt in {1..8}; do
-            health="$(curl --fail --silent https://scalegrams.neticar.com.ar/api/health 2>/dev/null || true)"
-            if grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' <<<"$health"; then
-              break
-            fi
-            sleep 5
-          done
-          grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' <<<"$health"
+          ssh "$VPS_USER@$VPS_HOST" "cd /opt/projects/scalegrams/back/scalegrams-backend && docker compose -f docker-compose.prod.yml exec -T app curl --fail --silent --show-error http://localhost:8081/api/health" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'
