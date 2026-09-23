@@ -33,6 +33,7 @@ import com.scalegrams.catalog.FoodCategory;
 import com.scalegrams.catalog.FoodPreparation;
 import com.scalegrams.catalog.FoodRepository;
 import com.scalegrams.catalog.FoodUnit;
+import com.scalegrams.catalog.Food;
 import com.scalegrams.auth.CentralAuthClient;
 import com.scalegrams.auth.CentralJwtService;
 import com.scalegrams.externalfood.ExternalFoodCandidate;
@@ -46,6 +47,8 @@ import com.scalegrams.nutrition.NutrientDefinitionRepository;
 import com.scalegrams.recipe.RecipeRepository;
 import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
 import com.scalegrams.user.UserRepository;
+import com.scalegrams.user.AppUser;
+import com.scalegrams.user.Role;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ScaleGramsApplicationTests {
@@ -595,6 +598,49 @@ class ScaleGramsApplicationTests {
 
 		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(response.getBody()).contains("\"moderationStatus\":\"APPROVED\"", "\"createdById\"");
+	}
+
+	@Test
+	void adminCanUpdateOriginalFoodWhileRegularUserCannot() {
+		HttpHeaders adminHeaders = authHeaders("catalog-editor-admin");
+		UUID adminAuthId = UUID.nameUUIDFromBytes("central-token-catalog-editor-admin".getBytes());
+		AppUser admin = users.findByAuthUserId(adminAuthId).orElseThrow();
+		admin.setRole(Role.ADMIN);
+		users.save(admin);
+
+		Food original = new Food();
+		original.setName("Global onion fixture");
+		original.setBrand("Original catalog");
+		original.setCategory(FoodCategory.VEGETABLE);
+		original.setBaseUnit(FoodUnit.GRAM);
+		original.setBaseQuantity(BigDecimal.valueOf(100));
+		original.setProteinGrams(BigDecimal.ONE);
+		original.setCarbsGrams(BigDecimal.TEN);
+		original.setFatGrams(BigDecimal.ZERO);
+		original.setTags(Set.of("fixture"));
+		original.setCreatedBy(null);
+		Long foodId = foods.save(original).getId();
+		Map<String, Object> update = Map.of(
+				"name", "Global onion fixture", "brand", "Original catalog", "category", "VEGETABLE",
+				"baseUnit", "GRAM", "baseQuantity", 100, "proteinGrams", 4, "carbsGrams", 8,
+				"fatGrams", 2, "preparation", "UNSPECIFIED", "tags", Set.of("fixture"));
+
+		try {
+			ResponseEntity<Map> updated = rest.exchange("/api/foods/" + foodId, HttpMethod.PUT,
+					new HttpEntity<>(update, adminHeaders), Map.class);
+			assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
+			assertThat(updated.getBody()).containsEntry("createdById", null)
+					.containsEntry("proteinGrams", 4.0).containsEntry("carbsGrams", 8.0)
+					.containsEntry("fatGrams", 2.0).containsEntry("calories", 66);
+
+			ResponseEntity<String> denied = rest.exchange("/api/foods/" + foodId, HttpMethod.PUT,
+					new HttpEntity<>(update, authHeaders("catalog-editor-user")), String.class);
+			assertThat(denied.getStatusCode().value()).isEqualTo(400);
+		} finally {
+			foods.deleteById(foodId);
+			admin.setRole(Role.USER);
+			users.save(admin);
+		}
 	}
 
 	@Test
