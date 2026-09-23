@@ -44,5 +44,5 @@ jobs:
         run: |
           html="$(curl --fail --silent --show-error --retry 6 --retry-delay 5 https://scalegrams.neticar.com.ar/)"
           grep -q '<title>ScaleGrams</title>' <<<"$html"
-          curl --fail --silent --show-error --retry 6 --retry-delay 5 \
+          curl --fail --silent --show-error --retry 6 --retry-delay 5 --retry-all-errors \
             https://scalegrams.neticar.com.ar/api/health >/dev/null
