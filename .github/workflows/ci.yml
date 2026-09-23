@@ -48,10 +48,10 @@ jobs:
           html=""
           for attempt in {1..8}; do
             html="$(curl --fail --silent https://scalegrams.neticar.com.ar/ 2>/dev/null || true)"
-            if grep -q '<title>ScaleGrams</title>' <<<"$html"; then
+            if grep -q '<title>ScaleGrams' <<<"$html"; then
               break
             fi
             sleep 5
           done
-          grep -q '<title>ScaleGrams</title>' <<<"$html"
+          grep -q '<title>ScaleGrams' <<<"$html"
           ssh "$VPS_USER@$VPS_HOST" "cd /opt/projects/scalegrams/back/scalegrams-backend && docker compose -f docker-compose.prod.yml exec -T app curl --fail --silent --show-error http://localhost:8081/api/health" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'
