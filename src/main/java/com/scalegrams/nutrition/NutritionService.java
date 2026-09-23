@@ -316,7 +316,8 @@ public class NutritionService {
     @Transactional
     public FoodResponse updateOwnedFood(Long id, CreateFoodRequest request, com.scalegrams.user.AppUser creator) {
         Food food = getFood(id);
-        if (food.getCreatedBy() == null || !food.getCreatedBy().getId().equals(creator.getId())) {
+        boolean ownsFood = food.getCreatedBy() != null && food.getCreatedBy().getId().equals(creator.getId());
+        if (!ownsFood && creator.getRole() != Role.ADMIN) {
             throw new BadRequestException("Solo podés editar alimentos creados por vos.");
         }
         String barcode = clean(request.barcode());
