@@ -9,11 +9,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.scalegrams.common.BadRequestException;
+import com.scalegrams.common.NotFoundException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scalegrams.nutrition.GeminiNutritionClient.AiNutritionResult;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateItem;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateResponse;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateUsageResponse;
 import com.scalegrams.nutrition.NutritionDtos.AiTranscriptionResponse;
+import com.scalegrams.nutrition.NutritionDtos.AiRegistrationResponse;
+import com.scalegrams.nutrition.NutritionDtos.ConfirmAiRegistrationRequest;
 import com.scalegrams.nutrition.NutritionDtos.RefineAiEstimateRequest;
 import com.scalegrams.user.AppUser;
 
@@ -26,13 +30,22 @@ public class AiNutritionService {
     private final GeminiNutritionClient gemini;
     private final AiNutritionProperties properties;
     private final AiFoodMatcher foodMatcher;
+    private final AiCaptureRepository captures;
+    private final JevNutritionClient jev;
+    private final ObjectMapper objectMapper;
+    private final NutritionService nutritionService;
 
     public AiNutritionService(AiEstimateUsageRepository usages, GeminiNutritionClient gemini,
-            AiNutritionProperties properties, AiFoodMatcher foodMatcher) {
+            AiNutritionProperties properties, AiFoodMatcher foodMatcher, AiCaptureRepository captures,
+            JevNutritionClient jev, ObjectMapper objectMapper, NutritionService nutritionService) {
         this.usages = usages;
         this.gemini = gemini;
         this.properties = properties;
         this.foodMatcher = foodMatcher;
+        this.captures = captures;
+        this.jev = jev;
+        this.objectMapper = objectMapper;
+        this.nutritionService = nutritionService;
     }
 
     @Transactional(readOnly = true)
@@ -49,17 +62,30 @@ public class AiNutritionService {
     }
 
     public AiEstimateResponse analyze(AppUser user, MultipartFile image, String context) {
-        return estimate(user, image, context, gemini::analyze);
+        return analyze(user, image, context, AiCaptureTarget.RECIPE);
+    }
+
+    public AiEstimateResponse analyze(AppUser user, MultipartFile image, String context, AiCaptureTarget targetType) {
+        AiCaptureTarget target = targetType == null ? AiCaptureTarget.RECIPE : targetType;
+        return estimate(user, image, context, target,
+                (content, contentType, normalizedContext) -> gemini.analyze(content, contentType, normalizedContext, target));
     }
 
     public AiEstimateResponse refine(AppUser user, MultipartFile image, String context, RefineAiEstimateRequest request) {
-        String correction = normalizeCorrection(request.correction());
-        return estimate(user, image, context,
-                (content, contentType, normalizedContext) -> gemini.refine(content, contentType, normalizedContext,
-                        request.currentEstimate(), correction));
+        return refine(user, image, context, request, AiCaptureTarget.RECIPE);
     }
 
-    private AiEstimateResponse estimate(AppUser user, MultipartFile image, String context, EstimateOperation operation) {
+    public AiEstimateResponse refine(AppUser user, MultipartFile image, String context,
+            RefineAiEstimateRequest request, AiCaptureTarget targetType) {
+        String correction = normalizeCorrection(request.correction());
+        AiCaptureTarget target = targetType == null ? AiCaptureTarget.RECIPE : targetType;
+        return estimate(user, image, context, target,
+                (content, contentType, normalizedContext) -> gemini.refine(content, contentType, normalizedContext,
+                        request.currentEstimate(), correction, target));
+    }
+
+    private AiEstimateResponse estimate(AppUser user, MultipartFile image, String context, AiCaptureTarget targetType,
+            EstimateOperation operation) {
         if (!properties.isEnabled() || properties.getGeminiApiKey() == null || properties.getGeminiApiKey().isBlank()) {
             throw new BadRequestException("La estimación por foto no está disponible por el momento.");
         }
@@ -93,7 +119,17 @@ public class AiNutritionService {
             usage.setBlockedUntil(null);
             usage.setProviderStatus(null);
             usages.save(usage);
-            return new AiEstimateResponse(result.name(), result.description(), result.confidence(), result.assumptions(), items, usage(user));
+            var decision = jev.classify(targetType, result).orElse(null);
+            AiEstimateResponse draft = new AiEstimateResponse(null, targetType, result.name(), result.description(),
+                    result.confidence(), result.assumptions(), items, usage(user), decision);
+            AiCapture capture = new AiCapture();
+            capture.setUser(user);
+            capture.setTargetType(targetType);
+            capture.setDraftJson(objectMapper.writeValueAsString(draft));
+            if (decision != null) capture.setJevDecisionJson(objectMapper.writeValueAsString(decision));
+            capture = captures.save(capture);
+            return new AiEstimateResponse(capture.getId(), targetType, draft.name(), draft.description(),
+                    draft.confidence(), draft.assumptions(), draft.items(), draft.usage(), decision);
         } catch (AiQuotaExceededException ex) {
             usage.setBlockedUntil(ex.getRetryAt());
             usage.setProviderStatus("Gemini informó cuota agotada.");
@@ -105,6 +141,28 @@ public class AiNutritionService {
             if (ex instanceof BadRequestException badRequest) throw badRequest;
             throw new BadRequestException("No se pudo analizar la foto. Intentá nuevamente en unos minutos.");
         }
+    }
+
+    @Transactional
+    public AiRegistrationResponse confirmRegistration(AppUser user, ConfirmAiRegistrationRequest request) {
+        AiCapture capture = captures.findOwnedForUpdate(request.captureId(), user)
+                .orElseThrow(() -> new NotFoundException("Captura asistida no encontrada."));
+        if (capture.getStatus() == AiCaptureStatus.CONFIRMED && capture.getConfirmedLogId() != null) {
+            return new AiRegistrationResponse(capture.getTargetType(),
+                    nutritionService.findOwnedFoodLog(user, capture.getConfirmedLogId()));
+        }
+        if (capture.getStatus() != AiCaptureStatus.DRAFT) {
+            throw new BadRequestException("Esta captura ya no se puede confirmar.");
+        }
+        if (capture.getExpiresAt().isBefore(OffsetDateTime.now())) {
+            throw new BadRequestException("La captura venció. Analizá las fotos nuevamente.");
+        }
+        var log = nutritionService.confirmAiRegistration(user, capture.getTargetType(), request,
+                "ai-capture:" + capture.getId());
+        capture.setStatus(AiCaptureStatus.CONFIRMED);
+        capture.setConfirmedLogId(log.id());
+        captures.save(capture);
+        return new AiRegistrationResponse(capture.getTargetType(), log);
     }
 
     @Transactional(readOnly = true)

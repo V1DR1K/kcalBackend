@@ -49,6 +49,7 @@ import com.scalegrams.nutrition.NutritionDtos.BatchAddMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateItem;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateItem;
+import com.scalegrams.nutrition.NutritionDtos.ConfirmAiRegistrationRequest;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateFoodProposal;
 import com.scalegrams.nutrition.NutritionDtos.CreateFoodRequest;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeRequest;
@@ -1530,6 +1531,68 @@ public class NutritionService {
 
     private Recipe getRecipe(Long recipeId) {
         return recipes.findById(recipeId).orElseThrow(() -> new NotFoundException("Receta no encontrada."));
+    }
+
+    @Transactional(readOnly = true)
+    public FoodLogResponse findOwnedFoodLog(AppUser user, Long logId) {
+        return toFoodLogResponse(foodLogs.findByIdAndUser(logId, user)
+                .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado.")));
+    }
+
+    @Transactional
+    public FoodLogResponse confirmAiRegistration(AppUser user, AiCaptureTarget targetType,
+            ConfirmAiRegistrationRequest request, String sourcePrefix) {
+        List<AiEstimateItem> items = normalizeAiEstimateItems(request.items());
+        validateAiEstimateItems(items);
+        LocalDate logDate = request.logDate() == null ? LocalDate.now() : request.logDate();
+        if (targetType == AiCaptureTarget.FOOD) {
+            if (items.size() != 1) {
+                throw new BadRequestException("El registro de alimento debe contener exactamente un elemento.");
+            }
+            AiEstimateItem item = items.getFirst();
+            Food food = resolveAiRegistrationFood(user, sourcePrefix + ":item:0", item);
+            return addMealLog(user, new AddMealLogRequest(MealItemType.FOOD, food.getId(), request.mealType(),
+                    item.estimatedGrams(), FoodUnit.GRAM, logDate));
+        }
+
+        Recipe recipe = new Recipe();
+        recipe.setName(request.name().trim());
+        recipe.setDescription(clean(request.description()));
+        recipe.setCreatedBy(user);
+        for (int index = 0; index < items.size(); index++) {
+            AiEstimateItem item = items.get(index);
+            Food food = resolveAiRegistrationFood(user, sourcePrefix + ":item:" + index, item);
+            RecipeIngredient ingredient = new RecipeIngredient();
+            ingredient.setRecipe(recipe);
+            ingredient.setFood(food);
+            ingredient.setQuantity(item.estimatedGrams());
+            ingredient.setUnit(FoodUnit.GRAM);
+            recipe.getIngredients().add(ingredient);
+        }
+        recipe.setRawTotalWeightGrams(recipeRawTotalWeight(recipe.getIngredients()));
+        recipe.setTotalWeightGrams(recipe.getRawTotalWeightGrams());
+        applyRecipeTotals(recipe);
+        recipe = recipes.save(recipe);
+        return addMealLog(user, new AddMealLogRequest(MealItemType.RECIPE, recipe.getId(), request.mealType(),
+                BigDecimal.ONE, FoodUnit.PORTION, logDate));
+    }
+
+    private Food resolveAiRegistrationFood(AppUser user, String sourceId, AiEstimateItem item) {
+        if (item.catalogFoodId() != null) return getActiveFood(item.catalogFoodId());
+        AiEstimateFoodProposal proposal = new AiEstimateFoodProposal(item.name(),
+                item.category() == null ? FoodCategory.OTHER : item.category(),
+                item.preparation() == null ? FoodPreparation.UNSPECIFIED : item.preparation(),
+                perHundred(item.proteinGrams(), item.estimatedGrams()),
+                perHundred(item.carbsGrams(), item.estimatedGrams()),
+                perHundred(item.fatGrams(), item.estimatedGrams()),
+                item.nutrients() == null ? Map.of() : item.nutrients().entrySet().stream()
+                        .collect(Collectors.toMap(Map.Entry::getKey,
+                                entry -> perHundred(entry.getValue(), item.estimatedGrams()))));
+        return aiFoodMatcher.resolve(proposal).orElseGet(() -> materializeAiEstimateItem(user, sourceId, item));
+    }
+
+    private BigDecimal perHundred(BigDecimal value, BigDecimal grams) {
+        return scale(value.multiply(BigDecimal.valueOf(100)).divide(grams, 4, RoundingMode.HALF_UP));
     }
 
     private void validateRecipeIngredient(Recipe parent, Recipe ingredientRecipe, FoodUnit unit) {

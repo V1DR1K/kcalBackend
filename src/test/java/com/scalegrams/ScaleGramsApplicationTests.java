@@ -40,6 +40,9 @@ import com.scalegrams.externalfood.ExternalFoodCandidate;
 import com.scalegrams.externalfood.ExternalFoodLookupService;
 import com.scalegrams.nutrition.FoodLog;
 import com.scalegrams.nutrition.FoodLogRepository;
+import com.scalegrams.nutrition.AiCapture;
+import com.scalegrams.nutrition.AiCaptureRepository;
+import com.scalegrams.nutrition.AiCaptureTarget;
 import com.scalegrams.nutrition.MealItemType;
 import com.scalegrams.nutrition.MealType;
 import com.scalegrams.nutrition.NutrientDefinition;
@@ -69,6 +72,9 @@ class ScaleGramsApplicationTests {
 
 	@Autowired
 	FoodLogRepository foodLogs;
+
+	@Autowired
+	AiCaptureRepository aiCaptures;
 
 	@Autowired
 	RecipeRepository recipes;
@@ -945,6 +951,59 @@ class ScaleGramsApplicationTests {
 
 		assertThat(dashboard.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(countOccurrences(dashboard.getBody(), "\"quantity\":100.00")).isEqualTo(1);
+	}
+
+	@Test
+	void confirmsAiCaptureAsDomainFoodAndIsIdempotent() throws Exception {
+		HttpHeaders headers = authHeaders();
+		AppUser user = users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow();
+		AiCapture capture = new AiCapture();
+		capture.setUser(user);
+		capture.setTargetType(AiCaptureTarget.FOOD);
+		capture.setDraftJson("{}");
+		capture = aiCaptures.save(capture);
+		Map<String, Object> request = Map.of(
+				"captureId", capture.getId(), "name", "Yogur de prueba IA", "mealType", "BREAKFAST",
+				"confidence", 82, "logDate", "2031-02-16", "items", List.of(Map.of(
+						"name", "Yogur de prueba IA", "category", "DAIRY", "preparation", "AS_SOLD",
+						"estimatedGrams", 190, "proteinGrams", 9.5, "carbsGrams", 22.8, "fatGrams", 5.7)));
+
+		ResponseEntity<String> first = rest.postForEntity("/api/nutrition/ai-registrations/confirm",
+				new HttpEntity<>(request, headers), String.class);
+		ResponseEntity<String> repeated = rest.postForEntity("/api/nutrition/ai-registrations/confirm",
+				new HttpEntity<>(request, headers), String.class);
+
+		assertThat(first.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(first.getBody()).contains("\"targetType\":\"FOOD\"", "\"itemType\":\"FOOD\"", "\"quantity\":190");
+		assertThat(objectMapper.readTree(repeated.getBody()).path("log").path("id"))
+				.isEqualTo(objectMapper.readTree(first.getBody()).path("log").path("id"));
+		assertThat(foods.findAll()).anyMatch(food -> food.getName().equals("Yogur de prueba IA"));
+	}
+
+	@Test
+	void confirmsAiCaptureAsRecipeAndOnePortionLog() {
+		HttpHeaders headers = authHeaders();
+		AppUser user = users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow();
+		AiCapture capture = new AiCapture();
+		capture.setUser(user);
+		capture.setTargetType(AiCaptureTarget.RECIPE);
+		capture.setDraftJson("{}");
+		capture = aiCaptures.save(capture);
+		Map<String, Object> request = Map.of(
+				"captureId", capture.getId(), "name", "Plato compuesto IA", "mealType", "DINNER", "confidence", 76,
+				"items", List.of(
+						Map.of("name", "Arroz IA", "category", "CEREAL", "preparation", "COOKED", "estimatedGrams", 180,
+								"proteinGrams", 4.5, "carbsGrams", 50, "fatGrams", 1),
+						Map.of("name", "Pollo IA", "category", "MEAT", "preparation", "COOKED", "estimatedGrams", 140,
+								"proteinGrams", 38, "carbsGrams", 0, "fatGrams", 7)));
+
+		ResponseEntity<String> response = rest.postForEntity("/api/nutrition/ai-registrations/confirm",
+				new HttpEntity<>(request, headers), String.class);
+
+		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(response.getBody()).contains("\"targetType\":\"RECIPE\"", "\"itemType\":\"RECIPE\"",
+				"\"quantity\":1", "\"unit\":\"PORTION\"", "\"name\":\"Plato compuesto IA\"");
+		assertThat(recipes.findAll()).anyMatch(recipe -> recipe.getName().equals("Plato compuesto IA"));
 	}
 
 	@Test

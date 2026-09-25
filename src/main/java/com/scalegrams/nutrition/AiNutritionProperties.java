@@ -17,4 +17,9 @@ public class AiNutritionProperties {
     private int maxImageBytes = 5_242_880;
     private int maxAudioBytes = 2_097_152;
     private int dailyLimit = 99;
+    private boolean jevEnabled;
+    private String jevApiKey;
+    private String jevBaseUrl = "https://jev-agent.com";
+    private String jevModel = "jev-latest";
+    private String jevMode = "shadow";
 }

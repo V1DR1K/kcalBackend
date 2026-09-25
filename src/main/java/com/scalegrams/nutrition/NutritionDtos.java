@@ -3,6 +3,7 @@ package com.scalegrams.nutrition;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
@@ -180,12 +181,19 @@ public class NutritionDtos {
     }
 
     public record AiEstimateResponse(
+            UUID captureId,
+            AiCaptureTarget targetType,
             @NotBlank String name,
             String description,
             int confidence,
             List<String> assumptions,
             List<AiEstimateItem> items,
-            AiEstimateUsageResponse usage) {
+            AiEstimateUsageResponse usage,
+            JevNutritionClient.JevDecision decision) {
+        public AiEstimateResponse(String name, String description, int confidence, List<String> assumptions,
+                List<AiEstimateItem> items, AiEstimateUsageResponse usage) {
+            this(null, AiCaptureTarget.RECIPE, name, description, confidence, assumptions, items, usage, null);
+        }
     }
 
     public record AiTranscriptionResponse(@NotBlank String transcript) {
@@ -335,6 +343,19 @@ public class NutritionDtos {
         public boolean hasSingleReference() {
             return (foodId != null) ^ (recipeId != null);
         }
+    }
+
+    public record ConfirmAiRegistrationRequest(
+            @NotNull UUID captureId,
+            @NotBlank @Size(min = 2, max = 120) String name,
+            @Size(max = 500) String description,
+            @NotNull MealType mealType,
+            LocalDate logDate,
+            @NotNull @PositiveOrZero Integer confidence,
+            @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items) {
+    }
+
+    public record AiRegistrationResponse(AiCaptureTarget targetType, FoodLogResponse log) {
     }
 
     public record CreateRecipeRequest(

@@ -39,6 +39,8 @@ import com.scalegrams.nutrition.NutritionDtos.AiEstimateResponse;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateUsageResponse;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
 import com.scalegrams.nutrition.NutritionDtos.AiTranscriptionResponse;
+import com.scalegrams.nutrition.NutritionDtos.AiRegistrationResponse;
+import com.scalegrams.nutrition.NutritionDtos.ConfirmAiRegistrationRequest;
 import com.scalegrams.nutrition.NutritionDtos.RefineAiEstimateRequest;
 import com.scalegrams.nutrition.NutritionDtos.SaveAiEstimateItemRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateAiEstimateRequest;
@@ -136,15 +138,17 @@ public class NutritionController {
 
     @PostMapping(value = "/ai-estimates", consumes = "multipart/form-data")
     AiEstimateResponse estimateMeal(Authentication authentication, @RequestPart("image") MultipartFile image,
-            @RequestPart(value = "context", required = false) String context) {
-        return aiNutritionService.analyze(currentUser.from(authentication), image, context);
+            @RequestPart(value = "context", required = false) String context,
+            @RequestPart(value = "targetType", required = false) AiCaptureTarget targetType) {
+        return aiNutritionService.analyze(currentUser.from(authentication), image, context, targetType);
     }
 
     @PostMapping(value = "/ai-estimates/refinements", consumes = "multipart/form-data")
     AiEstimateResponse refineMeal(Authentication authentication, @RequestPart("image") MultipartFile image,
             @RequestPart(value = "context", required = false) String context,
+            @RequestPart(value = "targetType", required = false) AiCaptureTarget targetType,
             @Valid @RequestPart("request") RefineAiEstimateRequest request) {
-        return aiNutritionService.refine(currentUser.from(authentication), image, context, request);
+        return aiNutritionService.refine(currentUser.from(authentication), image, context, request, targetType);
     }
 
     @PostMapping(value = "/ai-estimates/transcriptions", consumes = "multipart/form-data")
@@ -155,6 +159,12 @@ public class NutritionController {
     @PostMapping("/ai-estimates/confirm")
     List<FoodLogResponse> confirmAiEstimate(Authentication authentication, @Valid @RequestBody ConfirmAiEstimateRequest request) {
         return nutritionService.confirmAiEstimate(currentUser.from(authentication), request);
+    }
+
+    @PostMapping("/ai-registrations/confirm")
+    AiRegistrationResponse confirmAiRegistration(Authentication authentication,
+            @Valid @RequestBody ConfirmAiRegistrationRequest request) {
+        return aiNutritionService.confirmRegistration(currentUser.from(authentication), request);
     }
 
     @PostMapping("/water-logs")

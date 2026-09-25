@@ -27,6 +27,11 @@ app:
     catalog-enabled: true
   ai-nutrition:
     daily-limit: ${AI_NUTRITION_DAILY_LIMIT:99}
+    jev-enabled: ${JEV_ENABLED:false}
+    jev-api-key: ${JEV_API_KEY:}
+    jev-base-url: ${JEV_BASE_URL:https://jev-agent.com}
+    jev-model: ${JEV_MODEL:jev-latest}
+    jev-mode: ${JEV_MODE:shadow}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
