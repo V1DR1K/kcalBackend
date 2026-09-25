@@ -147,9 +147,9 @@ public class AiNutritionService {
     public AiRegistrationResponse confirmRegistration(AppUser user, ConfirmAiRegistrationRequest request) {
         AiCapture capture = captures.findOwnedForUpdate(request.captureId(), user)
                 .orElseThrow(() -> new NotFoundException("Captura asistida no encontrada."));
-        if (capture.getStatus() == AiCaptureStatus.CONFIRMED && capture.getConfirmedLogId() != null) {
-            return new AiRegistrationResponse(capture.getTargetType(),
-                    nutritionService.findOwnedFoodLog(user, capture.getConfirmedLogId()));
+        if (capture.getStatus() == AiCaptureStatus.CONFIRMED) {
+            return nutritionService.findAiRegistrationResult(user, capture.getTargetType(),
+                    capture.getConfirmedFoodId(), capture.getConfirmedRecipeId(), capture.getConfirmedLogId());
         }
         if (capture.getStatus() != AiCaptureStatus.DRAFT) {
             throw new BadRequestException("Esta captura ya no se puede confirmar.");
@@ -157,12 +157,14 @@ public class AiNutritionService {
         if (capture.getExpiresAt().isBefore(OffsetDateTime.now())) {
             throw new BadRequestException("La captura venció. Analizá las fotos nuevamente.");
         }
-        var log = nutritionService.confirmAiRegistration(user, capture.getTargetType(), request,
+        var registration = nutritionService.confirmAiRegistration(user, capture.getTargetType(), request,
                 "ai-capture:" + capture.getId());
         capture.setStatus(AiCaptureStatus.CONFIRMED);
-        capture.setConfirmedLogId(log.id());
+        capture.setConfirmedFoodId(registration.food() == null ? null : registration.food().id());
+        capture.setConfirmedRecipeId(registration.recipe() == null ? null : registration.recipe().id());
+        capture.setConfirmedLogId(registration.log() == null ? null : registration.log().id());
         captures.save(capture);
-        return new AiRegistrationResponse(capture.getTargetType(), log);
+        return registration;
     }
 
     @Transactional(readOnly = true)

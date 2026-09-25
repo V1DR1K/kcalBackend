@@ -349,13 +349,15 @@ public class NutritionDtos {
             @NotNull UUID captureId,
             @NotBlank @Size(min = 2, max = 120) String name,
             @Size(max = 500) String description,
-            @NotNull MealType mealType,
+            MealType mealType,
             LocalDate logDate,
             @NotNull @PositiveOrZero Integer confidence,
+            boolean addToDiary,
             @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items) {
     }
 
-    public record AiRegistrationResponse(AiCaptureTarget targetType, FoodLogResponse log) {
+    public record AiRegistrationResponse(AiCaptureTarget targetType, FoodResponse food, RecipeResponse recipe,
+            FoodLogResponse log) {
     }
 
     public record CreateRecipeRequest(

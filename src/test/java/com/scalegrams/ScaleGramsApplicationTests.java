@@ -964,7 +964,7 @@ class ScaleGramsApplicationTests {
 		capture = aiCaptures.save(capture);
 		Map<String, Object> request = Map.of(
 				"captureId", capture.getId(), "name", "Yogur de prueba IA", "mealType", "BREAKFAST",
-				"confidence", 82, "logDate", "2031-02-16", "items", List.of(Map.of(
+				"addToDiary", true, "confidence", 82, "logDate", "2031-02-16", "items", List.of(Map.of(
 						"name", "Yogur de prueba IA", "category", "DAIRY", "preparation", "AS_SOLD",
 						"estimatedGrams", 190, "proteinGrams", 9.5, "carbsGrams", 22.8, "fatGrams", 5.7)));
 
@@ -978,6 +978,29 @@ class ScaleGramsApplicationTests {
 		assertThat(objectMapper.readTree(repeated.getBody()).path("log").path("id"))
 				.isEqualTo(objectMapper.readTree(first.getBody()).path("log").path("id"));
 		assertThat(foods.findAll()).anyMatch(food -> food.getName().equals("Yogur de prueba IA"));
+	}
+
+	@Test
+	void registersAiFoodWithoutAddingItToDiaryWhenRequested() throws Exception {
+		HttpHeaders headers = authHeaders();
+		AppUser user = users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow();
+		AiCapture capture = new AiCapture();
+		capture.setUser(user);
+		capture.setTargetType(AiCaptureTarget.FOOD);
+		capture.setDraftJson("{}");
+		capture = aiCaptures.save(capture);
+		Map<String, Object> request = Map.of("captureId", capture.getId(), "name", "Fideos guardados sin diario",
+				"addToDiary", false, "confidence", 90, "items", List.of(Map.of("name", "Fideos guardados sin diario",
+						"category", "CEREAL", "preparation", "AS_SOLD", "estimatedGrams", 100,
+						"proteinGrams", 12, "carbsGrams", 72, "fatGrams", 2)));
+		long previousLogCount = foodLogs.count();
+
+		ResponseEntity<String> response = rest.postForEntity("/api/nutrition/ai-registrations/confirm",
+				new HttpEntity<>(request, headers), String.class);
+
+		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(response.getBody()).contains("\"targetType\":\"FOOD\"", "\"food\":{", "\"log\":null");
+		assertThat(foodLogs.count()).isEqualTo(previousLogCount);
 	}
 
 	@Test

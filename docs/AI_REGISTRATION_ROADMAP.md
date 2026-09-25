@@ -4,7 +4,7 @@
 
 Unificar la captura asistida por IA en un flujo con intención explícita:
 
-- **Alimento**: reconocer un único producto o alimento, materializarlo en el catálogo y registrar la porción.
+- **Alimento**: reconocer un único producto o alimento, materializarlo en el catálogo y, opcionalmente, registrar la porción en el diario.
 - **Comida**: reconocer los componentes de un plato, materializarlos como alimentos, crear una receta y registrar una porción de esa receta.
 
 La imagen y la respuesta del proveedor son un borrador. La fuente de verdad sigue siendo el modelo de dominio `Food`, `Recipe` y `FoodLog` después de la revisión humana.
@@ -24,7 +24,7 @@ AiCapture DRAFT (vence en 24 h)
       │ revisión humana
       ▼
 Confirmación idempotente
-      ├── FOOD   → Food → FoodLog
+      ├── FOOD   → Food → (opcional) FoodLog
       └── RECIPE → Foods → Recipe → FoodLog (1 porción)
 ```
 
@@ -35,27 +35,37 @@ Confirmación idempotente
 - `AiCapture` persiste intención, estado, borrador, decisión JEV y registro confirmado.
 - Estados: `DRAFT`, `CONFIRMED`, `DISCARDED`.
 - La confirmación bloquea la captura, valida propietario/vencimiento y es idempotente.
-- Migración Flyway `V40__ai_capture_workflow.sql`.
+- Migraciones Flyway `V40__ai_capture_workflow.sql` y `V41__support_ai_registration_lifecycle.sql`.
+- Capturas confirmadas conservan referencias independientes a `Food`, `Recipe` y `FoodLog`; si se borra el registro del diario, la referencia se limpia y la captura sigue siendo idempotente.
 
 ### Fase 2 — Materialización del dominio: completada
 
-- `FOOD` exige exactamente un ítem; reutiliza una coincidencia confiable o crea un alimento por 100 g.
+- `FOOD` exige exactamente un ítem; reutiliza una coincidencia explícita del catálogo o crea un alimento por 100 g. La decisión revisada de macros no se sustituye silenciosamente por otra ficha.
 - `RECIPE` resuelve o crea los alimentos componentes, crea la receta con pesos y nutrientes y registra una porción.
 - Se mantiene temporalmente el endpoint legado para no romper clientes anteriores.
 
 ### Fase 3 — Experiencia “Registrar”: primera versión completada
 
 - Preselector explícito **Registrar alimento con foto** / **Registrar comida con foto**.
-- Revisión editable antes de confirmar.
+- Revisión editable de nombre, gramos y macronutrientes antes de confirmar.
+- Registro FOOD guarda el alimento en el catálogo; agregarlo al diario es opcional y permite elegir comida y fecha.
 - El flujo existente de foto en una comida utiliza `RECIPE`.
 - La corrección de una estimación conserva su intención original.
 
 ### Fase 4 — JEV: piloto shadow implementado
 
 - JEV recibe el tipo solicitado y la extracción estructurada, nunca la API key en el cliente.
-- Devuelve: tipo detectado, confianza, calidad de evidencia y probabilidad de requerir revisión.
+- Devuelve: tipo detectado y clasificación independiente de plausibilidad de proteínas, carbohidratos y grasas por 100 g, con confianza cuando esté disponible.
 - Sus fallos no bloquean al usuario y no modifican macros ni crean entidades.
-- Activación por variables de entorno; comenzar en `shadow`.
+- Activación por variables de entorno; se mantiene en `shadow`. La interfaz muestra las etiquetas como apoyo, nunca como bloqueo ni como fuente nutricional.
+- La llamada agrupa cuatro preguntas en una petición; presupuestar según los tokens de entrada y comprobar `usage`/`quota` del proveedor antes de ampliar el tráfico. El nivel gratuito publicado es de 5 créditos/mes (1 crédito por cada 1.000 tokens de entrada), por lo que el piloto debe ser deliberadamente acotado.
+
+### Correcciones cerradas antes de promoción
+
+- Se elimina la dependencia obligatoria de `FoodLog` para conservar una captura FOOD/RECIPE confirmada; `ON DELETE SET NULL` permite borrar el registro del diario.
+- Se distingue “guardar en catálogo” de “agregar también a mi día”; la ruta de escáner permanece abierta cuando solo se guarda el alimento.
+- Los macros son editables y la edición invalida una coincidencia de catálogo para que los valores revisados sean los que se materialicen.
+- JEV clasifica los tres macronutrientes por separado y los muestra junto a cada alimento detectado.
 
 ## Próximos incrementos recomendados
 
@@ -102,7 +112,7 @@ Criterio de viabilidad sugerido: disponibilidad ≥ 99 %, p95 compatible con el 
 - Toda confirmación debe ser idempotente y pertenecer al usuario autenticado.
 - `FOOD` produce un solo alimento; `RECIPE` produce una receta compuesta.
 - Mantener compatibilidad hasta verificar telemetría antes de eliminar el legado.
-- Ejecutar migraciones, tests backend, build/tests frontend y una prueba real de ambos caminos antes de cada promoción.
+- Ejecutar migraciones, tests backend, build/tests frontend y una prueba de ambos caminos antes de cada promoción.
 
 ## Decisión sobre JEV
 

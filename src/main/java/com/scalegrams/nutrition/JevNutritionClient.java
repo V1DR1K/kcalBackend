@@ -51,6 +51,13 @@ public class JevNutritionClient {
             state.put("providerConfidence", result.confidence());
             state.put("assumptions", result.assumptions());
             state.put("items", result.items());
+            state.put("macronutrientsPer100g", result.items().stream().map(item -> Map.of(
+                    "name", item.name(),
+                    "category", item.category().name(),
+                    "preparation", item.preparation().name(),
+                    "proteinGrams", perHundred(item.proteinGrams(), item.estimatedGrams()),
+                    "carbsGrams", perHundred(item.carbsGrams(), item.estimatedGrams()),
+                    "fatGrams", perHundred(item.fatGrams(), item.estimatedGrams()))).toList());
 
             Map<String, Object> questions = new LinkedHashMap<>();
             questions.put("detected_type", Map.of(
@@ -60,29 +67,21 @@ public class JevNutritionClient {
                             "FOOD", "Un único alimento o producto que debe guardarse como ficha reutilizable.",
                             "RECIPE", "Un plato o preparación compuesta por uno o más ingredientes.",
                             "AMBIGUOUS", "La evidencia estructurada no permite decidir con seguridad.")));
-            questions.put("evidence_quality", Map.of(
-                    "type", "score",
-                    "instructions", "Evaluá si la evidencia es suficiente para guardar el resultado después de revisión humana.",
-                    "criteria", java.util.List.of("Insuficiente", "Requiere correcciones", "Suficiente")));
-            questions.put("needs_review", Map.of(
-                    "type", "noul",
-                    "instructions", "¿El resultado requiere revisión humana cuidadosa por ambigüedad, datos faltantes o incoherencias?",
-                    "criteria", Map.of(
-                            "true", "Hay ambigüedad, faltan datos importantes o existen incoherencias.",
-                            "false", "La evidencia estructurada es consistente y suficiente para una revisión habitual.")));
+            questions.put("protein_quality", macroQuestion("proteínas"));
+            questions.put("carbohydrate_quality", macroQuestion("carbohidratos"));
+            questions.put("fat_quality", macroQuestion("grasas"));
 
             JsonNode response = client.post().uri("/api/v1/systemone")
                     .body(Map.of("state", state, "model", properties.getJevModel(), "questions", questions))
                     .retrieve().body(JsonNode.class);
             JsonNode answers = response == null ? objectMapper.createObjectNode() : response.path("answers");
             JsonNode type = answers.path("detected_type");
-            JsonNode quality = answers.path("evidence_quality");
-            JsonNode review = answers.path("needs_review");
             return Optional.of(new JevDecision(
                     type.path("choice").asText("AMBIGUOUS"),
                     type.path("confidence").isNumber() ? type.path("confidence").asDouble() : null,
-                    quality.path("score").isNumber() ? quality.path("score").asDouble() : null,
-                    review.path("noul").isNumber() ? review.path("noul").asDouble() : null,
+                    macroDecision(answers.path("protein_quality")),
+                    macroDecision(answers.path("carbohydrate_quality")),
+                    macroDecision(answers.path("fat_quality")),
                     response == null ? properties.getJevModel() : response.path("model").asText(properties.getJevModel())));
         } catch (Exception ex) {
             log.warn("JEV shadow classification unavailable: {}", ex.getClass().getSimpleName());
@@ -90,6 +89,29 @@ public class JevNutritionClient {
         }
     }
 
-    public record JevDecision(String detectedType, Double confidence, Double evidenceQuality,
-            Double needsReviewProbability, String model) { }
+    private static Map<String, Object> macroQuestion(String macroLabel) {
+        return Map.of(
+                "type", "choice",
+                "instructions", "Clasificá la plausibilidad de " + macroLabel + " por 100 g para cada alimento, considerando su categoría y preparación. Detectá valores imposibles o claramente incoherentes, no diferencias normales entre marcas o recetas.",
+                "criteria", Map.of(
+                        "CONSISTENT", "Plausible para estos alimentos y preparaciones.",
+                        "REVIEW", "Hay una incoherencia clara que una persona debería revisar.",
+                        "INSUFFICIENT", "No hay evidencia suficiente para valorar este macronutriente."));
+    }
+
+    private static MacroDecision macroDecision(JsonNode answer) {
+        return new MacroDecision(answer.path("choice").asText("INSUFFICIENT"),
+                answer.path("confidence").isNumber() ? answer.path("confidence").asDouble() : null);
+    }
+
+    private static java.math.BigDecimal perHundred(java.math.BigDecimal nutrient, java.math.BigDecimal grams) {
+        if (nutrient == null || grams == null || grams.signum() <= 0) return java.math.BigDecimal.ZERO;
+        return nutrient.multiply(java.math.BigDecimal.valueOf(100))
+                .divide(grams, 2, java.math.RoundingMode.HALF_UP);
+    }
+
+    public record MacroDecision(String classification, Double confidence) { }
+
+    public record JevDecision(String detectedType, Double confidence, MacroDecision proteinQuality,
+            MacroDecision carbohydrateQuality, MacroDecision fatQuality, String model) { }
 }

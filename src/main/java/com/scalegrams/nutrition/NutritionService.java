@@ -50,6 +50,7 @@ import com.scalegrams.nutrition.NutritionDtos.AiEstimateItem;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateRequest;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiEstimateItem;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiRegistrationRequest;
+import com.scalegrams.nutrition.NutritionDtos.AiRegistrationResponse;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateFoodProposal;
 import com.scalegrams.nutrition.NutritionDtos.CreateFoodRequest;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeRequest;
@@ -1234,7 +1235,10 @@ public class NutritionService {
                 .stream().filter(food -> "AI_ESTIMATE".equals(food.getSource())
                         && food.getCategory() == category
                         && (food.getPreparation() == null ? FoodPreparation.UNSPECIFIED : food.getPreparation()) == preparation
-                        && (food.getBrand() == null || food.getBrand().isBlank())).findFirst();
+                        && (food.getBrand() == null || food.getBrand().isBlank())
+                        && food.getProteinGrams().compareTo(perHundred(item.proteinGrams(), item.estimatedGrams())) == 0
+                        && food.getCarbsGrams().compareTo(perHundred(item.carbsGrams(), item.estimatedGrams())) == 0
+                        && food.getFatGrams().compareTo(perHundred(item.fatGrams(), item.estimatedGrams())) == 0).findFirst();
         if (identity.isPresent()) return identity.get();
         Optional<Food> saved = foods.findBySourceAndSourceId("AI_ESTIMATE", sourceId);
         if (saved.isPresent()) {
@@ -1309,7 +1313,8 @@ public class NutritionService {
         return items.stream().map(item -> new AiEstimateItem(item.name(), item.estimatedGrams(),
                 item.category() == null ? FoodCategory.OTHER : item.category(),
                 item.preparation() == null ? FoodPreparation.UNSPECIFIED : item.preparation(),
-                item.proteinGrams(), item.carbsGrams(), item.fatGrams(), item.nutrients())).toList();
+                item.proteinGrams(), item.carbsGrams(), item.fatGrams(), item.nutrients(), item.catalogFoodId(),
+                item.catalogMatchType(), item.catalogMatchConfidence())).toList();
     }
 
     private void validateAiEstimateItems(List<AiEstimateItem> items) {
@@ -1540,7 +1545,7 @@ public class NutritionService {
     }
 
     @Transactional
-    public FoodLogResponse confirmAiRegistration(AppUser user, AiCaptureTarget targetType,
+    public AiRegistrationResponse confirmAiRegistration(AppUser user, AiCaptureTarget targetType,
             ConfirmAiRegistrationRequest request, String sourcePrefix) {
         List<AiEstimateItem> items = normalizeAiEstimateItems(request.items());
         validateAiEstimateItems(items);
@@ -1551,9 +1556,15 @@ public class NutritionService {
             }
             AiEstimateItem item = items.getFirst();
             Food food = resolveAiRegistrationFood(user, sourcePrefix + ":item:0", item);
-            return addMealLog(user, new AddMealLogRequest(MealItemType.FOOD, food.getId(), request.mealType(),
-                    item.estimatedGrams(), FoodUnit.GRAM, logDate));
+            FoodLogResponse log = null;
+            if (request.addToDiary()) {
+                if (request.mealType() == null) throw new BadRequestException("Elegí a qué comida agregar el alimento.");
+                log = addMealLog(user, new AddMealLogRequest(MealItemType.FOOD, food.getId(), request.mealType(),
+                        item.estimatedGrams(), FoodUnit.GRAM, logDate));
+            }
+            return new AiRegistrationResponse(AiCaptureTarget.FOOD, toFoodResponse(food), null, log);
         }
+        if (request.mealType() == null) throw new BadRequestException("Elegí a qué comida agregar la receta.");
 
         Recipe recipe = new Recipe();
         recipe.setName(request.name().trim());
@@ -1573,22 +1584,26 @@ public class NutritionService {
         recipe.setTotalWeightGrams(recipe.getRawTotalWeightGrams());
         applyRecipeTotals(recipe);
         recipe = recipes.save(recipe);
-        return addMealLog(user, new AddMealLogRequest(MealItemType.RECIPE, recipe.getId(), request.mealType(),
+        FoodLogResponse log = addMealLog(user, new AddMealLogRequest(MealItemType.RECIPE, recipe.getId(), request.mealType(),
                 BigDecimal.ONE, FoodUnit.PORTION, logDate));
+        return new AiRegistrationResponse(AiCaptureTarget.RECIPE, null, toRecipeResponse(recipe), log);
+    }
+
+    @Transactional(readOnly = true)
+    public AiRegistrationResponse findAiRegistrationResult(AppUser user, AiCaptureTarget targetType, Long foodId,
+            Long recipeId, Long logId) {
+        FoodResponse food = targetType == AiCaptureTarget.FOOD && foodId != null ? findFood(foodId) : null;
+        RecipeResponse recipe = targetType == AiCaptureTarget.RECIPE && recipeId != null ? findRecipe(recipeId) : null;
+        FoodLogResponse log = logId == null ? null : findOwnedFoodLog(user, logId);
+        if (food == null && recipe == null) throw new NotFoundException("El elemento creado en esta captura ya no existe.");
+        return new AiRegistrationResponse(targetType, food, recipe, log);
     }
 
     private Food resolveAiRegistrationFood(AppUser user, String sourceId, AiEstimateItem item) {
         if (item.catalogFoodId() != null) return getActiveFood(item.catalogFoodId());
-        AiEstimateFoodProposal proposal = new AiEstimateFoodProposal(item.name(),
-                item.category() == null ? FoodCategory.OTHER : item.category(),
-                item.preparation() == null ? FoodPreparation.UNSPECIFIED : item.preparation(),
-                perHundred(item.proteinGrams(), item.estimatedGrams()),
-                perHundred(item.carbsGrams(), item.estimatedGrams()),
-                perHundred(item.fatGrams(), item.estimatedGrams()),
-                item.nutrients() == null ? Map.of() : item.nutrients().entrySet().stream()
-                        .collect(Collectors.toMap(Map.Entry::getKey,
-                                entry -> perHundred(entry.getValue(), item.estimatedGrams()))));
-        return aiFoodMatcher.resolve(proposal).orElseGet(() -> materializeAiEstimateItem(user, sourceId, item));
+        // Only reuse a catalog food when the reviewed estimate explicitly retained its match.
+        // Otherwise its user-edited macros must be the values materialized into the new food.
+        return materializeAiEstimateItem(user, sourceId, item);
     }
 
     private BigDecimal perHundred(BigDecimal value, BigDecimal grams) {

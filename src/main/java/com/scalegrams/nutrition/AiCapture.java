@@ -47,6 +47,10 @@ public class AiCapture {
 
     private Long confirmedLogId;
 
+    private Long confirmedFoodId;
+
+    private Long confirmedRecipeId;
+
     @Column(nullable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
