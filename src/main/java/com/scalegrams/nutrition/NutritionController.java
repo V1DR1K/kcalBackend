@@ -139,16 +139,18 @@ public class NutritionController {
     @PostMapping(value = "/ai-estimates", consumes = "multipart/form-data")
     AiEstimateResponse estimateMeal(Authentication authentication, @RequestPart("image") MultipartFile image,
             @RequestPart(value = "context", required = false) String context,
-            @RequestPart(value = "targetType", required = false) AiCaptureTarget targetType) {
-        return aiNutritionService.analyze(currentUser.from(authentication), image, context, targetType);
+            @RequestParam(value = "targetType", required = false) AiCaptureTarget targetType) {
+        return aiNutritionService.analyze(currentUser.from(authentication), image, context,
+                targetType == null ? AiCaptureTarget.RECIPE : targetType);
     }
 
     @PostMapping(value = "/ai-estimates/refinements", consumes = "multipart/form-data")
     AiEstimateResponse refineMeal(Authentication authentication, @RequestPart("image") MultipartFile image,
             @RequestPart(value = "context", required = false) String context,
-            @RequestPart(value = "targetType", required = false) AiCaptureTarget targetType,
+            @RequestParam(value = "targetType", required = false) AiCaptureTarget targetType,
             @Valid @RequestPart("request") RefineAiEstimateRequest request) {
-        return aiNutritionService.refine(currentUser.from(authentication), image, context, request, targetType);
+        return aiNutritionService.refine(currentUser.from(authentication), image, context, request,
+                targetType == null ? AiCaptureTarget.RECIPE : targetType);
     }
 
     @PostMapping(value = "/ai-estimates/transcriptions", consumes = "multipart/form-data")

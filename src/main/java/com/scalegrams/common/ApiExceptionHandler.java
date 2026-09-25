@@ -18,6 +18,7 @@ import jakarta.persistence.OptimisticLockException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -81,6 +82,12 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> unsupportedMethod(HttpRequestMethodNotSupportedException ex) {
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
                 .body(new ApiError("METHOD_NOT_ALLOWED", "El método solicitado no está permitido.", null, Instant.now()));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    ResponseEntity<ApiError> unsupportedMediaType(HttpMediaTypeNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(new ApiError("UNSUPPORTED_MEDIA_TYPE", "El formato enviado no es compatible con esta solicitud.", null, Instant.now()));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
