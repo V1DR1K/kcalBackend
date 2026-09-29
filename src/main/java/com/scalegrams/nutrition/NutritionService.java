@@ -1608,7 +1608,8 @@ public class NutritionService {
     }
 
     private BigDecimal perHundred(BigDecimal value, BigDecimal grams) {
-        return scale(value.multiply(BigDecimal.valueOf(100)).divide(grams, 4, RoundingMode.HALF_UP));
+        BigDecimal ratio = BigDecimal.valueOf(100).divide(grams.max(BigDecimal.ONE), 4, RoundingMode.HALF_UP);
+        return scale(value.multiply(ratio));
     }
 
     private void validateRecipeIngredient(Recipe parent, Recipe ingredientRecipe, FoodUnit unit) {

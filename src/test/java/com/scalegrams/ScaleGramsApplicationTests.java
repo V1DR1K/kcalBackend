@@ -981,6 +981,34 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void keepsReviewedNutritionWhenRegisteringTheSameAiFoodAgain() {
+		HttpHeaders headers = authHeaders();
+		AppUser user = users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow();
+		Long firstFoodId = null;
+		for (int protein : List.of(2, 4)) {
+			AiCapture capture = new AiCapture();
+			capture.setUser(user);
+			capture.setTargetType(AiCaptureTarget.FOOD);
+			capture.setDraftJson("{}");
+			capture = aiCaptures.save(capture);
+			Map<String, Object> request = Map.of(
+					"captureId", capture.getId(), "name", "Zanahoria revisada IA", "mealType", "LUNCH",
+					"addToDiary", true, "confidence", 80, "items", List.of(Map.of(
+							"name", "Zanahoria revisada IA", "category", "VEGETABLE", "preparation", "COOKED",
+							"estimatedGrams", 100, "proteinGrams", protein, "carbsGrams", 8, "fatGrams", 0)));
+			ResponseEntity<Map> response = rest.postForEntity("/api/nutrition/ai-registrations/confirm",
+					new HttpEntity<>(request, headers), Map.class);
+			assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+			Map<?, ?> food = (Map<?, ?>) response.getBody().get("food");
+			Map<?, ?> log = (Map<?, ?>) response.getBody().get("log");
+			assertThat(((Number) food.get("proteinGrams")).doubleValue()).isEqualTo((double) protein);
+			assertThat(log.get("itemType")).isEqualTo("FOOD");
+			if (firstFoodId != null) assertThat(((Number) food.get("id")).longValue()).isNotEqualTo(firstFoodId);
+			firstFoodId = ((Number) food.get("id")).longValue();
+		}
+	}
+
+	@Test
 	void registersAiFoodWithoutAddingItToDiaryWhenRequested() throws Exception {
 		HttpHeaders headers = authHeaders();
 		AppUser user = users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow();
