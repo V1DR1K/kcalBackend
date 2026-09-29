@@ -15,6 +15,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Optional;
+import java.util.HexFormat;
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -36,6 +41,7 @@ import com.scalegrams.catalog.FoodUnit;
 import com.scalegrams.catalog.ModerationStatus;
 import com.scalegrams.common.BadRequestException;
 import com.scalegrams.common.NotFoundException;
+import com.scalegrams.common.ForbiddenException;
 import com.scalegrams.common.SearchTextNormalizer;
 import com.scalegrams.externalfood.ExternalFoodCandidate;
 import com.scalegrams.externalfood.ExternalFoodLookupService;
@@ -109,12 +115,15 @@ public class NutritionService {
     private final NutrientDefinitionRepository nutrientDefinitions;
     private final UsdaFoodDataProvider usda;
     private final AiFoodMatcher aiFoodMatcher;
+    private final JdbcTemplate jdbcTemplate;
+    private final boolean postgres;
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
             DayPresetRepository dayPresets,
             WaterLogRepository waterLogs, ProfileService profileService,
             ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper,
-            NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda, AiFoodMatcher aiFoodMatcher) {
+            NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda, AiFoodMatcher aiFoodMatcher,
+            JdbcTemplate jdbcTemplate, @Value("${spring.datasource.driver-class-name:org.postgresql.Driver}") String driver) {
         this.foods = foods;
         this.recipes = recipes;
         this.foodLogs = foodLogs;
@@ -126,6 +135,8 @@ public class NutritionService {
         this.nutrientDefinitions = nutrientDefinitions;
         this.usda = usda;
         this.aiFoodMatcher = aiFoodMatcher;
+        this.jdbcTemplate = jdbcTemplate;
+        this.postgres = driver.toLowerCase().contains("postgres");
     }
 
     @Transactional(readOnly = true)
@@ -408,9 +419,7 @@ public class NutritionService {
     @Transactional
     public FoodResponse enrichFood(Long id, AppUser user) {
         Food food = getFood(id);
-        if (food.getCreatedBy() != null && !food.getCreatedBy().getId().equals(user.getId()) && user.getRole() != Role.ADMIN) {
-            throw new BadRequestException("Solo podés enriquecer alimentos propios.");
-        }
+        requireFoodWriteAccess(food, user);
         Optional<ExternalFoodCandidate> candidate = food.getBarcode() == null
                 ? externalFoodLookup.searchByText(food.getName(), 1).stream().findFirst()
                 : externalFoodLookup.lookupByBarcode(food.getBarcode());
@@ -423,9 +432,7 @@ public class NutritionService {
     @Transactional
     public FoodResponse updateNutrients(Long id, NutrientUpdateRequest request, AppUser user) {
         Food food = getFood(id);
-        if (food.getCreatedBy() != null && !food.getCreatedBy().getId().equals(user.getId()) && user.getRole() != Role.ADMIN) {
-            throw new BadRequestException("Solo podés editar nutrientes de alimentos propios.");
-        }
+        requireFoodWriteAccess(food, user);
         for (NutrientInput input : request.nutrients()) {
             NutrientDefinition definition = nutrientDefinitions.findById(input.code().trim().toUpperCase())
                     .orElseThrow(() -> new BadRequestException("Nutriente desconocido: " + input.code()));
@@ -444,6 +451,16 @@ public class NutritionService {
             food.setCalories(macroCalories(food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams()));
         }
         return toFoodResponse(foods.save(food));
+    }
+
+    private void requireFoodWriteAccess(Food food, AppUser user) {
+        boolean administrator = user.getRole() == Role.ADMIN;
+        boolean owner = food.getCreatedBy() != null && food.getCreatedBy().getId().equals(user.getId());
+        if (!administrator && !owner) {
+            throw new ForbiddenException(food.getCreatedBy() == null
+                    ? "Solo un administrador puede editar alimentos compartidos."
+                    : "Solo podés editar alimentos creados por vos.");
+        }
     }
 
     @Transactional
@@ -631,10 +648,8 @@ public class NutritionService {
 
     @Transactional(readOnly = true)
     public List<RecipeOwnerResponse> recipeAuthors(AppUser user) {
-        Set<Long> seen = new java.util.HashSet<>();
-        return recipes.findAuthorsExcluding(user.getId()).stream()
-                .filter(author -> seen.add(author.getId()))
-                .map(author -> new RecipeOwnerResponse(author.getId(), author.getFullName(), recipes.countByCreatedById(author.getId())))
+        return recipes.findAuthorCountsExcluding(user.getId()).stream()
+                .map(author -> new RecipeOwnerResponse(author.getOwnerId(), author.getOwnerName(), author.getRecipeCount()))
                 .toList();
     }
 
@@ -1032,12 +1047,24 @@ public class NutritionService {
 
     @Transactional
     public List<FoodLogResponse> addMealLogs(AppUser user, BatchAddMealLogsRequest request) {
-        return request.logs().stream().map(item -> item.itemType() == MealItemType.AI_ESTIMATE
-                ? copyAiEstimate(user, item)
-                : addMealLog(user, new AddMealLogRequest(item.itemType(), item.itemId(), item.mealType(), item.quantity(), item.unit(), item.logDate()), true)).toList();
+        return request.logs().stream().map(item -> switch (item.itemType()) {
+            case AI_ESTIMATE -> copyAiEstimate(user, item);
+            case RECIPE -> item.sourceLogId() == null
+                    ? addMealLog(user, new AddMealLogRequest(item.itemType(), item.itemId(), item.mealType(), item.quantity(), item.unit(), item.logDate()), true)
+                    : copyRecipeMealLog(user, item);
+            case FOOD -> addMealLog(user, new AddMealLogRequest(item.itemType(), item.itemId(), item.mealType(), item.quantity(), item.unit(), item.logDate()), true);
+        }).toList();
     }
 
     private FoodLogResponse copyAiEstimate(AppUser user, BatchAddMealLogRequest request) {
+        FoodLog source = request.sourceLogId() == null ? null : foodLogs.findByIdAndUserAndItemType(
+                request.sourceLogId(), user, MealItemType.AI_ESTIMATE)
+                .orElseThrow(() -> new NotFoundException("Estimación reciente no encontrada."));
+        if (source != null && source.getUnit() != request.unit()) {
+            throw new BadRequestException("La unidad de la estimación copiada debe coincidir con el registro original.");
+        }
+        BigDecimal ratio = source == null ? BigDecimal.ONE
+                : request.quantity().divide(source.getQuantity(), 8, RoundingMode.HALF_UP);
         FoodLog log = new FoodLog();
         log.setUser(user);
         log.setItemType(MealItemType.AI_ESTIMATE);
@@ -1045,26 +1072,115 @@ public class NutritionService {
         log.setQuantity(request.quantity());
         log.setUnit(request.unit());
         log.setLogDate(request.logDate() == null ? LocalDate.now() : request.logDate());
-        log.setCalories(request.calories() == null ? macroCalories(request.proteinGrams(), request.carbsGrams(), request.fatGrams()) : request.calories());
-        log.setProteinGrams(request.proteinGrams() == null ? BigDecimal.ZERO : request.proteinGrams());
-        log.setCarbsGrams(request.carbsGrams() == null ? BigDecimal.ZERO : request.carbsGrams());
-        log.setFatGrams(request.fatGrams() == null ? BigDecimal.ZERO : request.fatGrams());
-        log.setAiEstimateName(request.displayName() == null ? "Comida estimada" : request.displayName());
-        log.setAiEstimateConfidence(request.aiEstimateConfidence());
-        log.setAiEstimateDetails(request.aiEstimateDetails());
-        for (NutrientValueResponse nutrient : request.nutrients() == null ? List.<NutrientValueResponse>of() : request.nutrients()) {
-            if (nutrient.code() == null) continue;
-            nutrientDefinitions.findById(nutrient.code()).ifPresent(definition -> {
-                FoodLogNutrient copy = new FoodLogNutrient();
-                copy.setFoodLog(log);
-                copy.setDefinition(definition);
-                copy.setValue(nutrient.value());
-                copy.setSource(parseSource(nutrient.source()));
-                copy.setStatus(parseStatus(nutrient.status()));
-                log.getNutrientSnapshot().add(copy);
-            });
+        BigDecimal protein = source == null ? zero(request.proteinGrams()) : source.getProteinGrams().multiply(ratio);
+        BigDecimal carbs = source == null ? zero(request.carbsGrams()) : source.getCarbsGrams().multiply(ratio);
+        BigDecimal fat = source == null ? zero(request.fatGrams()) : source.getFatGrams().multiply(ratio);
+        log.setCalories(source == null
+                ? request.calories() == null ? macroCalories(protein, carbs, fat) : request.calories()
+                : scaledCalories(source.getCalories(), ratio, protein, carbs, fat));
+        log.setProteinGrams(scale(protein));
+        log.setCarbsGrams(scale(carbs));
+        log.setFatGrams(scale(fat));
+        log.setAiEstimateName(source == null ? request.displayName() == null ? "Comida estimada" : request.displayName() : source.getAiEstimateName());
+        log.setAiEstimateConfidence(source == null ? request.aiEstimateConfidence() : source.getAiEstimateConfidence());
+        log.setAiEstimateDetails(source == null ? request.aiEstimateDetails() : scaledAiDetails(source, ratio));
+        if (source == null) {
+            for (NutrientValueResponse nutrient : request.nutrients() == null ? List.<NutrientValueResponse>of() : request.nutrients()) {
+                if (nutrient.code() == null) continue;
+                nutrientDefinitions.findById(nutrient.code()).ifPresent(definition -> {
+                    FoodLogNutrient copy = new FoodLogNutrient();
+                    copy.setFoodLog(log);
+                    copy.setDefinition(definition);
+                    copy.setValue(nutrient.value());
+                    copy.setSource(parseSource(nutrient.source()));
+                    copy.setStatus(parseStatus(nutrient.status()));
+                    log.getNutrientSnapshot().add(copy);
+                });
+            }
+        } else {
+            copyScaledNutrients(log, source, ratio);
         }
         return toFoodLogResponse(foodLogs.save(log));
+    }
+
+    private FoodLogResponse copyRecipeMealLog(AppUser user, BatchAddMealLogRequest request) {
+        FoodLog source = foodLogs.findByIdAndUserAndItemType(request.sourceLogId(), user, MealItemType.RECIPE)
+                .orElseThrow(() -> new NotFoundException("Receta reciente no encontrada."));
+        if (!source.getRecipe().getId().equals(request.itemId())) {
+            throw new BadRequestException("La receta reciente no coincide con su registro original.");
+        }
+        if (source.getUnit() != request.unit()) {
+            throw new BadRequestException("La unidad de la receta copiada debe coincidir con el registro original.");
+        }
+        FoodLog copy = new FoodLog();
+        copy.setUser(user);
+        copy.setItemType(MealItemType.RECIPE);
+        copy.setRecipe(source.getRecipe());
+        copy.setMealType(request.mealType());
+        copy.setLogDate(request.logDate() == null ? LocalDate.now() : request.logDate());
+        copy.setQuantity(request.quantity());
+        copy.setUnit(request.unit());
+        copy.setRecipeRawTotalWeightGrams(source.getRecipeRawTotalWeightGrams());
+        copy.setRecipeCookedTotalWeightGrams(source.getRecipeCookedTotalWeightGrams());
+        BigDecimal ratio = request.quantity().divide(source.getQuantity(), 8, RoundingMode.HALF_UP);
+        copy.setProteinGrams(scale(source.getProteinGrams().multiply(ratio)));
+        copy.setCarbsGrams(scale(source.getCarbsGrams().multiply(ratio)));
+        copy.setFatGrams(scale(source.getFatGrams().multiply(ratio)));
+        copy.setCalories(scaledCalories(source.getCalories(), ratio, copy.getProteinGrams(), copy.getCarbsGrams(), copy.getFatGrams()));
+        for (FoodLogRecipeIngredient ingredient : source.getRecipeIngredients()) {
+            FoodLogRecipeIngredient copiedIngredient = new FoodLogRecipeIngredient();
+            copiedIngredient.setFoodLog(copy);
+            copiedIngredient.setFood(ingredient.getFood());
+            copiedIngredient.setUnit(ingredient.getUnit());
+            copiedIngredient.setQuantity(ingredient.getQuantity().multiply(ratio).setScale(2, RoundingMode.HALF_UP));
+            copy.getRecipeIngredients().add(copiedIngredient);
+        }
+        copyScaledNutrients(copy, source, ratio);
+        return toFoodLogResponse(foodLogs.save(copy));
+    }
+
+    private void copyScaledNutrients(FoodLog target, FoodLog source, BigDecimal ratio) {
+        source.getNutrientSnapshot().forEach(nutrient -> {
+            FoodLogNutrient copy = new FoodLogNutrient();
+            copy.setFoodLog(target);
+            copy.setDefinition(nutrient.getDefinition());
+            copy.setValue(scale(nutrient.getValue().multiply(ratio)));
+            copy.setSource(nutrient.getSource());
+            copy.setStatus(nutrient.getStatus());
+            target.getNutrientSnapshot().add(copy);
+        });
+    }
+
+    private String scaledAiDetails(FoodLog source, BigDecimal ratio) {
+        try {
+            AiEstimateDetails details = readAiEstimateDetails(source);
+            List<AiEstimateItem> items = details.items().stream().map(item -> new AiEstimateItem(item.name(),
+                    scaleWeight(item.estimatedGrams().multiply(ratio)), item.category(), item.preparation(),
+                    scale(item.proteinGrams().multiply(ratio)), scale(item.carbsGrams().multiply(ratio)),
+                    scale(item.fatGrams().multiply(ratio)), scaleNutrientMap(item.nutrients(), ratio), item.catalogFoodId(),
+                    item.catalogMatchType(), item.catalogMatchConfidence())).toList();
+            return objectMapper.writeValueAsString(new AiEstimateDetails(details.description(), details.context(), details.assumptions(), items));
+        } catch (JsonProcessingException ex) {
+            throw new BadRequestException("No se pudo copiar la estimación reciente.");
+        }
+    }
+
+    private BigDecimal zero(BigDecimal value) { return value == null ? BigDecimal.ZERO : value; }
+
+    private Integer scaledCalories(Integer sourceCalories, BigDecimal ratio, BigDecimal protein, BigDecimal carbs, BigDecimal fat) {
+        if (sourceCalories == null) return macroCalories(protein, carbs, fat);
+        try {
+            return BigDecimal.valueOf(sourceCalories).multiply(ratio).setScale(0, RoundingMode.HALF_UP).intValueExact();
+        } catch (ArithmeticException ex) {
+            throw new BadRequestException("La cantidad supera el rango de calorías permitido.");
+        }
+    }
+
+    private Map<String, BigDecimal> scaleNutrientMap(Map<String, BigDecimal> nutrients, BigDecimal ratio) {
+        if (nutrients == null) return Map.of();
+        return nutrients.entrySet().stream().filter(entry -> entry.getKey() != null && entry.getValue() != null)
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> scale(entry.getValue().multiply(ratio)),
+                        (first, second) -> second, LinkedHashMap::new));
     }
 
     @Transactional(readOnly = true)
@@ -1072,7 +1188,9 @@ public class NutritionService {
         int limit = Math.min(Math.max(requestedLimit, 1), 50);
         LocalDate end = LocalDate.now().minusDays(1);
         LocalDate start = end.minusMonths(12);
-        List<FoodLog> logs = new ArrayList<>(foodLogs.findByUserAndLogDateBetween(user, start, end));
+        List<Long> recentLogIds = foodLogs.findRecentMealGroupLogIds(user.getId(), start, end, limit);
+        if (recentLogIds.isEmpty()) return List.of();
+        List<FoodLog> logs = new ArrayList<>(foodLogs.findByIdIn(recentLogIds));
         logs.sort(Comparator.comparing(FoodLog::getLogDate).reversed()
                 .thenComparing(FoodLog::getMealType)
                 .thenComparing(FoodLog::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
@@ -1231,6 +1349,13 @@ public class NutritionService {
     private Food materializeAiEstimateItem(AppUser user, String sourceId, AiEstimateItem item) {
         FoodCategory category = item.category() == null ? FoodCategory.OTHER : item.category();
         FoodPreparation preparation = item.preparation() == null ? FoodPreparation.UNSPECIFIED : item.preparation();
+        BigDecimal itemToHundred = BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP);
+        String fingerprint = nutrientFingerprint(scaleNutrientMap(item.nutrients(), itemToHundred));
+        String identityKey = SearchTextNormalizer.normalize(item.name()) + "|" + category + "|" + preparation + "|"
+                + perHundred(item.proteinGrams(), item.estimatedGrams()).stripTrailingZeros().toPlainString() + "|"
+                + perHundred(item.carbsGrams(), item.estimatedGrams()).stripTrailingZeros().toPlainString() + "|"
+                + perHundred(item.fatGrams(), item.estimatedGrams()).stripTrailingZeros().toPlainString() + "|" + fingerprint;
+        if (postgres) jdbcTemplate.query("SELECT pg_advisory_xact_lock(hashtext(?))", rs -> { while (rs.next()) { } }, identityKey);
         Optional<Food> identity = foods.findActiveBySearchName(SearchTextNormalizer.normalize(item.name()), ModerationStatus.APPROVED)
                 .stream().filter(food -> "AI_ESTIMATE".equals(food.getSource())
                         && food.getCategory() == category
@@ -1238,7 +1363,10 @@ public class NutritionService {
                         && (food.getBrand() == null || food.getBrand().isBlank())
                         && food.getProteinGrams().compareTo(perHundred(item.proteinGrams(), item.estimatedGrams())) == 0
                         && food.getCarbsGrams().compareTo(perHundred(item.carbsGrams(), item.estimatedGrams())) == 0
-                        && food.getFatGrams().compareTo(perHundred(item.fatGrams(), item.estimatedGrams())) == 0).findFirst();
+                        && food.getFatGrams().compareTo(perHundred(item.fatGrams(), item.estimatedGrams())) == 0
+                        && (fingerprint.equals(food.getNutritionFingerprint()) || fingerprint.equals(nutrientFingerprint(
+                                food.getNutrients().stream().collect(Collectors.toMap(n -> n.getDefinition().getCode(),
+                                        FoodNutrient::getValue, (first, second) -> second)))))).findFirst();
         if (identity.isPresent()) return identity.get();
         Optional<Food> saved = foods.findBySourceAndSourceId("AI_ESTIMATE", sourceId);
         if (saved.isPresent()) {
@@ -1249,8 +1377,8 @@ public class NutritionService {
             return food;
         }
         validateAiEstimateItems(List.of(item));
-        BigDecimal estimatedGrams = item.estimatedGrams().max(BigDecimal.ONE);
-        BigDecimal ratio = BigDecimal.valueOf(100).divide(estimatedGrams, 4, RoundingMode.HALF_UP);
+        BigDecimal estimatedGrams = item.estimatedGrams();
+        BigDecimal ratio = itemToHundred;
         Food food = new Food();
         food.setName(item.name().trim());
         food.setCategory(category);
@@ -1266,10 +1394,24 @@ public class NutritionService {
         initializeIdentityCookedYield(food);
         food.setSource("AI_ESTIMATE");
         food.setSourceId(sourceId);
+        food.setNutritionFingerprint(fingerprint);
         food.setCreatedBy(user);
         food.setCreatedAt(OffsetDateTime.now());
         food.setModerationStatus(ModerationStatus.APPROVED);
         return foods.save(food);
+    }
+
+    private String nutrientFingerprint(Map<String, BigDecimal> nutrients) {
+        if (nutrients == null || nutrients.isEmpty()) return md5("");
+        String canonical = nutrients.entrySet().stream().filter(entry -> entry.getKey() != null && entry.getValue() != null)
+                .sorted(Map.Entry.comparingByKey()).map(entry -> entry.getKey() + "=" + entry.getValue().stripTrailingZeros().toPlainString())
+                .collect(Collectors.joining(";"));
+        return md5(canonical);
+    }
+
+    private String md5(String value) {
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("MD5").digest(value.getBytes(StandardCharsets.UTF_8))); }
+        catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }
 
     private void applyAiEstimate(FoodLog log, String name, String description, String context, int confidence,
@@ -1608,7 +1750,10 @@ public class NutritionService {
     }
 
     private BigDecimal perHundred(BigDecimal value, BigDecimal grams) {
-        BigDecimal ratio = BigDecimal.valueOf(100).divide(grams.max(BigDecimal.ONE), 4, RoundingMode.HALF_UP);
+        if (grams == null || grams.signum() <= 0) {
+            throw new BadRequestException("La cantidad estimada debe ser mayor que cero.");
+        }
+        BigDecimal ratio = BigDecimal.valueOf(100).divide(grams, 4, RoundingMode.HALF_UP);
         return scale(value.multiply(ratio));
     }
 
@@ -2021,11 +2166,15 @@ public class NutritionService {
     }
 
     private static int macroCalories(BigDecimal protein, BigDecimal carbs, BigDecimal fat) {
-        return scale(protein).multiply(BigDecimal.valueOf(4))
-                .add(scale(carbs).multiply(BigDecimal.valueOf(4)))
-                .add(scale(fat).multiply(BigDecimal.valueOf(9)))
-                .setScale(0, RoundingMode.HALF_UP)
-                .intValue();
+        try {
+            return scale(protein).multiply(BigDecimal.valueOf(4))
+                    .add(scale(carbs).multiply(BigDecimal.valueOf(4)))
+                    .add(scale(fat).multiply(BigDecimal.valueOf(9)))
+                    .setScale(0, RoundingMode.HALF_UP)
+                    .intValueExact();
+        } catch (ArithmeticException ex) {
+            throw new BadRequestException("Los valores nutricionales exceden el rango permitido.");
+        }
     }
 
     private static String label(MealType mealType) {

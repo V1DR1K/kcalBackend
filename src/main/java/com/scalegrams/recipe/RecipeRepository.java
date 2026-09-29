@@ -23,6 +23,20 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     @Query("select r.createdBy from Recipe r where r.createdBy.id <> :userId order by r.createdBy.fullName asc, r.createdBy.id asc")
     List<AppUser> findAuthorsExcluding(@Param("userId") Long userId);
 
+    @Query("""
+            select r.createdBy.id as ownerId, r.createdBy.fullName as ownerName, count(r) as recipeCount
+            from Recipe r where r.createdBy is not null and r.createdBy.id <> :userId
+            group by r.createdBy.id, r.createdBy.fullName
+            order by r.createdBy.fullName asc, r.createdBy.id asc
+            """)
+    List<RecipeAuthorCountProjection> findAuthorCountsExcluding(@Param("userId") Long userId);
+
+    interface RecipeAuthorCountProjection {
+        Long getOwnerId();
+        String getOwnerName();
+        Long getRecipeCount();
+    }
+
     long countByCreatedById(Long createdById);
 
     @Query("select count(r) > 0 from Recipe r join r.ingredients ingredient where ingredient.ingredientRecipe.id = :recipeId")

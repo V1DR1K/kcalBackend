@@ -16,7 +16,7 @@ server:
 
 app:
   security:
-    public-prometheus: false
+    public-prometheus: true
   auth:
     service-url: ${AUTH_SERVICE_URL}
     public-key-pem: ${AUTH_PUBLIC_KEY_PEM}

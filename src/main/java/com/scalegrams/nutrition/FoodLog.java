@@ -26,6 +26,7 @@ import jakarta.persistence.OneToMany;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.BatchSize;
 
 @Entity
 @Getter
@@ -47,6 +48,7 @@ public class FoodLog {
     private Recipe recipe;
 
     @OneToMany(mappedBy = "foodLog", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     private List<FoodLogRecipeIngredient> recipeIngredients = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
@@ -75,5 +77,6 @@ public class FoodLog {
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
     @OneToMany(mappedBy = "foodLog", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     private List<FoodLogNutrient> nutrientSnapshot = new ArrayList<>();
 }

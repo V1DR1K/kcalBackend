@@ -18,7 +18,28 @@ public interface FoodLogRepository extends JpaRepository<FoodLog, Long> {
     @EntityGraph(attributePaths = {"food", "food.tags", "recipe", "recipe.ingredients", "recipe.ingredients.food"})
     List<FoodLog> findByUserAndLogDateBetween(AppUser user, LocalDate start, LocalDate end);
 
+    @Query(value = """
+            SELECT fl.id FROM food_log fl
+            JOIN (
+              SELECT log_date, meal_type FROM food_log
+              WHERE user_id = :userId AND log_date BETWEEN :startDate AND :endDate
+              GROUP BY log_date, meal_type
+              ORDER BY log_date DESC, MAX(created_at) DESC, meal_type
+              LIMIT :groupLimit
+            ) recent ON recent.log_date = fl.log_date AND recent.meal_type = fl.meal_type
+            WHERE fl.user_id = :userId
+            ORDER BY fl.log_date DESC, fl.meal_type, fl.created_at DESC, fl.id DESC
+            """, nativeQuery = true)
+    List<Long> findRecentMealGroupLogIds(@Param("userId") Long userId, @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate, @Param("groupLimit") int groupLimit);
+
+    @EntityGraph(attributePaths = {"food", "food.tags", "recipe", "recipe.ingredients", "recipe.ingredients.food"})
+    List<FoodLog> findByIdIn(List<Long> ids);
+
     Optional<FoodLog> findByIdAndUser(Long id, AppUser user);
+
+    @EntityGraph(attributePaths = {"recipe", "recipeIngredients", "recipeIngredients.food"})
+    Optional<FoodLog> findByIdAndUserAndItemType(Long id, AppUser user, MealItemType itemType);
 
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("select log from FoodLog log where log.id = :id and log.user = :user")

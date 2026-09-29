@@ -17,6 +17,15 @@ public interface NutritionPlanRepository extends JpaRepository<NutritionPlan, Lo
     Optional<NutritionPlan> findByIdAndUserAndActiveTrue(Long id, AppUser user);
 
     @Query("""
+            select plan from NutritionPlan plan where plan.user = :user and plan.active = true
+              and plan.startDate <= :endDate
+              and (plan.endDate is null or plan.endDate >= :startDate)
+              and (:excludedId is null or plan.id <> :excludedId)
+            """)
+            List<NutritionPlan> findOverlapping(@Param("user") AppUser user, @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate, @Param("excludedId") Long excludedId);
+
+    @Query("""
             select count(plan) > 0 from NutritionPlan plan
             where plan.user = :user
               and plan.active = true

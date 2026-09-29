@@ -18,6 +18,7 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 
     boolean existsByBarcode(String barcode);
 
+    @EntityGraph(attributePaths = "nutrients.definition")
     @Query("select f from Food f where f.deletedAt is null and f.moderationStatus = :status and f.searchName = :query")
     java.util.List<Food> findActiveBySearchName(@Param("query") String query,
             @Param("status") ModerationStatus status);

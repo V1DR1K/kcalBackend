@@ -39,6 +39,17 @@ class AiFoodMatcherTests {
         when(foods.findActiveBySearchName("pechuga de pollo", ModerationStatus.APPROVED)).thenReturn(List.of(food));
         assertThat(match().catalogFoodId()).isNull();
     }
+    @Test void matchesCatalogNutritionUsingPositiveSubGramQuantities() {
+        Food food = food(10L);
+        food.setProteinGrams(BigDecimal.valueOf(20));
+        when(foods.findActiveBySearchName("pechuga de pollo", ModerationStatus.APPROVED)).thenReturn(List.of(food));
+
+        AiEstimateItem item = new AiFoodMatcher(foods).enrich(List.of(new AiEstimateItem("Pechuga de pollo",
+                new BigDecimal("0.25"), FoodCategory.MEAT, FoodPreparation.UNSPECIFIED,
+                BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO, Map.of()))).getFirst();
+
+        assertThat(item.proteinGrams()).isEqualByComparingTo("0.1");
+    }
     private AiEstimateItem match() {
         return new AiFoodMatcher(foods).enrich(List.of(new AiEstimateItem("Pechuga de pollo", BigDecimal.valueOf(150), FoodCategory.MEAT,
                 FoodPreparation.UNSPECIFIED, BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.ONE, Map.of()))).getFirst();

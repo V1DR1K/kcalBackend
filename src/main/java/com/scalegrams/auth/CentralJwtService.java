@@ -5,6 +5,7 @@ import java.security.PublicKey;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.List;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -21,9 +22,16 @@ public class CentralJwtService {
 
     public UUID subject(String token) {
         try {
-            var parsed = Jwts.parser().verifyWith(publicKey()).build().parseSignedClaims(token);
+            var parsed = Jwts.parser().verifyWith(publicKey()).requireIssuer("central-auth-service").build()
+                    .parseSignedClaims(token);
             if (!"RS256".equals(parsed.getHeader().getAlgorithm())) {
                 throw new IllegalArgumentException("El JWT central no usa RS256.");
+            }
+            if (parsed.getPayload().getExpiration() == null) {
+                throw new IllegalArgumentException("El JWT central no tiene vencimiento.");
+            }
+            if (parsed.getPayload().getAudience() == null || !parsed.getPayload().getAudience().contains("central-auth")) {
+                throw new IllegalArgumentException("El JWT central no está destinado a este servicio.");
             }
             String subject = parsed.getPayload().getSubject();
             return UUID.fromString(subject);

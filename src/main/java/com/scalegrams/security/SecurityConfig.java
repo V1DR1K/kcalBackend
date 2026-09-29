@@ -22,6 +22,7 @@ import jakarta.servlet.http.HttpServletResponse;
 public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter,
+            CookieOriginValidationFilter originFilter,
             @Value("${app.security.public-prometheus:false}") boolean publicPrometheus) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
@@ -48,6 +49,7 @@ public class SecurityConfig {
                             .anyRequest().authenticated();
                 })
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(originFilter, JwtAuthenticationFilter.class)
                 .build();
     }
 

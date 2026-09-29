@@ -25,6 +25,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.scalegrams.nutrition.AiProviderException;
+import com.scalegrams.common.ForbiddenException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -33,6 +34,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(NotFoundException.class)
     ResponseEntity<ApiError> notFound(NotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiError("NOT_FOUND", ex.getMessage(), null, Instant.now()));
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    ResponseEntity<ApiError> forbidden(ForbiddenException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ApiError("FORBIDDEN", ex.getMessage(), null, Instant.now()));
     }
 
     @ExceptionHandler({BadRequestException.class, BadCredentialsException.class})

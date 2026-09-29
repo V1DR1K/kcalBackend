@@ -55,10 +55,12 @@ public class AiNutritionService {
         boolean available = properties.isEnabled() && properties.getGeminiApiKey() != null && !properties.getGeminiApiKey().isBlank();
         OffsetDateTime blockedUntil = usage == null ? null : usage.getBlockedUntil();
         boolean blocked = blockedUntil != null && blockedUntil.isAfter(OffsetDateTime.now());
+        int dailyLimit = properties.getDailyLimit();
         String status = !available ? "La estimación por foto no está disponible." : blocked
                 ? "Gemini informó que su cuota está agotada temporalmente."
-                : "Sin límite interno. Gemini no expone un saldo gratuito exacto.";
-        return new AiEstimateUsageResponse(available, used, blocked ? blockedUntil : null, status);
+                : dailyLimit > 0 ? "Usaste " + used + " de " + dailyLimit + " estimaciones disponibles hoy."
+                : "Sin límite diario interno. La disponibilidad depende de Gemini.";
+        return new AiEstimateUsageResponse(available, used, dailyLimit, blocked ? blockedUntil : null, status);
     }
 
     public AiEstimateResponse analyze(AppUser user, MultipartFile image, String context) {
@@ -95,20 +97,14 @@ public class AiNutritionService {
         if (image.getSize() > properties.getMaxImageBytes()) throw new BadRequestException("La foto es demasiado grande. Probá con una imagen más liviana.");
 
         LocalDate date = LocalDate.now();
-        AiEstimateUsage usage = usages.findByUserAndUsageDate(user, date).orElseGet(() -> {
-            AiEstimateUsage next = new AiEstimateUsage();
-            next.setUser(user);
-            next.setUsageDate(date);
-            return next;
-        });
-        if (usage.getBlockedUntil() != null && usage.getBlockedUntil().isAfter(OffsetDateTime.now())) {
+        OffsetDateTime now = OffsetDateTime.now();
+        if (usages.reserve(user.getId(), date, now, properties.getDailyLimit()) == 0) {
+            AiEstimateUsage usage = usages.findByUserAndUsageDate(user, date).orElse(null);
+            if (usage != null && usage.getBlockedUntil() != null && usage.getBlockedUntil().isAfter(now)) {
             throw new BadRequestException("Gemini alcanzó su cuota disponible. Probá nuevamente más tarde.");
-        }
-        if (properties.getDailyLimit() > 0 && usage.getUsedCount() >= properties.getDailyLimit()) {
+            }
             throw new BadRequestException("Alcanzaste el límite diario de estimaciones. Probá nuevamente mañana.");
         }
-        usage.setUsedCount(usage.getUsedCount() + 1);
-        usages.save(usage);
 
         try {
             AiNutritionResult result = operation.estimate(image.getBytes(), contentType, normalizeContext(context));
@@ -117,9 +113,7 @@ public class AiNutritionService {
                     .toList();
             items = foodMatcher.enrich(items);
             AiCaptureTarget resolvedTarget = targetFor(items.size());
-            usage.setBlockedUntil(null);
-            usage.setProviderStatus(null);
-            usages.save(usage);
+            usages.updateProviderState(user.getId(), date, null, null);
             var decision = jev.classify(resolvedTarget, result).orElse(null);
             AiEstimateResponse draft = new AiEstimateResponse(null, resolvedTarget, result.name(), result.description(),
                     result.confidence(), result.assumptions(), items, usage(user), decision);
@@ -132,13 +126,10 @@ public class AiNutritionService {
             return new AiEstimateResponse(capture.getId(), resolvedTarget, draft.name(), draft.description(),
                     draft.confidence(), draft.assumptions(), draft.items(), draft.usage(), decision);
         } catch (AiQuotaExceededException ex) {
-            usage.setBlockedUntil(ex.getRetryAt());
-            usage.setProviderStatus("Gemini informó cuota agotada.");
-            usages.save(usage);
+            usages.updateProviderState(user.getId(), date, ex.getRetryAt(), "Gemini informó cuota agotada.");
             throw new BadRequestException("Gemini alcanzó su cuota disponible. Probá nuevamente cuando se renueve.");
         } catch (Exception ex) {
-            usage.setUsedCount(Math.max(0, usage.getUsedCount() - 1));
-            usages.save(usage);
+            usages.release(user.getId(), date);
             if (ex instanceof BadRequestException badRequest) throw badRequest;
             throw new BadRequestException("No se pudo analizar la foto. Intentá nuevamente en unos minutos.");
         }
@@ -172,7 +163,6 @@ public class AiNutritionService {
         return itemCount > 1 ? AiCaptureTarget.RECIPE : AiCaptureTarget.FOOD;
     }
 
-    @Transactional(readOnly = true)
     public AiTranscriptionResponse transcribe(AppUser user, MultipartFile audio) {
         if (!properties.isEnabled() || properties.getGeminiApiKey() == null || properties.getGeminiApiKey().isBlank()) {
             throw new BadRequestException("La estimación por foto no está disponible por el momento.");
@@ -181,9 +171,22 @@ public class AiNutritionService {
         String contentType = normalizeContentType(audio.getContentType());
         if (!ACCEPTED_AUDIO_TYPES.contains(contentType)) throw new BadRequestException("Usá una nota de audio compatible.");
         if (audio.getSize() > properties.getMaxAudioBytes()) throw new BadRequestException("La nota de audio es demasiado larga. Probá con una descripción más breve.");
+        LocalDate date = LocalDate.now();
+        OffsetDateTime now = OffsetDateTime.now();
+        if (usages.reserve(user.getId(), date, now, properties.getDailyLimit()) == 0) {
+            AiEstimateUsage usage = usages.findByUserAndUsageDate(user, date).orElse(null);
+            if (usage != null && usage.getBlockedUntil() != null && usage.getBlockedUntil().isAfter(now)) {
+                throw new BadRequestException("Gemini alcanzó su cuota disponible. Probá nuevamente más tarde.");
+            }
+            throw new BadRequestException("Alcanzaste el límite diario de solicitudes asistidas. Probá nuevamente mañana.");
+        }
         try {
             return new AiTranscriptionResponse(gemini.transcribe(audio.getBytes(), contentType));
+        } catch (AiQuotaExceededException ex) {
+            usages.updateProviderState(user.getId(), date, ex.getRetryAt(), "Gemini informó cuota agotada.");
+            throw new BadRequestException("Gemini alcanzó su cuota disponible. Probá nuevamente cuando se renueve.");
         } catch (Exception ex) {
+            usages.release(user.getId(), date);
             if (ex instanceof BadRequestException badRequest) throw badRequest;
             throw new BadRequestException("No se pudo transcribir la nota. Intentá nuevamente.");
         }

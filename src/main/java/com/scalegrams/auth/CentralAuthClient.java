@@ -7,6 +7,9 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import java.net.http.HttpClient;
+import java.time.Duration;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.scalegrams.common.BadRequestException;
@@ -17,7 +20,10 @@ public class CentralAuthClient {
 
     public CentralAuthClient(RestClient.Builder builder, @Value("${app.auth.service-url}") String serviceUrl) {
         String baseUrl = serviceUrl.endsWith("/") ? serviceUrl.substring(0, serviceUrl.length() - 1) : serviceUrl;
-        this.client = builder.baseUrl(baseUrl).build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
+        requestFactory.setReadTimeout(Duration.ofSeconds(8));
+        this.client = builder.baseUrl(baseUrl).requestFactory(requestFactory).build();
     }
 
     public TokenResponse login(String username, String password) {

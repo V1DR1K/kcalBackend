@@ -107,12 +107,14 @@ public class ProfileService {
 
     @Transactional
     public NutritionPlanResponse createPlan(AppUser user, UpsertNutritionPlanRequest request) {
+        lockUser(user);
         LocalDate previousEnd = request.startDate().minusDays(1);
         NutritionPlan sameDay = nutritionPlans.findActiveForUserAndDate(user, request.startDate()).stream()
                 .filter(plan -> plan.getEndDate() == null || !plan.getEndDate().isBefore(request.startDate()))
                 .filter(plan -> plan.getStartDate().equals(request.startDate()))
                 .findFirst().orElse(null);
         validatePlan(user, request, sameDay == null ? null : sameDay.getId());
+        validateNoOverlaps(user, request, sameDay == null ? null : sameDay.getId(), sameDay == null);
         NutritionPlan plan;
         if (sameDay != null) {
             plan = sameDay;
@@ -135,9 +137,11 @@ public class ProfileService {
 
     @Transactional
     public NutritionPlanResponse updatePlan(AppUser user, Long id, UpsertNutritionPlanRequest request) {
+        lockUser(user);
         NutritionPlan plan = nutritionPlans.findByIdAndUserAndActiveTrue(id, user)
                 .orElseThrow(() -> new NotFoundException("Plan alimenticio no encontrado."));
         validatePlan(user, request, plan.getId());
+        validateNoOverlaps(user, request, plan.getId(), false);
         applyPlan(plan, request);
         syncUserFallback(user, plan);
         users.save(user);
@@ -200,6 +204,19 @@ public class ProfileService {
         if (sum.compareTo(BigDecimal.valueOf(100).setScale(1, RoundingMode.HALF_UP)) != 0) {
             throw new BadRequestException("La suma de macros debe dar 100%.");
         }
+    }
+
+    private void lockUser(AppUser user) {
+        users.findByIdForUpdate(user.getId()).orElseThrow(() -> new NotFoundException("Usuario no encontrado."));
+    }
+
+    private void validateNoOverlaps(AppUser user, UpsertNutritionPlanRequest request, Long excludedId,
+            boolean mayReplacePreviousPlan) {
+        List<NutritionPlan> overlaps = nutritionPlans.findOverlapping(user, request.startDate(),
+                request.endDate() == null ? LocalDate.of(9999, 12, 31) : request.endDate(), excludedId);
+        boolean conflict = overlaps.stream().anyMatch(existing -> !mayReplacePreviousPlan
+                || !existing.getStartDate().isBefore(request.startDate()));
+        if (conflict) throw new BadRequestException("El período se superpone con otro plan activo.");
     }
 
     private void applyPlan(NutritionPlan plan, UpsertNutritionPlanRequest request) {

@@ -118,7 +118,7 @@ public class NutritionDtos {
             @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, @NotNull FoodUnit unit, LocalDate logDate,
             @Size(max = 120) String displayName, @PositiveOrZero Integer aiEstimateConfidence, @Size(max = 20000) String aiEstimateDetails,
             @PositiveOrZero Integer calories, @PositiveOrZero BigDecimal proteinGrams, @PositiveOrZero BigDecimal carbsGrams,
-            @PositiveOrZero BigDecimal fatGrams, List<NutrientValueResponse> nutrients) {
+            @PositiveOrZero BigDecimal fatGrams, List<NutrientValueResponse> nutrients, @Positive Long sourceLogId) {
         @AssertTrue(message = "El registro debe tener una referencia válida.")
         public boolean hasValidItemReference() {
             return itemType == MealItemType.AI_ESTIMATE ? itemId == null : itemId != null;
@@ -199,7 +199,7 @@ public class NutritionDtos {
     public record AiTranscriptionResponse(@NotBlank String transcript) {
     }
 
-    public record AiEstimateUsageResponse(boolean available, int used, OffsetDateTime blockedUntil, String status) {
+    public record AiEstimateUsageResponse(boolean available, int used, int dailyLimit, OffsetDateTime blockedUntil, String status) {
     }
 
     public record AiEstimateDraft(
@@ -334,7 +334,7 @@ public class NutritionDtos {
     }
 
     public record RecipeIngredientRequest(@Positive Long foodId, @Positive Long recipeId,
-            @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, @NotNull FoodUnit unit) {
+            @NotNull @Positive @DecimalMax("10000000") @Digits(integer = 8, fraction = 2) BigDecimal quantity, @NotNull FoodUnit unit) {
         public RecipeIngredientRequest(Long foodId, BigDecimal quantity, FoodUnit unit) {
             this(foodId, null, quantity, unit);
         }
@@ -366,7 +366,7 @@ public class NutritionDtos {
             BigDecimal totalWeightGrams,
             @Positive @Digits(integer = 36, fraction = 2) BigDecimal cookedTotalWeightGrams,
             boolean clearCookedTotalWeight,
-            @NotEmpty @Size(max = 50) List<@NotNull RecipeIngredientRequest> ingredients) {
+            @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> ingredients) {
         @AssertTrue(message = "No se puede informar y borrar el peso cocido al mismo tiempo.")
         public boolean hasConsistentCookedWeightInstruction() {
             return !clearCookedTotalWeight || cookedTotalWeightGrams == null;

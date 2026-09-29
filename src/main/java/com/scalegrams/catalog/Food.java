@@ -88,6 +88,8 @@ public class Food {
     private String imageObjectKey;
     private String source = "LOCAL";
     private String sourceId;
+    @Column(name = "nutrition_fingerprint", nullable = false, length = 32)
+    private String nutritionFingerprint = "";
     private OffsetDateTime lastSyncedAt;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_id")

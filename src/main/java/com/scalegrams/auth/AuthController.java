@@ -72,9 +72,12 @@ public class AuthController {
             HttpServletResponse response) {
         String refreshToken = cookieValue(httpRequest, refreshCookieName);
         if (refreshToken == null && request != null) refreshToken = request.refreshToken();
-        authService.logout(refreshToken);
-        clearCookie(response, accessCookieName, "/");
-        clearCookie(response, refreshCookieName, "/api/auth");
+        try {
+            authService.logout(refreshToken);
+        } finally {
+            clearCookie(response, accessCookieName, "/");
+            clearCookie(response, refreshCookieName, "/api/auth");
+        }
     }
 
     @GetMapping("/me")

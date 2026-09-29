@@ -208,6 +208,34 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void rejectsNutritionPlanPeriodsThatOverlapFuturePlans() {
+		HttpHeaders headers = authHeaders("plan-overlap-user");
+		NutritionPlanRequest future = new NutritionPlanRequest("Futuro", 2200, 25, 50, 25, "2038-06-01", "2038-12-31");
+		ResponseEntity<String> created = rest.postForEntity("/api/profile/nutrition-plans", new HttpEntity<>(future, headers), String.class);
+		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
+
+		NutritionPlanRequest overlapping = new NutritionPlanRequest("Cruza el futuro", 1800, 30, 40, 30, "2038-01-01", "2039-01-01");
+		ResponseEntity<String> rejected = rest.postForEntity("/api/profile/nutrition-plans", new HttpEntity<>(overlapping, headers), String.class);
+		assertThat(rejected.getStatusCode().value()).isEqualTo(400);
+		assertThat(rejected.getBody()).contains("se superpone con otro plan activo");
+	}
+
+	@Test
+	void recentMealsLoadsOnlyTheMostRecentMealGroups() {
+		HttpHeaders headers = authHeaders("recent-groups-user");
+		String date = java.time.LocalDate.now().minusDays(1).toString();
+		ResponseEntity<String> added = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(Map.of(
+				"itemType", "FOOD", "itemId", 1, "mealType", "DINNER", "quantity", 100,
+				"unit", "GRAM", "logDate", date), headers), String.class);
+		assertThat(added.getStatusCode().is2xxSuccessful()).isTrue();
+
+		ResponseEntity<String> recent = rest.exchange("/api/nutrition/recent-meals?limit=5", HttpMethod.GET,
+				new HttpEntity<>(headers), String.class);
+		assertThat(recent.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(recent.getBody()).contains("DINNER", "itemType");
+	}
+
+	@Test
 	void deletingNutritionPlanDeactivatesAndHidesIt() {
 		HttpHeaders headers = authHeaders();
 		NutritionPlanRequest request = new NutritionPlanRequest("Plan para borrar", 1800, 30, 40, 30, "2026-12-01", null);

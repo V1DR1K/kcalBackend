@@ -1,12 +1,12 @@
 groups:
   - name: scalegrams-v1
     rules:
-      - alert: ScaleGramsBackendDown
+      - alert: ScaleGramsMetricsScrapeFailed
         expr: up{job="scalegrams-backend"} == 0
         for: 2m
         labels: { severity: critical }
         annotations:
-          summary: "ScaleGrams backend no responde"
+          summary: "Prometheus no pudo recolectar métricas de ScaleGrams"
       - alert: ScaleGramsHighServerErrorRate
         expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 1) > 0.05
         for: 5m
