@@ -1030,6 +1030,50 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void aiRegistrationUsesDetectedItemCountInsteadOfRequestedTarget() {
+		HttpHeaders headers = authHeaders();
+		AppUser user = users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow();
+		AiCapture foodCapture = new AiCapture();
+		foodCapture.setUser(user);
+		foodCapture.setTargetType(AiCaptureTarget.FOOD);
+		foodCapture.setDraftJson("{}");
+		foodCapture = aiCaptures.save(foodCapture);
+		Map<String, Object> recipeRequest = Map.of(
+				"captureId", foodCapture.getId(), "name", "Arroz con pollo automático", "mealType", "DINNER", "confidence", 88,
+				"items", List.of(
+						Map.of("name", "Arroz automático", "category", "CEREAL", "preparation", "COOKED", "estimatedGrams", 180,
+								"proteinGrams", 4.5, "carbsGrams", 50, "fatGrams", 1),
+						Map.of("name", "Pollo automático", "category", "MEAT", "preparation", "COOKED", "estimatedGrams", 140,
+								"proteinGrams", 38, "carbsGrams", 0, "fatGrams", 7)));
+
+		ResponseEntity<Map> recipeResponse = rest.postForEntity("/api/nutrition/ai-registrations/confirm",
+				new HttpEntity<>(recipeRequest, headers), Map.class);
+
+		assertThat(recipeResponse.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(recipeResponse.getBody().get("targetType")).isEqualTo("RECIPE");
+		assertThat(foodCapture.getId()).isNotNull();
+		assertThat(aiCaptures.findById(foodCapture.getId()).orElseThrow().getTargetType()).isEqualTo(AiCaptureTarget.RECIPE);
+
+		AiCapture recipeCapture = new AiCapture();
+		recipeCapture.setUser(user);
+		recipeCapture.setTargetType(AiCaptureTarget.RECIPE);
+		recipeCapture.setDraftJson("{}");
+		recipeCapture = aiCaptures.save(recipeCapture);
+		Map<String, Object> foodRequest = Map.of(
+				"captureId", recipeCapture.getId(), "name", "Banana automática", "confidence", 91, "addToDiary", false,
+				"items", List.of(Map.of("name", "Banana automática", "category", "FRUIT", "preparation", "RAW",
+						"estimatedGrams", 120, "proteinGrams", 1.3, "carbsGrams", 27, "fatGrams", 0.4)));
+
+		ResponseEntity<Map> foodResponse = rest.postForEntity("/api/nutrition/ai-registrations/confirm",
+				new HttpEntity<>(foodRequest, headers), Map.class);
+
+		assertThat(foodResponse.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(foodResponse.getBody().get("targetType")).isEqualTo("FOOD");
+		assertThat(foodResponse.getBody().get("log")).isNull();
+		assertThat(aiCaptures.findById(recipeCapture.getId()).orElseThrow().getTargetType()).isEqualTo(AiCaptureTarget.FOOD);
+	}
+
+	@Test
 	void canUseARecipeAsIngredientAndRejectCircularReferences() {
 		HttpHeaders headers = authHeaders();
 		ResponseEntity<Map> yogurt = rest.postForEntity("/api/recipes", new HttpEntity<>(Map.of(

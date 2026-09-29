@@ -1545,10 +1545,11 @@ public class NutritionService {
     }
 
     @Transactional
-    public AiRegistrationResponse confirmAiRegistration(AppUser user, AiCaptureTarget targetType,
-            ConfirmAiRegistrationRequest request, String sourcePrefix) {
+    public AiRegistrationResponse confirmAiRegistration(AppUser user, ConfirmAiRegistrationRequest request,
+            String sourcePrefix) {
         List<AiEstimateItem> items = normalizeAiEstimateItems(request.items());
         validateAiEstimateItems(items);
+        AiCaptureTarget targetType = items.size() > 1 ? AiCaptureTarget.RECIPE : AiCaptureTarget.FOOD;
         LocalDate logDate = request.logDate() == null ? LocalDate.now() : request.logDate();
         if (targetType == AiCaptureTarget.FOOD) {
             if (items.size() != 1) {

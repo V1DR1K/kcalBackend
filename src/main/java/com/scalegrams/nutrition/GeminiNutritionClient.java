@@ -91,7 +91,7 @@ public class GeminiNutritionClient {
 
     public AiNutritionResult analyze(byte[] image, String contentType, String context, AiCaptureTarget targetType) {
         return nutritionResult(List.of(
-                Map.of("text", nutritionPrompt(context, targetType)),
+                Map.of("text", nutritionPrompt(context)),
                 inlineData(contentType, image)));
     }
 
@@ -103,7 +103,7 @@ public class GeminiNutritionClient {
     public AiNutritionResult refine(byte[] image, String contentType, String context, AiEstimateDraft currentEstimate,
             String correction, AiCaptureTarget targetType) {
         return nutritionResult(List.of(
-                Map.of("text", refinementPrompt(context, currentEstimate, correction, targetType)),
+                Map.of("text", refinementPrompt(context, currentEstimate, correction)),
                 inlineData(contentType, image)));
     }
 
@@ -290,28 +290,17 @@ public class GeminiNutritionClient {
     }
 
     private static String nutritionPrompt(String context) {
-        return nutritionPrompt(context, AiCaptureTarget.RECIPE);
-    }
-
-    private static String nutritionPrompt(String context, AiCaptureTarget targetType) {
-        String prompt = targetType == AiCaptureTarget.FOOD
-                ? PROMPT.replace("Analizá esta foto de comida para registrar un cheat meal.",
-                        "Analizá esta foto para registrar un único alimento o producto. Devolvé exactamente un item; si hay una tabla nutricional, respetá su base y no inventes datos ausentes.")
-                : PROMPT;
+        String prompt = PROMPT;
         if (context == null || context.isBlank()) return prompt;
         return prompt + "\nContexto declarado por la persona (información factual adicional): \"" + context
                 + "\". Incluí los alimentos, ingredientes, bebidas, salsas y cantidades mencionados aunque no aparezcan en la foto; no los descartes por falta de evidencia visual.";
     }
 
-    private String refinementPrompt(String context, AiEstimateDraft currentEstimate, String correction,
-            AiCaptureTarget targetType) {
+    private String refinementPrompt(String context, AiEstimateDraft currentEstimate, String correction) {
         try {
             String draft = objectMapper.writeValueAsString(currentEstimate);
             String originalContext = context == null || context.isBlank() ? "(sin observación original)" : context;
-            String targetInstruction = targetType == AiCaptureTarget.FOOD
-                    ? "\nEl resultado representa un único alimento o producto: devolvé exactamente un item."
-                    : "";
-            return REFINEMENT_PROMPT + targetInstruction + "\nObservación original: \"" + originalContext + "\""
+            return REFINEMENT_PROMPT + "\nObservación original: \"" + originalContext + "\""
                     + "\nBorrador actual: " + draft
                     + "\nCorrección solicitada: \"" + correction + "\"";
         } catch (Exception ex) {

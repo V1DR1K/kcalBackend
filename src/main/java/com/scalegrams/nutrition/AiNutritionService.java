@@ -116,19 +116,20 @@ public class AiNutritionService {
                     .map(item -> new AiEstimateItem(item.name(), item.estimatedGrams(), item.category(), item.preparation(), item.proteinGrams(), item.carbsGrams(), item.fatGrams(), item.nutrients()))
                     .toList();
             items = foodMatcher.enrich(items);
+            AiCaptureTarget resolvedTarget = targetFor(items.size());
             usage.setBlockedUntil(null);
             usage.setProviderStatus(null);
             usages.save(usage);
-            var decision = jev.classify(targetType, result).orElse(null);
-            AiEstimateResponse draft = new AiEstimateResponse(null, targetType, result.name(), result.description(),
+            var decision = jev.classify(resolvedTarget, result).orElse(null);
+            AiEstimateResponse draft = new AiEstimateResponse(null, resolvedTarget, result.name(), result.description(),
                     result.confidence(), result.assumptions(), items, usage(user), decision);
             AiCapture capture = new AiCapture();
             capture.setUser(user);
-            capture.setTargetType(targetType);
+            capture.setTargetType(resolvedTarget);
             capture.setDraftJson(objectMapper.writeValueAsString(draft));
             if (decision != null) capture.setJevDecisionJson(objectMapper.writeValueAsString(decision));
             capture = captures.save(capture);
-            return new AiEstimateResponse(capture.getId(), targetType, draft.name(), draft.description(),
+            return new AiEstimateResponse(capture.getId(), resolvedTarget, draft.name(), draft.description(),
                     draft.confidence(), draft.assumptions(), draft.items(), draft.usage(), decision);
         } catch (AiQuotaExceededException ex) {
             usage.setBlockedUntil(ex.getRetryAt());
@@ -157,14 +158,18 @@ public class AiNutritionService {
         if (capture.getExpiresAt().isBefore(OffsetDateTime.now())) {
             throw new BadRequestException("La captura venció. Analizá las fotos nuevamente.");
         }
-        var registration = nutritionService.confirmAiRegistration(user, capture.getTargetType(), request,
-                "ai-capture:" + capture.getId());
+        var registration = nutritionService.confirmAiRegistration(user, request, "ai-capture:" + capture.getId());
         capture.setStatus(AiCaptureStatus.CONFIRMED);
+        capture.setTargetType(registration.targetType());
         capture.setConfirmedFoodId(registration.food() == null ? null : registration.food().id());
         capture.setConfirmedRecipeId(registration.recipe() == null ? null : registration.recipe().id());
         capture.setConfirmedLogId(registration.log() == null ? null : registration.log().id());
         captures.save(capture);
         return registration;
+    }
+
+    private static AiCaptureTarget targetFor(int itemCount) {
+        return itemCount > 1 ? AiCaptureTarget.RECIPE : AiCaptureTarget.FOOD;
     }
 
     @Transactional(readOnly = true)
