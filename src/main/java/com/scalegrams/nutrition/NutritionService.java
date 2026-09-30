@@ -1144,7 +1144,7 @@ public class NutritionService {
             FoodLogNutrient copy = new FoodLogNutrient();
             copy.setFoodLog(target);
             copy.setDefinition(nutrient.getDefinition());
-            copy.setValue(scale(nutrient.getValue().multiply(ratio)));
+            copy.setValue(nutrient.getValue() == null ? null : scale(nutrient.getValue().multiply(ratio)));
             copy.setSource(nutrient.getSource());
             copy.setStatus(nutrient.getStatus());
             target.getNutrientSnapshot().add(copy);

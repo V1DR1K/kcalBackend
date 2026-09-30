@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -87,8 +88,11 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     ResponseEntity<ApiError> unsupportedMethod(HttpRequestMethodNotSupportedException ex) {
-        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
-                .body(new ApiError("METHOD_NOT_ALLOWED", "El método solicitado no está permitido.", null, Instant.now()));
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
+        if (ex.getSupportedHttpMethods() != null) {
+            response.allow(ex.getSupportedHttpMethods().toArray(HttpMethod[]::new));
+        }
+        return response.body(new ApiError("METHOD_NOT_ALLOWED", "El método solicitado no está permitido.", null, Instant.now()));
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
