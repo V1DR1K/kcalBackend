@@ -59,8 +59,9 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
             "f.searchTags like concat('%', :q, '%')) " +
             "order by case when f.searchName = :q then 0 " +
             "when f.searchName like concat(:q, '%') then 1 " +
-            "when f.searchName like concat('%', :q, '%') then 2 " +
-            "when f.searchBrand like concat('%', :q, '%') then 3 else 4 end, " +
+            "when concat(' ', f.searchName, ' ') like concat('% ', :q, ' %') then 2 " +
+            "when f.searchName like concat('%', :q, '%') then 3 " +
+            "when f.searchBrand like concat('%', :q, '%') then 4 else 5 end, " +
             "lower(f.name), f.id")
     Page<Food> search(@Param("q") String query, @Param("status") ModerationStatus status, Pageable pageable);
 
@@ -70,8 +71,9 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
             "f.searchTags like concat('%', :q, '%')) " +
             "order by case when f.searchName = :q then 0 " +
             "when f.searchName like concat(:q, '%') then 1 " +
-            "when f.searchName like concat('%', :q, '%') then 2 " +
-            "when f.searchBrand like concat('%', :q, '%') then 3 else 4 end, " +
+            "when concat(' ', f.searchName, ' ') like concat('% ', :q, ' %') then 2 " +
+            "when f.searchName like concat('%', :q, '%') then 3 " +
+            "when f.searchBrand like concat('%', :q, '%') then 4 else 5 end, " +
             "lower(f.name), f.id")
     Page<Food> search(@Param("q") String query, @Param("category") FoodCategory category,
             @Param("status") ModerationStatus status, Pageable pageable);

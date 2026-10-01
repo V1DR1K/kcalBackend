@@ -1487,4 +1487,27 @@ class ScaleGramsApplicationTests {
 	record NutritionPlanRequest(String name, Integer dailyCalories, Integer proteinPercent, Integer carbsPercent,
 			Integer fatPercent, String startDate, String endDate) {
 	}
+    @Test void missingFoodNutritionIsNotZeroAndSnapshotsKeepHistoricalEnergy() {
+        var headers = authHeaders("missing-" + UUID.randomUUID());
+        var food = rest.postForEntity("/api/foods", new HttpEntity<>(Map.of("name", "Información pendiente", "category", "OTHER", "baseUnit", "GRAM", "baseQuantity", 100, "carbsGrams", 0, "fatGrams", 0), headers), Map.class);
+        assertThat(food.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(food.getBody()).containsEntry("calories", null).containsEntry("proteinGrams", null).containsEntry("nutritionComplete", false);
+        var log = rest.postForEntity("/api/nutrition/food-logs", new HttpEntity<>(Map.of("foodId", food.getBody().get("id"), "mealType", "BREAKFAST", "quantity", 100, "unit", "GRAM"), headers), Map.class);
+        assertThat(log.getStatusCode().is2xxSuccessful()).as("%s", log.getBody()).isTrue();
+        assertThat(log.getBody()).containsEntry("calories", null).containsEntry("proteinGrams", null);
+        var entity = foodLogs.findById(((Number) log.getBody().get("id")).longValue()).orElseThrow(); entity.setCalories(37); foodLogs.save(entity);
+        var dashboard = rest.exchange("/api/nutrition/dashboard", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(dashboard.getBody()).containsEntry("caloriesConsumed", 37);
+    }
+    @Test void searchRanksWholeWordsAheadOfSubstrings() {
+        var headers = authHeaders("ranking-" + UUID.randomUUID());
+        String query = "word" + UUID.randomUUID().toString().replace("-", "");
+        for (String name : List.of("Re" + query, "Pechuga de " + query, query)) {
+            rest.postForEntity("/api/foods", new HttpEntity<>(Map.of("name", name, "category", "OTHER", "baseUnit", "GRAM", "baseQuantity", 100, "proteinGrams", 1, "carbsGrams", 0, "fatGrams", 0), headers), Map.class);
+        }
+        var response = rest.exchange("/api/foods?q=" + query, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        var names = ((List<Map>) response.getBody().get("items")).stream().map(item -> item.get("name")).toList();
+        assertThat(names).containsExactly(query, "Pechuga de " + query, "Re" + query);
+    }
+
 }

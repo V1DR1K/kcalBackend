@@ -29,7 +29,11 @@ import com.scalegrams.catalog.ModerationStatus;
 
 public class NutritionDtos {
     public record NutrientValueResponse(String code, String name, String group, String unit, BigDecimal value,
-            String source, String status) { }
+            String source, String status, BigDecimal knownValue, boolean complete) {
+        public NutrientValueResponse(String code, String name, String group, String unit, BigDecimal value, String source, String status) {
+            this(code, name, group, unit, value, source, status, value, value != null);
+        }
+    }
 
     public record NutrientInput(@NotBlank @Size(max = 80) String code, @NotNull @PositiveOrZero BigDecimal value) { }
 
@@ -50,6 +54,12 @@ public class NutritionDtos {
                     preparation, preparationSource, preparationGroup, servingName, servingWeightGrams, imageUrl, source, sourceId,
                     lastSyncedAt, tags, createdById, createdAt, moderationStatus, List.of(), null, null, null);
         }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean energyComplete() { return calories != null; }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean nutritionComplete() { return calories != null && proteinGrams != null && carbsGrams != null && fatGrams != null; }
+        @com.fasterxml.jackson.annotation.JsonProperty public String nutritionWarning() {
+            if (!nutritionComplete()) return "Información nutricional incompleta.";
+            return category == FoodCategory.PROTEIN && calories == 0 && proteinGrams.signum() == 0 && carbsGrams.signum() == 0 && fatGrams.signum() == 0 ? "Composición pendiente de verificar. Compará con otra variante." : null;
+        }
     }
 
     public record FoodSummaryResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
@@ -64,6 +74,12 @@ public class NutritionDtos {
             this(id, name, brand, barcode, category, baseUnit, baseQuantity, calories, proteinGrams, carbsGrams, fatGrams,
                     preparation, preparationGroup, servingName, servingWeightGrams, imageUrl, List.of(), null, null, null);
         }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean energyComplete() { return calories != null; }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean nutritionComplete() { return calories != null && proteinGrams != null && carbsGrams != null && fatGrams != null; }
+        @com.fasterxml.jackson.annotation.JsonProperty public String nutritionWarning() {
+            if (!nutritionComplete()) return "Información nutricional incompleta.";
+            return category == FoodCategory.PROTEIN && calories == 0 && proteinGrams.signum() == 0 && carbsGrams.signum() == 0 && fatGrams.signum() == 0 ? "Composición pendiente de verificar. Compará con otra variante." : null;
+        }
     }
 
     public record PageResponse<T>(List<T> items, int page, int size, long totalElements, int totalPages, boolean hasNext) {
@@ -77,9 +93,9 @@ public class NutritionDtos {
             @NotNull FoodUnit baseUnit,
             @Positive @Digits(integer = 36, fraction = 2) BigDecimal baseQuantity,
             @PositiveOrZero Integer calories,
-            @NotNull @PositiveOrZero @Digits(integer = 36, fraction = 2) BigDecimal proteinGrams,
-            @NotNull @PositiveOrZero @Digits(integer = 36, fraction = 2) BigDecimal carbsGrams,
-            @NotNull @PositiveOrZero @Digits(integer = 36, fraction = 2) BigDecimal fatGrams,
+            @PositiveOrZero @Digits(integer = 36, fraction = 2) BigDecimal proteinGrams,
+            @PositiveOrZero @Digits(integer = 36, fraction = 2) BigDecimal carbsGrams,
+            @PositiveOrZero @Digits(integer = 36, fraction = 2) BigDecimal fatGrams,
             FoodPreparation preparation,
             @Size(max = 80) String servingName,
             @Positive @Digits(integer = 36, fraction = 2) BigDecimal servingWeightGrams,
@@ -100,6 +116,8 @@ public class NutritionDtos {
         public NutritionPreviewResponse(Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams) {
             this(calories, proteinGrams, carbsGrams, fatGrams, List.of());
         }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean energyComplete() { return calories != null; }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean nutritionComplete() { return calories != null && proteinGrams != null && carbsGrams != null && fatGrams != null; }
     }
 
     public record AddFoodLogRequest(@NotNull Long foodId, @NotNull MealType mealType, @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity,
@@ -155,6 +173,8 @@ public class NutritionDtos {
             this(id, logDate, mealType, itemType, food, recipe, quantity, unit, null, null, calories, proteinGrams, carbsGrams, fatGrams,
                     recipeAdjusted, displayName, aiEstimateConfidence, aiEstimateDetails, List.of());
         }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean energyComplete() { return calories != null; }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean nutritionComplete() { return calories != null && proteinGrams != null && carbsGrams != null && fatGrams != null; }
     }
 
     public record AiEstimateItem(
@@ -284,6 +304,8 @@ public class NutritionDtos {
                 NutritionPlanResponse plan) {
             this(date, calorieGoal, caloriesConsumed, caloriesRemaining, macros, meals, waterConsumedLiters, waterGoalLiters, plan, List.of());
         }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean energyComplete() { return meals.stream().flatMap(meal -> meal.items().stream()).allMatch(FoodLogResponse::energyComplete); }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean nutritionComplete() { return meals.stream().flatMap(meal -> meal.items().stream()).allMatch(FoodLogResponse::nutritionComplete); }
     }
 
     public record DaySummary(LocalDate date, Integer caloriesConsumed, Integer calorieGoal, BigDecimal proteinGrams,
@@ -399,6 +421,8 @@ public class NutritionDtos {
             this(id, name, description, totalWeightGrams, totalWeightGrams, null, calories, proteinGrams, carbsGrams, fatGrams,
                     ingredients, List.of());
         }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean energyComplete() { return calories != null; }
+        @com.fasterxml.jackson.annotation.JsonProperty public boolean nutritionComplete() { return calories != null && proteinGrams != null && carbsGrams != null && fatGrams != null; }
     }
 
     public record RecipeFromMealResponse(RecipeResponse recipe, List<String> skippedItems) {

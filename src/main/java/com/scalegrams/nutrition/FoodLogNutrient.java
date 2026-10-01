@@ -15,6 +15,8 @@ public class FoodLogNutrient {
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "food_log_id") private FoodLog foodLog;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "nutrient_code") private NutrientDefinition definition;
     @Column(name = "nutrient_value") private BigDecimal value;
+    private BigDecimal knownValue;
+    @Column(nullable = false) private boolean complete = true;
     @Enumerated(EnumType.STRING) private NutrientSource source;
     @Enumerated(EnumType.STRING) private NutrientStatus status;
 }
