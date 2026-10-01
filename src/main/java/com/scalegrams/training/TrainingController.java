@@ -212,6 +212,12 @@ public class TrainingController {
         return trainingPlanService.update(currentUser.from(authentication), id, request);
     }
 
+    @org.springframework.web.bind.annotation.PatchMapping("/plans/{id}/availability")
+    TrainingPlanDetailResponse availability(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody TrainingDtos.PlanAvailabilityRequest request) {
+        return trainingPlanService.availability(currentUser.from(authentication), id, request);
+    }
+
     @DeleteMapping("/plans/{id}")
     ResponseEntity<Void> deletePlan(Authentication authentication, @PathVariable Long id) {
         trainingPlanService.delete(currentUser.from(authentication), id);

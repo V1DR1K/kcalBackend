@@ -37,6 +37,7 @@ class TrainingControllerIntegrationTests extends com.scalegrams.PostgresTestSupp
 
     @BeforeEach
     void resetMocks() {
+        rest.getRestTemplate().setRequestFactory(new org.springframework.http.client.JdkClientHttpRequestFactory());
         reset(centralAuth, centralJwt);
         when(centralAuth.login(anyString(), anyString()))
                 .thenAnswer(invocation -> centralToken(invocation.getArgument(0, String.class)));
@@ -160,7 +161,7 @@ class TrainingControllerIntegrationTests extends com.scalegrams.PostgresTestSupp
                 HttpMethod.GET, new HttpEntity<>(headers), Map.class);
         Map<?, ?> chest = ((List<Map<?, ?>>) categories.getBody().get("items")).stream()
                 .filter(category -> "PECHO".equals(category.get("name"))).findFirst().orElseThrow();
-        Map<String, Object> request = Map.of("name", "Press tÃƒÂ©cnico", "module", "GYM",
+        Map<String, Object> request = Map.of("name", "Press técnico", "module", "GYM",
                 "categoryId", chest.get("id"), "code", "TEST_PRESS_TECNICO", "equipment", "BARBELL",
                 "difficulty", "INTERMEDIATE", "registrationType", "WEIGHT_AND_REPETITIONS",
                 "primaryMuscles", List.of("Pectorales"), "secondaryMuscles", List.of("Triceps"),
@@ -213,7 +214,7 @@ class TrainingControllerIntegrationTests extends com.scalegrams.PostgresTestSupp
     void recordsTimeTargetsAndSecondsWithoutWeight() {
         HttpHeaders headers = authHeaders("training-time");
         ResponseEntity<Map> exercise = rest.postForEntity("/api/training/exercises",
-                new HttpEntity<>(Map.of("name", "SostÃƒÂ©n personalizado", "module", "CALISTHENICS",
+                new HttpEntity<>(Map.of("name", "Sostén personalizado", "module", "CALISTHENICS",
                         "registrationType", "TIME"), headers), Map.class);
         Map<String, Object> session = Map.of("date", "2040-04-01", "module", "CALISTHENICS", "exercises",
                 List.of(Map.of("exerciseId", exercise.getBody().get("id"), "targetSets", 2, "targetSeconds", 30,
@@ -295,15 +296,15 @@ class TrainingControllerIntegrationTests extends com.scalegrams.PostgresTestSupp
         Map<String, Object> exerciseTarget = Map.of("exerciseId", exerciseId, "targetSets", 3,
                 "targetRepetitions", 8, "targetWeightKg", 60);
         Map<String, Object> planRequest = Map.of(
-                "name", "Fuerza dinÃƒÂ¡mica",
+                "name", "Fuerza dinámica",
                 "description", "Secuencia semanal",
                 "module", "GYM",
                 "frequencyMode", "DYNAMIC",
                 "targetSessionsPerWeek", 2,
                 "startDate", "2040-01-01",
                 "days", List.of(
-                        Map.of("name", "DÃƒÂ­a A", "position", 0, "exercises", List.of(exerciseTarget)),
-                        Map.of("name", "DÃƒÂ­a B", "position", 1, "exercises", List.of(exerciseTarget))));
+                        Map.of("name", "Día A", "position", 0, "exercises", List.of(exerciseTarget)),
+                        Map.of("name", "Día B", "position", 1, "exercises", List.of(exerciseTarget))));
         ResponseEntity<Map> plan = rest.postForEntity("/api/training/plans",
                 new HttpEntity<>(planRequest, headers), Map.class);
         assertThat(plan.getStatusCode().is2xxSuccessful()).isTrue();
@@ -355,7 +356,7 @@ class TrainingControllerIntegrationTests extends com.scalegrams.PostgresTestSupp
                 "frequencyMode", "DYNAMIC",
                 "targetSessionsPerWeek", 1,
                 "startDate", "2041-01-01",
-                "days", List.of(Map.of("name", "DÃƒÂ­a ÃƒÂºnico", "position", 0, "exercises", List.of(
+                "days", List.of(Map.of("name", "Día único", "position", 0, "exercises", List.of(
                         Map.of("exerciseId", firstExercise.getBody().get("id"))))));
         ResponseEntity<Map> plan = rest.postForEntity("/api/training/plans",
                 new HttpEntity<>(planRequest, headers), Map.class);
@@ -529,6 +530,35 @@ class TrainingControllerIntegrationTests extends com.scalegrams.PostgresTestSupp
         ResponseEntity<Map> repeated = rest.postForEntity(endpoint, completion, Map.class);
         assertThat(repeated.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(repeated.getBody().get("version")).isEqualTo(completed.getBody().get("version"));
+    }
+
+    @Test
+    void preservesPlanIdentityWhenEditingAvailabilityAndCopiesInactive() {
+        HttpHeaders headers = authHeaders("training-stable-plan");
+        Map exercise = rest.postForEntity("/api/training/exercises", new HttpEntity<>(
+                Map.of("name", "Sentadilla estable", "module", "GYM"), headers), Map.class).getBody();
+        Map payload = Map.of("name", "Plan estable", "module", "GYM", "frequencyMode", "FIXED",
+                "targetSessionsPerWeek", 1, "startDate", "2040-04-02", "active", true,
+                "days", List.of(Map.of("name", "Lunes", "dayOfWeek", "MONDAY", "exercises", List.of(Map.of("exerciseId", exercise.get("id"))))));
+        ResponseEntity<Map> created = rest.postForEntity("/api/training/plans", new HttpEntity<>(payload, headers), Map.class);
+        assertThat(created.getStatusCode().is2xxSuccessful()).as("create: %s", created.getBody()).isTrue();
+        Map plan = created.getBody();
+        Object dayId = ((Map) ((List) plan.get("days")).get(0)).get("id");
+        Object itemId = ((Map) ((List) ((Map) ((List) plan.get("days")).get(0)).get("exercises")).get(0)).get("id");
+        ResponseEntity<Map> edited = rest.exchange("/api/training/plans/" + plan.get("id"), HttpMethod.PUT, new HttpEntity<>(plan, headers), Map.class);
+        assertThat(edited.getStatusCode().is2xxSuccessful()).as("edit: %s", edited.getBody()).isTrue();
+        plan = edited.getBody();
+        assertThat(((Map) ((List) plan.get("days")).get(0)).get("id")).isEqualTo(dayId);
+        ResponseEntity<Map> archived = rest.exchange("/api/training/plans/" + plan.get("id") + "/availability", HttpMethod.PATCH,
+                new HttpEntity<>(Map.of("active", false, "version", plan.get("version")), headers), Map.class);
+        assertThat(archived.getStatusCode().is2xxSuccessful()).isTrue();
+        Map day = (Map) ((List) archived.getBody().get("days")).get(0);
+        assertThat(day.get("id")).isEqualTo(dayId);
+        assertThat(((Map) ((List) day.get("exercises")).get(0)).get("id")).isEqualTo(itemId);
+        ResponseEntity<Map> duplicate = rest.postForEntity("/api/training/plans/" + plan.get("id") + "/duplicate",
+                new HttpEntity<>(Map.of("name", "Copia estable"), headers), Map.class);
+        assertThat(duplicate.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(duplicate.getBody().get("active")).isEqualTo(false);
     }
 
     private void postCompletedSession(HttpHeaders headers, String date) {

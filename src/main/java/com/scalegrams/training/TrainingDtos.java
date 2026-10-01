@@ -249,14 +249,16 @@ public class TrainingDtos {
             @PositiveOrZero Integer targetSets, @PositiveOrZero Integer targetRepetitions,
             @PositiveOrZero BigDecimal targetWeightKg, @Size(max = 1000) String notes,
             @PositiveOrZero Integer position, TrainingRegistrationType registrationType,
-            @PositiveOrZero Integer targetSeconds, @PositiveOrZero BigDecimal targetDistanceMeters) {
+            @PositiveOrZero Integer targetSeconds, @PositiveOrZero BigDecimal targetDistanceMeters, @Positive Long id) {
     }
 
     public record PlanDayRequest(@NotBlank @Size(max = 120) String name,
             @Size(max = 1000) String description, DayOfWeek dayOfWeek,
             @NotEmpty @Size(max = 100) List<@Valid PlanExerciseRequest> exercises,
-            @PositiveOrZero Integer position) {
+            @PositiveOrZero Integer position, @Positive Long id) {
     }
+
+    public record PlanAvailabilityRequest(@NotNull Boolean active, @NotNull @PositiveOrZero Long version) {}
 
     public record UpsertTrainingPlanRequest(@NotBlank @Size(max = 120) String name,
             @Size(max = 1000) String description, @NotNull TrainingModule module,

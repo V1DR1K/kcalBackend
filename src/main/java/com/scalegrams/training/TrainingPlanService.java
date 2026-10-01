@@ -47,6 +47,11 @@ public class TrainingPlanService {
     }
 
     @Transactional
+    public TrainingPlanDetailResponse availability(AppUser user, Long id, TrainingDtos.PlanAvailabilityRequest request) {
+        return trainingService.changePlanAvailability(user, id, request);
+    }
+
+    @Transactional
     public void delete(AppUser user, Long id) {
         trainingService.deletePreset(user, id);
     }
