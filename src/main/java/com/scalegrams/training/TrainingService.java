@@ -216,7 +216,7 @@ public class TrainingService {
         String normalizedName = normalizedKey(name);
         if (categories.existsOwnedName(user, request.module(), normalizedName, null)
                 || categories.findSystem(request.module(), normalizedName).isPresent()) {
-            throw new BadRequestException("Ya existe una categoría con ese nombre para este módulo.");
+            throw new BadRequestException("Ya existe una categorÃ­a con ese nombre para este mÃ³dulo.");
         }
         TrainingCategory category = new TrainingCategory();
         category.setOwner(user);
@@ -231,15 +231,15 @@ public class TrainingService {
     @Transactional
     public TrainingCategoryResponse updateCategory(AppUser user, Long id, UpsertTrainingCategoryRequest request) {
         TrainingCategory category = categories.findByIdAndOwnerAndDeletedAtIsNull(id, user)
-                .orElseThrow(() -> new NotFoundException("Categoría no encontrada."));
+                .orElseThrow(() -> new NotFoundException("CategorÃ­a no encontrada."));
         String name = normalized(request.name());
         String normalizedName = normalizedKey(name);
         if (categories.existsOwnedName(user, request.module(), normalizedName, id)
                 || categories.findSystem(request.module(), normalizedName).isPresent()) {
-            throw new BadRequestException("Ya existe una categoría con ese nombre para este módulo.");
+            throw new BadRequestException("Ya existe una categorÃ­a con ese nombre para este mÃ³dulo.");
         }
         if (category.getModule() != request.module()) {
-            throw new BadRequestException("No podés cambiar el módulo de una categoría.");
+            throw new BadRequestException("No podÃ©s cambiar el mÃ³dulo de una categorÃ­a.");
         }
         category.setName(name);
         category.setNormalizedName(normalizedName);
@@ -251,7 +251,7 @@ public class TrainingService {
     @Transactional
     public void deleteCategory(AppUser user, Long id) {
         TrainingCategory category = categories.findByIdAndOwnerAndDeletedAtIsNull(id, user)
-                .orElseThrow(() -> new NotFoundException("Categoría no encontrada."));
+                .orElseThrow(() -> new NotFoundException("CategorÃ­a no encontrada."));
         OffsetDateTime now = OffsetDateTime.now();
         category.setActive(false);
         category.setDeletedAt(now);
@@ -318,10 +318,10 @@ public class TrainingService {
         }
         String name = normalized(request.name());
         if (exercises.existsLiveName(user, request.module(), name, exercise.getId())) {
-            throw new BadRequestException("Ya existe un ejercicio con ese nombre para este módulo.");
+            throw new BadRequestException("Ya existe un ejercicio con ese nombre para este mÃ³dulo.");
         }
         if (exercise.getModule() != request.module() && presetExercises.existsByExerciseAndDeletedAtIsNull(exercise)) {
-            throw new BadRequestException("No podés cambiar el módulo de un ejercicio usado en una rutina.");
+            throw new BadRequestException("No podÃ©s cambiar el mÃ³dulo de un ejercicio usado en una rutina.");
         }
         exercise.setName(name);
         exercise.setNormalizedName(normalizedKey(name));
@@ -383,7 +383,7 @@ public class TrainingService {
         TrainingPlan preset = requirePresetDetail(user, id);
         checkVersion(request.version(), preset.getVersion(), "La rutina");
         if (preset.getModule() != request.module() && !livePresetExercises(preset).isEmpty()) {
-            throw new BadRequestException("No podés cambiar el módulo de una rutina que tiene ejercicios.");
+            throw new BadRequestException("No podÃ©s cambiar el mÃ³dulo de una rutina que tiene ejercicios.");
         }
         String name = normalized(request.name());
         ensurePresetNameAvailable(user, request.module(), name, preset.getId());
@@ -457,7 +457,7 @@ public class TrainingService {
         validateLegacyDayMode(preset, request.dayOfWeek(), null);
         TrainingPlanDay day = new TrainingPlanDay();
         day.setPlan(preset);
-        day.setName(request.name() == null || request.name().isBlank() ? "Día " + (day.getPosition() + 1) : normalized(request.name()));
+        day.setName(request.name() == null || request.name().isBlank() ? "DÃ­a " + (day.getPosition() + 1) : normalized(request.name()));
         day.setDescription(blankToNull(request.description()));
         day.setDayOfWeek(request.dayOfWeek());
         day.setActive(request.active() == null || request.active());
@@ -495,7 +495,7 @@ public class TrainingService {
     @Transactional
     public List<LegacyPlanDayResponse> reorderDays(AppUser user, Long presetId, ReorderRequest request) {
         TrainingPlan preset = requirePresetDetail(user, presetId);
-        List<TrainingPlanDay> ordered = ordered(liveDays(preset), request.ids(), "días de la rutina");
+        List<TrainingPlanDay> ordered = ordered(liveDays(preset), request.ids(), "dÃ­as de la rutina");
         OffsetDateTime now = OffsetDateTime.now();
         for (int index = 0; index < ordered.size(); index++) {
             ordered.get(index).setPosition(index);
@@ -553,7 +553,7 @@ public class TrainingService {
     public List<LegacyPlanExerciseResponse> reorderPresetExercises(AppUser user, Long presetId, Long dayId,
             ReorderRequest request) {
         TrainingPlanDay day = requireDay(user, presetId, dayId);
-        List<TrainingPlanExercise> ordered = ordered(livePresetExercises(day), request.ids(), "ejercicios del día");
+        List<TrainingPlanExercise> ordered = ordered(livePresetExercises(day), request.ids(), "ejercicios del dÃ­a");
         OffsetDateTime now = OffsetDateTime.now();
         for (int index = 0; index < ordered.size(); index++) {
             ordered.get(index).setPosition(index);
@@ -637,20 +637,20 @@ public class TrainingService {
     public TrainingSessionResponse skipPlanSession(AppUser user, Long planId, SkipTrainingPlanSessionRequest request) {
         TrainingPlan plan = requirePreset(user, planId);
         if (plan.getFrequencyMode() != TrainingFrequencyMode.DYNAMIC) {
-            throw new BadRequestException("Solo se pueden omitir sesiones de planes dinámicos.");
+            throw new BadRequestException("Solo se pueden omitir sesiones de planes dinÃ¡micos.");
         }
         TrainingPlanDay day = resolvePlanDay(user, plan, request.date());
         if (day == null) {
-            throw new BadRequestException("La fecha está fuera de la vigencia del plan.");
+            throw new BadRequestException("La fecha estÃ¡ fuera de la vigencia del plan.");
         }
         if (request.planDayId() != null && !Objects.equals(request.planDayId(), day.getId())) {
-            throw new BadRequestException("La sesión no corresponde al siguiente día dinámico.");
+            throw new BadRequestException("La sesiÃ³n no corresponde al siguiente dÃ­a dinÃ¡mico.");
         }
         TrainingSession existing = sessions.findBlockingForSchedule(user, request.date(), planId, day.getId())
                 .stream().findFirst().orElse(null);
         if (existing != null) {
             if (existing.getStatus() == TrainingSessionStatus.IN_PROGRESS) {
-                throw new ConflictException("Ya existe una sesión IN_PROGRESS para este plan y fecha: "
+                throw new ConflictException("Ya existe una sesiÃ³n IN_PROGRESS para este plan y fecha: "
                         + existing.getId() + ".");
             }
             return toSessionResponse(existing);
@@ -679,19 +679,19 @@ public class TrainingService {
         for (int index = 0; index < request.days().size(); index++) {
             PlanDayRequest day = request.days().get(index);
             if (!positions.add(day.position() == null ? index : day.position())) {
-                throw new BadRequestException("Las posiciones de los días deben ser únicas.");
+                throw new BadRequestException("Las posiciones de los dÃ­as deben ser Ãºnicas.");
             }
             if (request.frequencyMode() == TrainingFrequencyMode.FIXED) {
                 if (day.dayOfWeek() == null || !fixedDays.add(day.dayOfWeek())) {
-                    throw new BadRequestException("Un plan fijo requiere días de semana únicos.");
+                    throw new BadRequestException("Un plan fijo requiere dÃ­as de semana Ãºnicos.");
                 }
             } else if (day.dayOfWeek() != null) {
-                throw new BadRequestException("Un plan dinámico usa posiciones únicas y no admite día de semana.");
+                throw new BadRequestException("Un plan dinÃ¡mico usa posiciones Ãºnicas y no admite dÃ­a de semana.");
             }
             Set<Long> exerciseIds = new java.util.HashSet<>();
             for (PlanExerciseRequest exerciseRequest : day.exercises()) {
                 if (!exerciseIds.add(exerciseRequest.exerciseId())) {
-                    throw new BadRequestException("No puede haber ejercicios repetidos en un día.");
+                    throw new BadRequestException("No puede haber ejercicios repetidos en un dÃ­a.");
                 }
                 TrainingExercise exercise = requireSelectableExercise(user, exerciseRequest.exerciseId());
                 validateExerciseModule(request.module(), exercise);
@@ -766,15 +766,15 @@ public class TrainingService {
     @Transactional
     public TrainingSessionResponse createSession(AppUser user, CreateTrainingSessionRequest request) {
         if (request.status() != null && request.status() != TrainingSessionStatus.IN_PROGRESS) {
-            throw new BadRequestException("Una sesión nueva siempre comienza en IN_PROGRESS.");
+            throw new BadRequestException("Una sesiÃ³n nueva siempre comienza en IN_PROGRESS.");
         }
         SessionSource source = resolveSource(user, request.module(), request.planId(), request.planDayId());
         validateScheduledSession(user, source, request.date());
         if (source.plan() != null) {
             sessions.findBlockingForSchedule(user, request.date(), source.plan().getId(), source.planDay().getId())
                     .stream().findFirst().ifPresent(existing -> {
-                        throw new ConflictException("Ya existe una sesión de este plan para la fecha indicada. "
-                                + "Continuá la sesión " + existing.getId() + ".");
+                        throw new ConflictException("Ya existe una sesiÃ³n de este plan para la fecha indicada. "
+                                + "ContinuÃ¡ la sesiÃ³n " + existing.getId() + ".");
                     });
         }
         TrainingSession session = new TrainingSession();
@@ -806,24 +806,24 @@ public class TrainingService {
     @Transactional
     public TrainingSessionResponse updateSession(AppUser user, Long id, UpdateTrainingSessionRequest request) {
         TrainingSession session = requireSession(user, id);
-        checkVersion(request.version(), session.getVersion(), "La sesión");
+        checkVersion(request.version(), session.getVersion(), "La sesiÃ³n");
         if (session.getStatus() != TrainingSessionStatus.IN_PROGRESS) {
             throw new BadRequestException("Solo se pueden modificar sesiones IN_PROGRESS.");
         }
         if (request.status() != TrainingSessionStatus.IN_PROGRESS) {
-            throw new BadRequestException("PUT solo puede mantener una sesión IN_PROGRESS. Usá complete o cancel.");
+            throw new BadRequestException("PUT solo puede mantener una sesiÃ³n IN_PROGRESS. UsÃ¡ complete o cancel.");
         }
         SessionSource source = resolveSource(user, request.module(), request.planId(), request.planDayId());
         validateScheduledSession(user, source, request.date());
         if (!Objects.equals(idOf(session.getSourcePlan()), idOf(source.plan()))
                 || !Objects.equals(idOf(session.getSourcePlanDay()), idOf(source.planDay()))) {
-            throw new BadRequestException("No podés cambiar el plan de origen de una sesión ya iniciada.");
+            throw new BadRequestException("No podÃ©s cambiar el plan de origen de una sesiÃ³n ya iniciada.");
         }
         if (source.plan() != null) {
             sessions.findBlockingForSchedule(user, request.date(), source.plan().getId(), source.planDay().getId())
                     .stream().filter(existing -> !Objects.equals(existing.getId(), session.getId())).findFirst()
                     .ifPresent(existing -> {
-                        throw new ConflictException("Ya existe otra sesión para este plan y fecha: " + existing.getId() + ".");
+                        throw new ConflictException("Ya existe otra sesiÃ³n para este plan y fecha: " + existing.getId() + ".");
                     });
         }
         applySession(session, request.date(), request.module(), source, request.title(), request.status(), request.startedAt(),
@@ -836,9 +836,9 @@ public class TrainingService {
     @Transactional
     public TrainingSessionResponse completeSession(AppUser user, Long id, CompleteTrainingSessionRequest request) {
         TrainingSession session = requireSession(user, id);
-        checkVersion(request.version(), session.getVersion(), "La sesión");
+        checkVersion(request.version(), session.getVersion(), "La sesiÃ³n");
         if (session.getStatus() != TrainingSessionStatus.IN_PROGRESS) {
-            throw new BadRequestException("Solo se puede completar una sesión IN_PROGRESS.");
+            throw new BadRequestException("Solo se puede completar una sesiÃ³n IN_PROGRESS.");
         }
         if (Boolean.TRUE.equals(request.persistPlanChanges())) {
             persistPlanChanges(session, user);
@@ -857,9 +857,9 @@ public class TrainingService {
     @Transactional
     public TrainingSessionResponse cancelSession(AppUser user, Long id, CancelTrainingSessionRequest request) {
         TrainingSession session = requireSession(user, id);
-        checkVersion(request.version(), session.getVersion(), "La sesión");
+        checkVersion(request.version(), session.getVersion(), "La sesiÃ³n");
         if (session.getStatus() != TrainingSessionStatus.IN_PROGRESS) {
-            throw new BadRequestException("Solo se puede cancelar una sesión IN_PROGRESS.");
+            throw new BadRequestException("Solo se puede cancelar una sesiÃ³n IN_PROGRESS.");
         }
         session.setStatus(TrainingSessionStatus.CANCELLED);
         session.setFinishedAt(OffsetDateTime.now());
@@ -873,7 +873,7 @@ public class TrainingService {
     public void deleteSession(AppUser user, Long id) {
         TrainingSession session = requireSession(user, id);
         if (session.getStatus() == TrainingSessionStatus.COMPLETED) {
-            throw new BadRequestException("Las sesiones completadas son históricas y no se pueden borrar.");
+            throw new BadRequestException("Las sesiones completadas son histÃ³ricas y no se pueden borrar.");
         }
         sessions.delete(session);
     }
@@ -946,7 +946,7 @@ public class TrainingService {
         TrainingExercise exercise = exercises.findSelectable(id, user)
                 .orElseThrow(() -> new NotFoundException("Ejercicio no encontrado."));
         if (!exercise.isActive()) {
-            throw new BadRequestException("El ejercicio está archivado.");
+            throw new BadRequestException("El ejercicio estÃ¡ archivado.");
         }
         return exercise;
     }
@@ -969,19 +969,19 @@ public class TrainingService {
     private TrainingPlanDay requireDay(AppUser user, Long presetId, Long dayId) {
         TrainingPlanDay day = requireDayForUser(user, dayId);
         if (!Objects.equals(day.getPlan().getId(), presetId)) {
-            throw new NotFoundException("Día de rutina no encontrado.");
+            throw new NotFoundException("DÃ­a de rutina no encontrado.");
         }
         return day;
     }
 
     private TrainingPlanDay requireDayForUser(AppUser user, Long dayId) {
         return days.findDetailByIdAndOwner(dayId, user)
-                .orElseThrow(() -> new NotFoundException("Día de rutina no encontrado."));
+                .orElseThrow(() -> new NotFoundException("DÃ­a de rutina no encontrado."));
     }
 
     private TrainingPlanDay requireDayReference(AppUser user, Long dayId) {
         return days.findByIdAndOwner(dayId, user)
-                .orElseThrow(() -> new NotFoundException("Día de rutina no encontrado."));
+                .orElseThrow(() -> new NotFoundException("DÃ­a de rutina no encontrado."));
     }
 
     private TrainingPlanExercise requirePresetExercise(TrainingPlanDay day, Long id) {
@@ -993,14 +993,14 @@ public class TrainingService {
 
     private TrainingSession requireSession(AppUser user, Long id) {
         TrainingSession session = sessions.findDetailByIdAndUser(id, user)
-                .orElseThrow(() -> new NotFoundException("Sesión de entrenamiento no encontrada."));
+                .orElseThrow(() -> new NotFoundException("SesiÃ³n de entrenamiento no encontrada."));
         sessionExercises.findAllWithSetsBySessionId(session.getId());
         return session;
     }
 
     private void ensurePresetNameAvailable(AppUser user, TrainingModule module, String name, Long excludedId) {
         if (presets.existsLiveName(user, module, name, excludedId)) {
-            throw new BadRequestException("Ya existe una rutina con ese nombre para este módulo.");
+            throw new BadRequestException("Ya existe una rutina con ese nombre para este mÃ³dulo.");
         }
     }
 
@@ -1051,7 +1051,7 @@ public class TrainingService {
                 .anyMatch(item -> Objects.equals(item.getExercise().getId(), exercise.getId())
                         && !Objects.equals(item.getId(), excludedId));
         if (duplicate) {
-            throw new BadRequestException("El ejercicio ya pertenece a este día de rutina.");
+            throw new BadRequestException("El ejercicio ya pertenece a este dÃ­a de rutina.");
         }
     }
 
@@ -1062,7 +1062,7 @@ public class TrainingService {
             TrainingPlanDay day = requireDayForUser(user, trainingDayId);
             TrainingPlan preset = day.getPlan();
             if (presetId != null && !Objects.equals(preset.getId(), presetId)) {
-                throw new BadRequestException("El día no pertenece a la rutina indicada.");
+                throw new BadRequestException("El dÃ­a no pertenece a la rutina indicada.");
             }
             validateSource(module, preset, day);
             return new SessionSource(preset, day);
@@ -1070,51 +1070,51 @@ public class TrainingService {
 
         TrainingPlan preset = requirePreset(user, presetId);
         if (!preset.isActive()) {
-            throw new BadRequestException("La rutina está archivada.");
+            throw new BadRequestException("La rutina estÃ¡ archivada.");
         }
         if (preset.getModule() != module) {
-            throw new BadRequestException("La rutina pertenece a otro módulo de entrenamiento.");
+            throw new BadRequestException("La rutina pertenece a otro mÃ³dulo de entrenamiento.");
         }
         return new SessionSource(preset, null);
     }
 
     private void validateSource(TrainingModule module, TrainingPlan preset, TrainingPlanDay day) {
         if (!preset.isActive() || !day.isActive()) {
-            throw new BadRequestException("La rutina o el día de origen está archivado.");
+            throw new BadRequestException("La rutina o el dÃ­a de origen estÃ¡ archivado.");
         }
         if (preset.getModule() != module) {
-            throw new BadRequestException("El día de rutina pertenece a otro módulo de entrenamiento.");
+            throw new BadRequestException("El dÃ­a de rutina pertenece a otro mÃ³dulo de entrenamiento.");
         }
     }
 
     private void validateLegacyDayMode(TrainingPlan plan, DayOfWeek dayOfWeek, Long excludedId) {
         if (plan.getFrequencyMode() == TrainingFrequencyMode.DYNAMIC && dayOfWeek != null) {
-            throw new BadRequestException("Un plan dinámico no admite día de semana.");
+            throw new BadRequestException("Un plan dinÃ¡mico no admite dÃ­a de semana.");
         }
         if (plan.getFrequencyMode() == TrainingFrequencyMode.FIXED && dayOfWeek == null) {
-            throw new BadRequestException("Un plan fijo requiere día de semana.");
+            throw new BadRequestException("Un plan fijo requiere dÃ­a de semana.");
         }
         if (dayOfWeek != null && plan.getDays().stream().anyMatch(day -> day.getDeletedAt() == null
                 && day.getDayOfWeek() == dayOfWeek && !Objects.equals(day.getId(), excludedId))) {
-            throw new BadRequestException("El día de semana ya está asignado a este plan.");
+            throw new BadRequestException("El dÃ­a de semana ya estÃ¡ asignado a este plan.");
         }
     }
 
     private void validateScheduledSession(AppUser user, SessionSource source, LocalDate date) {
         if (source.plan() == null) return;
         if (source.planDay() == null) {
-            throw new BadRequestException("Una sesión asociada a un plan requiere planDayId.");
+            throw new BadRequestException("Una sesiÃ³n asociada a un plan requiere planDayId.");
         }
         TrainingPlan plan = source.plan();
         if ((plan.getStartDate() != null && date.isBefore(plan.getStartDate()))
                 || (plan.getEndDate() != null && date.isAfter(plan.getEndDate()))) {
-            throw new BadRequestException("La fecha está fuera de la vigencia del plan.");
+            throw new BadRequestException("La fecha estÃ¡ fuera de la vigencia del plan.");
         }
         TrainingPlanDay expected = resolvePlanDay(user, plan, date);
         if (expected == null || !Objects.equals(expected.getId(), source.planDay().getId())) {
             throw new BadRequestException(plan.getFrequencyMode() == TrainingFrequencyMode.FIXED
-                    ? "La sesión solo puede registrarse en el día fijo asignado."
-                    : "La sesión no corresponde al siguiente día del plan dinámico.");
+                    ? "La sesiÃ³n solo puede registrarse en el dÃ­a fijo asignado."
+                    : "La sesiÃ³n no corresponde al siguiente dÃ­a del plan dinÃ¡mico.");
         }
     }
 
@@ -1154,7 +1154,7 @@ public class TrainingService {
             String title, TrainingSessionStatus status, OffsetDateTime startedAt, OffsetDateTime finishedAt,
             Integer durationMinutes, String notes) {
         if (status == TrainingSessionStatus.IN_PROGRESS && finishedAt != null) {
-            throw new BadRequestException("Una sesión IN_PROGRESS no puede tener fecha de finalización.");
+            throw new BadRequestException("Una sesiÃ³n IN_PROGRESS no puede tener fecha de finalizaciÃ³n.");
         }
         validateTimes(startedAt, finishedAt);
         session.setSessionDate(date);
@@ -1251,11 +1251,11 @@ public class TrainingService {
         for (int index = 0; index < desiredRequests.size(); index++) {
             TrainingSessionExerciseRequest request = desiredRequests.get(index);
             if (!exerciseIds.add(request.exerciseId())) {
-                throw new BadRequestException("No puede haber ejercicios repetidos en una sesión.");
+                throw new BadRequestException("No puede haber ejercicios repetidos en una sesiÃ³n.");
             }
             int position = request.position() == null ? index : request.position();
             if (!positions.add(position)) {
-                throw new BadRequestException("Las posiciones de los ejercicios deben ser únicas.");
+                throw new BadRequestException("Las posiciones de los ejercicios deben ser Ãºnicas.");
             }
 
             TrainingSessionExercise existing = request.id() == null ? session.getExercises().stream()
@@ -1264,7 +1264,7 @@ public class TrainingService {
                             && Objects.equals(candidate.getSourceExercise().getId(), request.exerciseId()))
                     .findFirst().orElse(null) : existingById.get(request.id());
             if (request.id() != null && existing == null) {
-                throw new NotFoundException("El ejercicio de sesión no pertenece a esta sesión.");
+                throw new NotFoundException("El ejercicio de sesiÃ³n no pertenece a esta sesiÃ³n.");
             }
             if (existing == null) {
                 addSessionExercise(session, user, request, position);
@@ -1273,7 +1273,7 @@ public class TrainingService {
                 if (existing.getOrigin() == TrainingSessionExerciseOrigin.PLAN
                         && (existing.getSourceExercise() == null
                                 || !Objects.equals(existing.getSourceExercise().getId(), request.exerciseId()))) {
-                    throw new BadRequestException("No podés cambiar el ejercicio original de un snapshot de plan.");
+                    throw new BadRequestException("No podÃ©s cambiar el ejercicio original de un snapshot de plan.");
                 }
                 applyExistingSessionExercise(existing, session, user, request);
                 existing.setPosition(position);
@@ -1307,35 +1307,42 @@ public class TrainingService {
         sessionExercise.setTargetDistanceMeters(request.targetDistanceMeters());
         sessionExercise.setNotes(blankToNull(request.notes()));
         sessionExercise.setUpdatedAt(OffsetDateTime.now());
-        sessionExercise.getSets().clear();
+        Map<Integer, TrainingSet> existingSets = sessionExercise.getSets().stream()
+                .collect(Collectors.toMap(TrainingSet::getSetNumber, item -> item));
+        Set<Integer> retainedNumbers = new java.util.HashSet<>();
         if (request.sets() != null) {
             for (TrainingSetRequest setRequest : request.sets()) {
-                TrainingSet trainingSet = new TrainingSet();
-                trainingSet.setSessionExercise(sessionExercise);
-                trainingSet.setSetNumber(setRequest.setNumber());
+                retainedNumbers.add(setRequest.setNumber());
+                TrainingSet trainingSet = existingSets.get(setRequest.setNumber());
+                if (trainingSet == null) {
+                    trainingSet = new TrainingSet();
+                    trainingSet.setSessionExercise(sessionExercise);
+                    trainingSet.setSetNumber(setRequest.setNumber());
+                    sessionExercise.getSets().add(trainingSet);
+                }
                 trainingSet.setRepetitions(setRequest.repetitions());
                 trainingSet.setWeightKg(setRequest.weightKg());
                 trainingSet.setSeconds(setRequest.seconds());
                 trainingSet.setDistanceMeters(setRequest.distanceMeters());
                 trainingSet.setCompleted(setRequest.completed());
                 trainingSet.setNotes(blankToNull(setRequest.notes()));
-                sessionExercise.getSets().add(trainingSet);
             }
         }
+        sessionExercise.getSets().removeIf(item -> !retainedNumbers.contains(item.getSetNumber()));
     }
 
     private void persistPlanChanges(TrainingSession session, AppUser user) {
         TrainingPlan plan = session.getSourcePlan();
         TrainingPlanDay day = session.getSourcePlanDay();
         if (plan == null || day == null) {
-            throw new ConflictException("La sesión no tiene un plan y día de origen para guardar cambios.");
+            throw new ConflictException("La sesiÃ³n no tiene un plan y dÃ­a de origen para guardar cambios.");
         }
         if (!plan.isActive() || !day.isActive() || plan.getDeletedAt() != null || day.getDeletedAt() != null) {
-            throw new ConflictException("La rutina o el día de origen ya no está activo.");
+            throw new ConflictException("La rutina o el dÃ­a de origen ya no estÃ¡ activo.");
         }
         List<TrainingSessionBaseline> baseline = baselines.findBySessionIdOrderByPositionAscIdAsc(session.getId());
         if (!session.isBaselineCaptured()) {
-            throw new ConflictException("La sesión no tiene baseline de estructura para guardar cambios.");
+            throw new ConflictException("La sesiÃ³n no tiene baseline de estructura para guardar cambios.");
         }
         Long planVersion = session.getBaselinePlanVersion();
         Long dayVersion = session.getBaselinePlanDayVersion();
@@ -1344,13 +1351,13 @@ public class TrainingService {
             dayVersion = baseline.get(0).getPlanDayVersion();
         }
         if (!Objects.equals(planVersion, versionOrZero(plan)) || !Objects.equals(dayVersion, versionOrZero(day))) {
-            throw new ConflictException("La rutina o el día cambió desde que se inició la sesión. Recargá y reintentá.");
+            throw new ConflictException("La rutina o el dÃ­a cambiÃ³ desde que se iniciÃ³ la sesiÃ³n. RecargÃ¡ y reintentÃ¡.");
         }
 
         Map<Long, TrainingPlanExercise> currentById = livePresetExercises(day).stream()
                 .collect(Collectors.toMap(TrainingPlanExercise::getId, exercise -> exercise));
         if (baseline.stream().anyMatch(item -> item.getPlanExercise() == null || item.getCatalogExercise() == null)) {
-            throw new ConflictException("El baseline de la sesión ya no referencia ejercicios válidos.");
+            throw new ConflictException("El baseline de la sesiÃ³n ya no referencia ejercicios vÃ¡lidos.");
         }
         Set<Long> baselineIds = baseline.stream().map(item -> item.getPlanExercise().getId()).collect(Collectors.toSet());
         Set<Long> selectedPlanIds = new java.util.HashSet<>();
@@ -1363,7 +1370,7 @@ public class TrainingService {
                 .toList();
         for (TrainingSessionExercise sessionExercise : orderedExercises) {
             if (sessionExercise.getSourceExercise() == null) {
-                throw new BadRequestException("Cada ejercicio de sesión debe pertenecer al catálogo.");
+                throw new BadRequestException("Cada ejercicio de sesiÃ³n debe pertenecer al catÃ¡logo.");
             }
             Long catalogId = sessionExercise.getSourceExercise().getId();
             if (!selectedExerciseIds.add(catalogId)) {
@@ -1376,10 +1383,10 @@ public class TrainingService {
                 }
                 TrainingPlanExercise current = currentById.get(planExercise.getId());
                 if (current == null || !Objects.equals(current.getExercise().getId(), catalogId)) {
-                    throw new ConflictException("Un ejercicio del plan cambió desde que se inició la sesión.");
+                    throw new ConflictException("Un ejercicio del plan cambiÃ³ desde que se iniciÃ³ la sesiÃ³n.");
                 }
                 if (!selectedPlanIds.add(planExercise.getId())) {
-                    throw new BadRequestException("No puede haber ejercicios de plan repetidos en una sesión.");
+                    throw new BadRequestException("No puede haber ejercicios de plan repetidos en una sesiÃ³n.");
                 }
                 current.setPosition(position++);
                 current.setUpdatedAt(OffsetDateTime.now());
@@ -1416,7 +1423,7 @@ public class TrainingService {
 
     private void validateExerciseModule(TrainingModule module, TrainingExercise exercise) {
         if (exercise.getModule() != module) {
-            throw new BadRequestException("El ejercicio pertenece a otro módulo de entrenamiento.");
+            throw new BadRequestException("El ejercicio pertenece a otro mÃ³dulo de entrenamiento.");
         }
     }
 
@@ -1424,15 +1431,15 @@ public class TrainingService {
             boolean global) {
         if (categoryId != null) {
             TrainingCategory category = categories.findSelectable(categoryId, user)
-                    .orElseThrow(() -> new BadRequestException("La categoría no existe o no está disponible."));
+                    .orElseThrow(() -> new BadRequestException("La categorÃ­a no existe o no estÃ¡ disponible."));
             if (category.getModule() != module) {
-                throw new BadRequestException("La categoría pertenece a otro módulo de entrenamiento.");
+                throw new BadRequestException("La categorÃ­a pertenece a otro mÃ³dulo de entrenamiento.");
             }
             if (global && !category.isSystemCategory()) {
-                throw new BadRequestException("Un ejercicio global debe usar una categoría base.");
+                throw new BadRequestException("Un ejercicio global debe usar una categorÃ­a base.");
             }
             if (!category.isActive()) {
-                throw new BadRequestException("La categoría está archivada.");
+                throw new BadRequestException("La categorÃ­a estÃ¡ archivada.");
             }
             return category;
         }
@@ -1444,10 +1451,10 @@ public class TrainingService {
                         module, key));
             }
             return category.filter(TrainingCategory::isActive)
-                    .orElseThrow(() -> new BadRequestException("La categoría indicada no existe para este módulo."));
+                    .orElseThrow(() -> new BadRequestException("La categorÃ­a indicada no existe para este mÃ³dulo."));
         }
         return categories.findSystem(module, normalizedKey("ACONDICIONAMIENTO"))
-                .orElseThrow(() -> new BadRequestException("No hay una categoría predeterminada disponible."));
+                .orElseThrow(() -> new BadRequestException("No hay una categorÃ­a predeterminada disponible."));
     }
 
     private String resolveExerciseCode(AppUser user, TrainingModule module, String name, String requested, Long excludedId,
@@ -1464,7 +1471,7 @@ public class TrainingService {
             code = code.toUpperCase(Locale.ROOT);
         }
         if (exercises.existsLiveCode(code, excludedId)) {
-            throw new BadRequestException("Ya existe un ejercicio con ese código para este módulo.");
+            throw new BadRequestException("Ya existe un ejercicio con ese cÃ³digo para este mÃ³dulo.");
         }
         return code;
     }
@@ -1553,7 +1560,7 @@ public class TrainingService {
         if (setRequests == null) return;
         Set<Integer> numbers = setRequests.stream().map(TrainingSetRequest::setNumber).collect(Collectors.toSet());
         if (numbers.size() != setRequests.size()) {
-            throw new BadRequestException("No puede haber números de serie repetidos en un ejercicio de sesión.");
+            throw new BadRequestException("No puede haber nÃºmeros de serie repetidos en un ejercicio de sesiÃ³n.");
         }
         for (TrainingSetRequest setRequest : setRequests) {
             validateWeight(module, setRequest.weightKg());
@@ -1566,7 +1573,7 @@ public class TrainingService {
 
     private void validateTimes(OffsetDateTime startedAt, OffsetDateTime finishedAt) {
         if (startedAt != null && finishedAt != null && finishedAt.isBefore(startedAt)) {
-            throw new BadRequestException("La finalización no puede ser anterior al inicio.");
+            throw new BadRequestException("La finalizaciÃ³n no puede ser anterior al inicio.");
         }
     }
 
@@ -1596,7 +1603,7 @@ public class TrainingService {
         if (startedAt == null || finishedAt == null) return fallback;
         long minutes = Duration.between(startedAt, finishedAt).toMinutes();
         if (minutes > Integer.MAX_VALUE) {
-            throw new BadRequestException("La duración de la sesión es demasiado extensa.");
+            throw new BadRequestException("La duraciÃ³n de la sesiÃ³n es demasiado extensa.");
         }
         return (int) minutes;
     }
@@ -1606,7 +1613,7 @@ public class TrainingService {
             throw new BadRequestException("La fecha final no puede ser anterior a la inicial.");
         }
         if (from != null && to != null && from.plusDays(93).isBefore(to)) {
-            throw new BadRequestException("El rango máximo de consulta es de 94 días.");
+            throw new BadRequestException("El rango mÃ¡ximo de consulta es de 94 dÃ­as.");
         }
     }
 
@@ -1698,7 +1705,7 @@ public class TrainingService {
         boolean hasSpeed = request.speedKmh() != null;
         boolean hasDistance = request.distanceKm() != null;
         if (hasSpeed == hasDistance) {
-            throw new BadRequestException("Informá velocidad o distancia, junto con el tiempo.");
+            throw new BadRequestException("InformÃ¡ velocidad o distancia, junto con el tiempo.");
         }
         if (hasSpeed) {
             return request.speedKmh().multiply(BigDecimal.valueOf(request.durationMinutes()))
@@ -1805,7 +1812,7 @@ public class TrainingService {
 
     private void checkVersion(Long requested, Long actual, String resource) {
         if (requested != null && !Objects.equals(requested, versionOrZeroValue(actual))) {
-            throw new ConflictException(resource + " está desactualizada. Recargá y volvé a intentar.");
+            throw new ConflictException(resource + " estÃ¡ desactualizada. RecargÃ¡ y volvÃ© a intentar.");
         }
     }
 
