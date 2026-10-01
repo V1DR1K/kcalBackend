@@ -148,6 +148,7 @@ public class NutritionService {
 
     @Transactional
     public DayPresetResponse createDayPreset(AppUser user, CreateDayPresetRequest request) {
+        checkArchived(templateFoods(request.items()), request.acknowledgedArchivedFoodIds());
         String name = normalizedPresetName(request.name());
         ensurePresetNameAvailable(user, name, null);
         DayPreset preset = new DayPreset();
@@ -162,6 +163,7 @@ public class NutritionService {
 
     @Transactional
     public DayPresetResponse updateDayPreset(AppUser user, Long id, UpdateDayPresetRequest request) {
+        checkArchived(templateFoods(request.items()), request.acknowledgedArchivedFoodIds());
         DayPreset preset = ownedDayPreset(user, id);
         String name = normalizedPresetName(request.name());
         ensurePresetNameAvailable(user, name, id);
@@ -185,6 +187,7 @@ public class NutritionService {
         DayPreset preset = ownedDayPreset(user, id);
         LocalDate date = request.logDate();
         List<DayPresetItemRequest> items = readPresetItems(preset.getItemsJson());
+        checkArchived(templateFoods(items), request.acknowledgedArchivedFoodIds());
         if (request.replace()) foodLogs.deleteAll(foodLogs.findByUserAndLogDate(user, date));
         for (int presetIndex = 0; presetIndex < items.size(); presetIndex++) {
             DayPresetItemRequest item = items.get(presetIndex);
@@ -193,14 +196,14 @@ public class NutritionService {
                 for (int itemIndex = 0; itemIndex < aiItems.size(); itemIndex++) {
                     AiEstimateItem aiItem = aiItems.get(itemIndex);
                     Food food = materializeAiEstimateItem(user,
-                            "day-preset:" + preset.getId() + ":item:" + presetIndex + ":ai:" + itemIndex, aiItem);
+                            "day-preset:" + preset.getId() + ":item:" + presetIndex + ":ai:" + itemIndex, aiItem, request.acknowledgedArchivedFoodIds());
                     BigDecimal quantity = aiItem.estimatedGrams().multiply(item.quantity());
                     addMealLog(user, new AddMealLogRequest(MealItemType.FOOD, food.getId(), item.mealType(),
                             quantity, FoodUnit.GRAM, date), true);
                 }
             } else {
                 addMealLog(user, new AddMealLogRequest(item.itemType(), item.itemId(), item.mealType(),
-                        item.quantity(), item.unit(), date));
+                        item.quantity(), item.unit(), date), true);
             }
         }
     }
@@ -672,11 +675,12 @@ public class NutritionService {
 
     @Transactional
     public RecipeResponse createRecipe(AppUser user, CreateRecipeRequest request) {
+        checkArchived(ingredientFoods(request.ingredients()), request.acknowledgedArchivedFoodIds());
         Recipe recipe = new Recipe();
         recipe.setName(request.name().trim());
         recipe.setDescription(clean(request.description()));
         recipe.setCreatedBy(user);
-        replaceRecipeIngredients(recipe, request, false);
+        replaceRecipeIngredients(recipe, request, true);
         applyRecipeWeights(recipe, request, true);
         applyRecipeTotals(recipe);
         return toRecipeResponse(recipes.save(recipe));
@@ -686,6 +690,7 @@ public class NutritionService {
     public RecipeFromMealResponse createRecipeFromMeal(AppUser user, CreateRecipeFromMealRequest request) {
         LocalDate logDate = request.logDate() == null ? LocalDate.now() : request.logDate();
         List<FoodLog> logs = foodLogsForRecipeCreation(user, request.mealType(), logDate);
+        checkArchived(logs.stream().flatMap(log -> logFoods(log).stream()).toList(), request.acknowledgedArchivedFoodIds());
         if (logs.isEmpty()) {
             throw new BadRequestException("No hay registros para esa comida y fecha.");
         }
@@ -698,7 +703,7 @@ public class NutritionService {
                 for (int itemIndex = 0; itemIndex < aiItems.size(); itemIndex++) {
                     AiEstimateItem aiItem = aiItems.get(itemIndex);
                     Food food = materializeAiEstimateItem(user,
-                            "food-log:" + log.getId() + ":item:" + itemIndex, aiItem);
+                            "food-log:" + log.getId() + ":item:" + itemIndex, aiItem, request.acknowledgedArchivedFoodIds());
                     BigDecimal multiplier = log.getQuantity() == null ? BigDecimal.ONE : log.getQuantity();
                     addAggregatedIngredient(aggregated, food,
                             aiItem.estimatedGrams().multiply(multiplier), FoodUnit.GRAM);
@@ -726,7 +731,7 @@ public class NutritionService {
         recipe.setName(request.name().trim());
         recipe.setDescription(clean(request.description()));
         recipe.setCreatedBy(user);
-        replaceRecipeIngredients(recipe, recipeRequest, false);
+        replaceRecipeIngredients(recipe, recipeRequest, true);
         applyRecipeWeights(recipe, recipeRequest, true);
         applyRecipeTotals(recipe);
         RecipeResponse response = toRecipeResponse(recipes.save(recipe));
@@ -823,9 +828,6 @@ public class NutritionService {
 
     private Food requireActiveFood(Food food) {
         if (food == null) throw new NotFoundException("El registro de comida no tiene un alimento asociado.");
-        if (food.getDeletedAt() != null) {
-            throw new NotFoundException("El alimento usado por la comida fue eliminado y no puede convertirse en ingrediente.");
-        }
         return food;
     }
 
@@ -870,8 +872,12 @@ public class NutritionService {
     private record AggregatedRecipeIngredient(Food food, BigDecimal quantity, FoodUnit unit) { }
 
     @Transactional
-    public RecipeResponse copyRecipe(AppUser user, Long id) {
+    public RecipeResponse copyRecipe(AppUser user, Long id) { return copyRecipe(user, id, Set.of()); }
+
+    @Transactional
+    public RecipeResponse copyRecipe(AppUser user, Long id, Set<Long> acknowledged) {
         Recipe source = getRecipe(id);
+        checkArchived(recipeFoods(source, new LinkedHashSet<>()), acknowledged);
         Recipe copy = new Recipe();
         copy.setName(source.getName());
         copy.setDescription(source.getDescription());
@@ -903,6 +909,8 @@ public class NutritionService {
         }
         recipe.setName(request.name().trim());
         recipe.setDescription(clean(request.description()));
+        Set<Long> retainedFoodIds = recipeFoods(recipe, new LinkedHashSet<>()).stream().map(Food::getId).collect(Collectors.toSet());
+        checkArchived(ingredientFoods(request.ingredients()).stream().filter(food -> !retainedFoodIds.contains(food.getId())).toList(), request.acknowledgedArchivedFoodIds());
         boolean ingredientsChanged = recipeIngredientsChanged(recipe, request.ingredients());
         replaceRecipeIngredients(recipe, request, true);
         applyRecipeWeights(recipe, request, ingredientsChanged);
@@ -996,7 +1004,7 @@ public class NutritionService {
             RecipeIngredient ingredient = new RecipeIngredient();
             ingredient.setRecipe(recipe);
             if (item.foodId() != null) {
-                ingredient.setFood(getActiveFood(item.foodId()));
+                ingredient.setFood(getFood(item.foodId()));
             } else {
                 Recipe ingredientRecipe = getRecipe(item.recipeId());
                 validateRecipeIngredient(recipe, ingredientRecipe, item.unit());
@@ -1013,12 +1021,13 @@ public class NutritionService {
 
     @Transactional
     public FoodLogResponse addFoodLog(AppUser user, AddFoodLogRequest request) {
-        return addMealLog(user, new AddMealLogRequest(MealItemType.FOOD, request.foodId(), request.mealType(), request.quantity(), request.unit(), request.logDate()));
+        return addMealLog(user, new AddMealLogRequest(MealItemType.FOOD, request.foodId(), request.mealType(), request.quantity(), request.unit(), request.logDate(), request.acknowledgedArchivedFoodIds()));
     }
 
     @Transactional
     public FoodLogResponse addMealLog(AppUser user, AddMealLogRequest request) {
-        return addMealLog(user, request, false);
+        checkArchived(itemFoods(request.itemType(), request.itemId()), request.acknowledgedArchivedFoodIds());
+        return addMealLog(user, request, true);
     }
 
     private FoodLogResponse addMealLog(AppUser user, AddMealLogRequest request, boolean allowDeletedFoods) {
@@ -1049,6 +1058,7 @@ public class NutritionService {
 
     @Transactional
     public List<FoodLogResponse> addMealLogs(AppUser user, BatchAddMealLogsRequest request) {
+        checkArchived(request.logs().stream().flatMap(item -> (item.sourceLogId() == null ? itemFoods(item.itemType(), item.itemId()) : logFoods(findOwnedFoodLogEntity(user, item.sourceLogId()))).stream()).toList(), request.acknowledgedArchivedFoodIds());
         return request.logs().stream().map(item -> switch (item.itemType()) {
             case AI_ESTIMATE -> copyAiEstimate(user, item);
             case RECIPE -> item.sourceLogId() == null
@@ -1232,6 +1242,7 @@ public class NutritionService {
 
     @Transactional
     public FoodLogResponse addRecipeMealLog(AppUser user, AddRecipeMealLogRequest request) {
+        checkArchived(ingredientFoods(request.ingredients()), request.acknowledgedArchivedFoodIds());
         Recipe recipe = getRecipe(request.recipeId());
         FoodLog log = new FoodLog();
         log.setUser(user);
@@ -1249,13 +1260,14 @@ public class NutritionService {
 
     @Transactional
     public List<FoodLogResponse> confirmAiEstimate(AppUser user, ConfirmAiEstimateRequest request) {
+        checkArchived(request.items().stream().filter(item -> item.foodId() != null).map(item -> getFood(item.foodId())).toList(), request.acknowledgedArchivedFoodIds());
         LocalDate logDate = request.logDate() == null ? LocalDate.now() : request.logDate();
         return request.items().stream().map(item -> confirmAiEstimateItem(user, request.mealType(), logDate, item)).toList();
     }
 
     private FoodLogResponse confirmAiEstimateItem(AppUser user, MealType mealType, LocalDate logDate,
             ConfirmAiEstimateItem item) {
-        Food food = item.foodId() == null ? aiFoodMatcher.resolve(item.proposal()).orElse(null) : getActiveFood(item.foodId());
+        Food food = item.foodId() == null ? aiFoodMatcher.resolve(item.proposal()).orElse(null) : getFood(item.foodId());
         if (food == null) return createAiEstimateLog(user, mealType, logDate, item.proposal(), item.servedGrams());
         NutritionPreviewResponse preview = preview(food, item.servedGrams(), FoodUnit.GRAM);
         FoodLog log = new FoodLog();
@@ -1350,7 +1362,9 @@ public class NutritionService {
         return toFoodResponse(food);
     }
 
-    private Food materializeAiEstimateItem(AppUser user, String sourceId, AiEstimateItem item) {
+    private Food materializeAiEstimateItem(AppUser user, String sourceId, AiEstimateItem item) { return materializeAiEstimateItem(user, sourceId, item, Set.of()); }
+
+    private Food materializeAiEstimateItem(AppUser user, String sourceId, AiEstimateItem item, Set<Long> acknowledged) {
         FoodCategory category = item.category() == null ? FoodCategory.OTHER : item.category();
         FoodPreparation preparation = item.preparation() == null ? FoodPreparation.UNSPECIFIED : item.preparation();
         BigDecimal itemToHundred = BigDecimal.valueOf(100).divide(item.estimatedGrams(), 4, RoundingMode.HALF_UP);
@@ -1376,7 +1390,7 @@ public class NutritionService {
         if (saved.isPresent()) {
             Food food = saved.get();
             if (food.getDeletedAt() != null) {
-                throw new BadRequestException("Esta ficha fue archivada. Buscá el alimento vigente en el catálogo.");
+                checkArchived(List.of(food), acknowledged);
             }
             return food;
         }
@@ -1524,6 +1538,7 @@ public class NutritionService {
                 .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));
         if (request.itemId() != null && log.getItemType() == MealItemType.FOOD && !request.itemId().equals(log.getFood().getId())) {
             Food newFood = getFood(request.itemId());
+            checkArchived(List.of(newFood), request.acknowledgedArchivedFoodIds());
             log.setFood(newFood);
         }
         NutritionPreviewResponse preview;
@@ -1547,6 +1562,7 @@ public class NutritionService {
     public FoodLogResponse updateRecipeLogIngredients(AppUser user, Long logId, UpdateRecipeLogIngredientsRequest request) {
         FoodLog log = ownedRecipeLog(user, logId);
         rejectAdjustedRecipeGrams(log);
+        checkArchived(ingredientFoods(request.ingredients()).stream().filter(food -> logFoods(log).stream().noneMatch(existing -> existing.getId().equals(food.getId()))).toList(), request.acknowledgedArchivedFoodIds());
         replaceRecipeLogIngredients(log, log.getRecipe(), request.ingredients());
         NutritionPreviewResponse preview = previewRecipeServing(log, log.getQuantity(), FoodUnit.PORTION);
         applyLogNutrition(log, preview);
@@ -1557,6 +1573,7 @@ public class NutritionService {
     public FoodLogResponse updateRecipeFoodLog(AppUser user, Long logId, UpdateRecipeFoodLogRequest request) {
         FoodLog log = ownedRecipeLog(user, logId);
         rejectAdjustedRecipeGrams(log);
+        checkArchived(ingredientFoods(request.recipeIngredients()).stream().filter(food -> logFoods(log).stream().noneMatch(existing -> existing.getId().equals(food.getId()))).toList(), request.acknowledgedArchivedFoodIds());
         replaceRecipeLogIngredients(log, log.getRecipe(), request.recipeIngredients());
         log.setMealType(request.mealType());
         log.setQuantity(request.quantity());
@@ -1586,8 +1603,12 @@ public class NutritionService {
     }
 
     @Transactional
-    public void resetRecipeLogIngredients(AppUser user, Long logId) {
+    public void resetRecipeLogIngredients(AppUser user, Long logId) { resetRecipeLogIngredients(user, logId, Set.of()); }
+
+    @Transactional
+    public void resetRecipeLogIngredients(AppUser user, Long logId, Set<Long> acknowledged) {
         FoodLog log = ownedRecipeLog(user, logId);
+        checkArchived(recipeFoods(log.getRecipe(), new LinkedHashSet<>()), acknowledged);
         rejectAdjustedRecipeGrams(log);
         log.getRecipeIngredients().clear();
         applyLogNutrition(log, previewRecipeServing(log.getRecipe(), log.getQuantity(), log.getUnit(),
@@ -1668,6 +1689,34 @@ public class NutritionService {
         return new HistoryResponse(year, month, days, average, completed);
     }
 
+    private void checkArchived(List<Food> referenced, Set<Long> acknowledged) {
+        List<Food> archived = referenced.stream().filter(food -> food.getDeletedAt() != null)
+                .filter(food -> acknowledged == null || !acknowledged.contains(food.getId()))
+                .collect(Collectors.toMap(Food::getId, food -> food, (left, right) -> left, LinkedHashMap::new)).values().stream().toList();
+        if (!archived.isEmpty()) throw new com.scalegrams.common.ArchivedFoodAcknowledgementException(archived);
+    }
+    private List<Food> recipeFoods(Recipe recipe, Set<Long> visited) {
+        if (recipe.getId() != null && !visited.add(recipe.getId())) return List.of();
+        return recipe.getIngredients().stream().flatMap(item -> item.getFood() != null ? java.util.stream.Stream.of(item.getFood()) : recipeFoods(item.getIngredientRecipe(), visited).stream()).toList();
+    }
+    private List<Food> ingredientFoods(List<RecipeIngredientRequest> ingredients) {
+        return ingredients.stream().flatMap(item -> item.foodId() != null ? java.util.stream.Stream.of(getFood(item.foodId())) : recipeFoods(getRecipe(item.recipeId()), new LinkedHashSet<>()).stream()).toList();
+    }
+    private List<Food> itemFoods(MealItemType type, Long id) {
+        return type == MealItemType.FOOD ? List.of(getFood(id)) : type == MealItemType.RECIPE ? recipeFoods(getRecipe(id), new LinkedHashSet<>()) : List.of();
+    }
+    private List<Food> templateFoods(List<DayPresetItemRequest> items) {
+        return items.stream().flatMap(item -> itemFoods(item.itemType(), item.itemId()).stream()).toList();
+    }
+    private List<Food> logFoods(FoodLog log) {
+        if (log.getFood() != null) return List.of(log.getFood());
+        if (!log.getRecipeIngredients().isEmpty()) return log.getRecipeIngredients().stream().map(FoodLogRecipeIngredient::getFood).toList();
+        return log.getRecipe() == null ? List.of() : recipeFoods(log.getRecipe(), new LinkedHashSet<>());
+    }
+    private FoodLog findOwnedFoodLogEntity(AppUser user, Long id) {
+        return foodLogs.findByIdAndUser(id, user).orElseThrow(() -> new NotFoundException("Registro reciente no encontrado."));
+    }
+
     private Food getFood(Long foodId) {
         return foods.findById(foodId).orElseThrow(() -> new NotFoundException("Alimento no encontrado."));
     }
@@ -1700,12 +1749,12 @@ public class NutritionService {
                 throw new BadRequestException("El registro de alimento debe contener exactamente un elemento.");
             }
             AiEstimateItem item = items.getFirst();
-            Food food = resolveAiRegistrationFood(user, sourcePrefix + ":item:0", item);
+            Food food = resolveAiRegistrationFood(user, sourcePrefix + ":item:0", item, request.acknowledgedArchivedFoodIds());
             FoodLogResponse log = null;
             if (request.addToDiary()) {
                 if (request.mealType() == null) throw new BadRequestException("Elegí a qué comida agregar el alimento.");
                 log = addMealLog(user, new AddMealLogRequest(MealItemType.FOOD, food.getId(), request.mealType(),
-                        item.estimatedGrams(), FoodUnit.GRAM, logDate));
+                        item.estimatedGrams(), FoodUnit.GRAM, logDate, request.acknowledgedArchivedFoodIds()));
             }
             return new AiRegistrationResponse(AiCaptureTarget.FOOD, toFoodResponse(food), null, log);
         }
@@ -1717,7 +1766,7 @@ public class NutritionService {
         recipe.setCreatedBy(user);
         for (int index = 0; index < items.size(); index++) {
             AiEstimateItem item = items.get(index);
-            Food food = resolveAiRegistrationFood(user, sourcePrefix + ":item:" + index, item);
+            Food food = resolveAiRegistrationFood(user, sourcePrefix + ":item:" + index, item, request.acknowledgedArchivedFoodIds());
             RecipeIngredient ingredient = new RecipeIngredient();
             ingredient.setRecipe(recipe);
             ingredient.setFood(food);
@@ -1730,7 +1779,7 @@ public class NutritionService {
         applyRecipeTotals(recipe);
         recipe = recipes.save(recipe);
         FoodLogResponse log = addMealLog(user, new AddMealLogRequest(MealItemType.RECIPE, recipe.getId(), request.mealType(),
-                BigDecimal.ONE, FoodUnit.PORTION, logDate));
+                BigDecimal.ONE, FoodUnit.PORTION, logDate, request.acknowledgedArchivedFoodIds()));
         return new AiRegistrationResponse(AiCaptureTarget.RECIPE, null, toRecipeResponse(recipe), log);
     }
 
@@ -1744,11 +1793,11 @@ public class NutritionService {
         return new AiRegistrationResponse(targetType, food, recipe, log);
     }
 
-    private Food resolveAiRegistrationFood(AppUser user, String sourceId, AiEstimateItem item) {
-        if (item.catalogFoodId() != null) return getActiveFood(item.catalogFoodId());
+    private Food resolveAiRegistrationFood(AppUser user, String sourceId, AiEstimateItem item, Set<Long> acknowledged) {
+        if (item.catalogFoodId() != null) { Food food = getFood(item.catalogFoodId()); checkArchived(List.of(food), acknowledged); return food; }
         // Only reuse a catalog food when the reviewed estimate explicitly retained its match.
         // Otherwise its user-edited macros must be the values materialized into the new food.
-        return materializeAiEstimateItem(user, sourceId, item);
+        return materializeAiEstimateItem(user, sourceId, item, acknowledged);
     }
 
     private BigDecimal perHundred(BigDecimal value, BigDecimal grams) {
@@ -2014,7 +2063,7 @@ public class NutritionService {
                 food.getFatGrams(), food.getPreparation(), food.getPreparationSource(), food.getPreparationGroup(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl(), food.getSource(), food.getSourceId(), food.getLastSyncedAt(),
                 copyTags(food.getTags()), food.getCreatedBy() == null ? null : food.getCreatedBy().getId(),
                 food.getCreatedAt(), food.getModerationStatus(), scaleNutrients(food, BigDecimal.ONE),
-                food.getCookedYieldFactor(), food.getCookedYieldSource(), food.getCookedYieldAssumption());
+                food.getCookedYieldFactor(), food.getCookedYieldSource(), food.getCookedYieldAssumption(), food.getDeletedAt() != null);
     }
 
     private FoodSummaryResponse toFoodSummaryResponse(Food food) {

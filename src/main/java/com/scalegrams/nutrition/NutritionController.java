@@ -218,8 +218,8 @@ public class NutritionController {
     }
 
     @DeleteMapping("/food-logs/{id}/recipe-ingredients")
-    ResponseEntity<Void> resetRecipeLogIngredients(Authentication authentication, @PathVariable Long id) {
-        nutritionService.resetRecipeLogIngredients(currentUser.from(authentication), id);
+    ResponseEntity<Void> resetRecipeLogIngredients(Authentication authentication, @PathVariable Long id, @Valid @RequestBody(required = false) NutritionDtos.ArchivedFoodAcknowledgementRequest request) {
+        nutritionService.resetRecipeLogIngredients(currentUser.from(authentication), id, request == null ? java.util.Set.of() : request.acknowledgedArchivedFoodIds());
         return ResponseEntity.noContent().build();
     }
 

@@ -75,8 +75,8 @@ public class RecipeController {
     }
 
     @PostMapping("/{id}/copy")
-    RecipeResponse copy(Authentication authentication, @PathVariable Long id) {
-        return recipeService.copy(currentUser.from(authentication), id);
+    RecipeResponse copy(Authentication authentication, @PathVariable Long id, @Valid @RequestBody(required = false) com.scalegrams.nutrition.NutritionDtos.ArchivedFoodAcknowledgementRequest request) {
+        return recipeService.copy(currentUser.from(authentication), id, request == null ? java.util.Set.of() : request.acknowledgedArchivedFoodIds());
     }
 
     @PutMapping("/{id}")

@@ -69,6 +69,9 @@ public class RecipeService {
     }
 
     @Transactional
+    public RecipeResponse copy(AppUser user, Long id, java.util.Set<Long> acknowledged) { return nutritionService.copyRecipe(user, id, acknowledged); }
+
+    @Transactional
     public RecipeResponse update(AppUser user, Long id, CreateRecipeRequest request) {
         return nutritionService.updateOwnedRecipe(user, id, request);
     }

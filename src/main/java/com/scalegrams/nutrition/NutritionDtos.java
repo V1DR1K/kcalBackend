@@ -44,7 +44,9 @@ public class NutritionDtos {
             FoodPreparation preparation, String preparationSource, String preparationGroup, String servingName, BigDecimal servingWeightGrams,
             String imageUrl, String source, String sourceId, OffsetDateTime lastSyncedAt, Set<String> tags,
             Long createdById, OffsetDateTime createdAt, ModerationStatus moderationStatus, List<NutrientValueResponse> nutrients,
-            BigDecimal cookedYieldFactor, CookedYieldSource cookedYieldSource, String cookedYieldAssumption) {
+            BigDecimal cookedYieldFactor, CookedYieldSource cookedYieldSource, String cookedYieldAssumption, boolean archived) {
+        public FoodResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit, BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams, FoodPreparation preparation, String preparationSource, String preparationGroup, String servingName, BigDecimal servingWeightGrams, String imageUrl, String source, String sourceId, OffsetDateTime lastSyncedAt, Set<String> tags, Long createdById, OffsetDateTime createdAt, ModerationStatus moderationStatus, List<NutrientValueResponse> nutrients, BigDecimal cookedYieldFactor, CookedYieldSource cookedYieldSource, String cookedYieldAssumption) { this(id, name, brand, barcode, category, baseUnit, baseQuantity, calories, proteinGrams, carbsGrams, fatGrams, preparation, preparationSource, preparationGroup, servingName, servingWeightGrams, imageUrl, source, sourceId, lastSyncedAt, tags, createdById, createdAt, moderationStatus, nutrients, cookedYieldFactor, cookedYieldSource, cookedYieldAssumption, false); }
+
         public FoodResponse(Long id, String name, String brand, String barcode, FoodCategory category, FoodUnit baseUnit,
                 BigDecimal baseQuantity, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
                 FoodPreparation preparation, String preparationSource, String preparationGroup, String servingName, BigDecimal servingWeightGrams,
@@ -121,15 +123,21 @@ public class NutritionDtos {
     }
 
     public record AddFoodLogRequest(@NotNull Long foodId, @NotNull MealType mealType, @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity,
-            @NotNull FoodUnit unit, LocalDate logDate) {
+            @NotNull FoodUnit unit, LocalDate logDate, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public AddFoodLogRequest(Long foodId, MealType mealType, BigDecimal quantity, FoodUnit unit, LocalDate logDate) { this(foodId, mealType, quantity, unit, logDate, Set.of()); }
+
     }
 
     public record AddMealLogRequest(@NotNull MealItemType itemType, @NotNull Long itemId, @NotNull MealType mealType,
-            @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, @NotNull FoodUnit unit, LocalDate logDate) {
+            @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, @NotNull FoodUnit unit, LocalDate logDate, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public AddMealLogRequest(MealItemType itemType, Long itemId, MealType mealType, BigDecimal quantity, FoodUnit unit, LocalDate logDate) { this(itemType, itemId, mealType, quantity, unit, logDate, Set.of()); }
+
     }
 
     public record BatchAddMealLogsRequest(
-            @NotEmpty @Size(max = 50) List<@NotNull @Valid BatchAddMealLogRequest> logs) {
+            @NotEmpty @Size(max = 50) List<@NotNull @Valid BatchAddMealLogRequest> logs, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public BatchAddMealLogsRequest(List<BatchAddMealLogRequest> logs) { this(logs, Set.of()); }
+
     }
 
     public record BatchAddMealLogRequest(@NotNull MealItemType itemType, @Positive Long itemId, @NotNull MealType mealType,
@@ -145,19 +153,27 @@ public class NutritionDtos {
 
     public record AddRecipeMealLogRequest(@NotNull Long recipeId, @NotNull MealType mealType,
             @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity, LocalDate logDate,
-            @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> ingredients) {
+            @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> ingredients, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public AddRecipeMealLogRequest(Long recipeId, MealType mealType, BigDecimal quantity, LocalDate logDate, List<RecipeIngredientRequest> ingredients) { this(recipeId, mealType, quantity, logDate, ingredients, Set.of()); }
+
     }
 
     public record UpdateFoodLogRequest(@NotNull MealType mealType, @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity,
-            @NotNull FoodUnit unit, LocalDate logDate, Long itemId) {
+            @NotNull FoodUnit unit, LocalDate logDate, Long itemId, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public UpdateFoodLogRequest(MealType mealType, BigDecimal quantity, FoodUnit unit, LocalDate logDate, Long itemId) { this(mealType, quantity, unit, logDate, itemId, Set.of()); }
+
     }
 
     public record UpdateRecipeFoodLogRequest(@NotNull MealType mealType, @Positive @Digits(integer = 36, fraction = 2) BigDecimal quantity,
-            LocalDate logDate, @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> recipeIngredients) {
+            LocalDate logDate, @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> recipeIngredients, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public UpdateRecipeFoodLogRequest(MealType mealType, BigDecimal quantity, LocalDate logDate, List<RecipeIngredientRequest> recipeIngredients) { this(mealType, quantity, logDate, recipeIngredients, Set.of()); }
+
     }
 
     public record UpdateRecipeLogIngredientsRequest(
-            @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> ingredients) {
+            @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> ingredients, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public UpdateRecipeLogIngredientsRequest(List<RecipeIngredientRequest> ingredients) { this(ingredients, Set.of()); }
+
     }
 
     public record FoodLogResponse(Long id, LocalDate logDate, MealType mealType, MealItemType itemType, FoodResponse food,
@@ -238,7 +254,9 @@ public class NutritionDtos {
     public record ConfirmAiEstimateRequest(
             @NotNull MealType mealType,
             LocalDate logDate,
-            @NotEmpty @Size(max = 12) List<@NotNull @Valid ConfirmAiEstimateItem> items) {
+            @NotEmpty @Size(max = 12) List<@NotNull @Valid ConfirmAiEstimateItem> items, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public ConfirmAiEstimateRequest(MealType mealType, LocalDate logDate, List<ConfirmAiEstimateItem> items) { this(mealType, logDate, items, Set.of()); }
+
     }
 
     public record ConfirmAiEstimateItem(
@@ -328,9 +346,9 @@ public class NutritionDtos {
             String displayName,
             String imageUrl,
             Integer calories,
-            @NotNull @PositiveOrZero BigDecimal proteinGrams,
-            @NotNull @PositiveOrZero BigDecimal carbsGrams,
-            @NotNull @PositiveOrZero BigDecimal fatGrams,
+            @PositiveOrZero BigDecimal proteinGrams,
+            @PositiveOrZero BigDecimal carbsGrams,
+            @PositiveOrZero BigDecimal fatGrams,
             Integer aiEstimateConfidence,
             String aiEstimateDetails,
             List<NutrientValueResponse> nutrients) {
@@ -339,20 +357,26 @@ public class NutritionDtos {
     public record CreateDayPresetRequest(
             @NotBlank @Size(min = 1, max = 120) String name,
             @Size(max = 240) String description,
-            @NotEmpty @Size(max = 200) List<@NotNull @Valid DayPresetItemRequest> items) {
+            @NotEmpty @Size(max = 200) List<@NotNull @Valid DayPresetItemRequest> items, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public CreateDayPresetRequest(String name, String description, List<DayPresetItemRequest> items) { this(name, description, items, Set.of()); }
+
     }
 
     public record UpdateDayPresetRequest(
             @NotBlank @Size(min = 1, max = 120) String name,
             @Size(max = 240) String description,
-            @NotEmpty @Size(max = 200) List<@NotNull @Valid DayPresetItemRequest> items) {
+            @NotEmpty @Size(max = 200) List<@NotNull @Valid DayPresetItemRequest> items, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public UpdateDayPresetRequest(String name, String description, List<DayPresetItemRequest> items) { this(name, description, items, Set.of()); }
+
     }
 
     public record DayPresetResponse(Long id, String name, String description, OffsetDateTime createdAt, OffsetDateTime updatedAt,
             List<DayPresetItemRequest> items, int itemCount, Map<String, Integer> mealCounts) {
     }
 
-    public record ApplyDayPresetRequest(@NotNull LocalDate logDate, boolean replace) {
+    public record ApplyDayPresetRequest(@NotNull LocalDate logDate, boolean replace, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public ApplyDayPresetRequest(LocalDate logDate, boolean replace) { this(logDate, replace, Set.of()); }
+
     }
 
     public record RecipeIngredientRequest(@Positive Long foodId, @Positive Long recipeId,
@@ -375,7 +399,9 @@ public class NutritionDtos {
             LocalDate logDate,
             @NotNull @PositiveOrZero Integer confidence,
             boolean addToDiary,
-            @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items) {
+            @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public ConfirmAiRegistrationRequest(UUID captureId, String name, String description, MealType mealType, LocalDate logDate, Integer confidence, boolean addToDiary, List<AiEstimateItem> items) { this(captureId, name, description, mealType, logDate, confidence, addToDiary, items, Set.of()); }
+
     }
 
     public record AiRegistrationResponse(AiCaptureTarget targetType, FoodResponse food, RecipeResponse recipe,
@@ -388,7 +414,9 @@ public class NutritionDtos {
             BigDecimal totalWeightGrams,
             @Positive @Digits(integer = 36, fraction = 2) BigDecimal cookedTotalWeightGrams,
             boolean clearCookedTotalWeight,
-            @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> ingredients) {
+            @NotEmpty @Size(max = 50) List<@NotNull @Valid RecipeIngredientRequest> ingredients, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public CreateRecipeRequest(String name, String description, BigDecimal totalWeightGrams, BigDecimal cookedTotalWeightGrams, boolean clearCookedTotalWeight, List<RecipeIngredientRequest> ingredients) { this(name, description, totalWeightGrams, cookedTotalWeightGrams, clearCookedTotalWeight, ingredients, Set.of()); }
+
         @AssertTrue(message = "No se puede informar y borrar el peso cocido al mismo tiempo.")
         public boolean hasConsistentCookedWeightInstruction() {
             return !clearCookedTotalWeight || cookedTotalWeightGrams == null;
@@ -400,7 +428,9 @@ public class NutritionDtos {
             @Size(max = 500) String description,
             @NotNull MealType mealType,
             LocalDate logDate,
-            @Positive @Digits(integer = 36, fraction = 2) BigDecimal cookedTotalWeightGrams) {
+            @Positive @Digits(integer = 36, fraction = 2) BigDecimal cookedTotalWeightGrams, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
+        public CreateRecipeFromMealRequest(String name, String description, MealType mealType, LocalDate logDate, BigDecimal cookedTotalWeightGrams) { this(name, description, mealType, logDate, cookedTotalWeightGrams, Set.of()); }
+
     }
 
     public record RecipeIngredientResponse(FoodResponse food, RecipeReferenceResponse recipe, BigDecimal quantity, FoodUnit unit) {
@@ -427,6 +457,8 @@ public class NutritionDtos {
         @com.fasterxml.jackson.annotation.JsonProperty public boolean energyComplete() { return calories != null; }
         @com.fasterxml.jackson.annotation.JsonProperty public boolean nutritionComplete() { return calories != null && proteinGrams != null && carbsGrams != null && fatGrams != null; }
     }
+
+    public record ArchivedFoodAcknowledgementRequest(@Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {}
 
     public record RecipeFromMealResponse(RecipeResponse recipe, List<String> skippedItems) {
     }

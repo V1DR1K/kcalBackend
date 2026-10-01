@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -935,10 +936,10 @@ class ScaleGramsApplicationTests {
 		assertThat(search.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(mine.getBody()).doesNotContain("Alimento lógico para borrar");
 		assertThat(search.getBody()).doesNotContain("Alimento lógico para borrar");
-		assertThat(newRecipe.getStatusCode().value()).isEqualTo(404);
-		assertThat(copiedDeleted.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(copiedDeleted.getBody()).contains("\"itemType\":\"FOOD\"");
-		assertThat(directNewLog.getStatusCode().value()).isEqualTo(404);
+		assertThat(newRecipe.getStatusCode().value()).isEqualTo(409);
+		assertThat(copiedDeleted.getStatusCode().value()).isEqualTo(409);
+		assertThat(copiedDeleted.getBody()).contains("ARCHIVED_FOOD_ACKNOWLEDGEMENT_REQUIRED");
+		assertThat(directNewLog.getStatusCode().value()).isEqualTo(409);
 		assertThat(foods.findById(((Number) foodId).longValue()).orElseThrow().getDeletedAt()).isNotNull();
 
 		ResponseEntity<String> restored = rest.exchange("/api/foods/" + foodId + "/restore", HttpMethod.POST,
@@ -1389,7 +1390,7 @@ class ScaleGramsApplicationTests {
 		ResponseEntity<String> response = rest.postForEntity("/api/recipes/from-meal", new HttpEntity<>(Map.of(
 				"name", "No debe persistir", "mealType", "DINNER", "logDate", date), headers), String.class);
 
-		assertThat(response.getStatusCode().value()).isEqualTo(404);
+		assertThat(response.getStatusCode().value()).isEqualTo(409);
 		assertThat(recipes.findAll()).noneMatch(recipe -> "No debe persistir".equals(recipe.getName()));
 	}
 
@@ -1519,6 +1520,32 @@ class ScaleGramsApplicationTests {
         assertThat(item).containsEntry("ingredientCount", 2).containsEntry("ingredients", List.of());
         var detail = rest.exchange("/api/recipes/" + recipe.getBody().get("id"), HttpMethod.GET, new HttpEntity<>(headers), Map.class);
         assertThat((List) detail.getBody().get("ingredients")).hasSize(2);
+    }
+
+    @Test void archivedReuseRequiresAcknowledgmentAcrossRecipesRecentMealsAndTemplates() {
+        var headers = authHeaders("archive-flow-" + UUID.randomUUID());
+        var food = rest.postForEntity("/api/foods", new HttpEntity<>(Map.of("name", "Alimento archivado de prueba", "category", "OTHER", "baseUnit", "GRAM", "baseQuantity", 100, "proteinGrams", 10, "carbsGrams", 0, "fatGrams", 0), headers), Map.class).getBody();
+        Object foodId = food.get("id");
+        var ingredient = Map.of("foodId", foodId, "quantity", 100, "unit", "GRAM");
+        var recipe = rest.postForEntity("/api/recipes", new HttpEntity<>(Map.of("name", "Receta previa", "ingredients", List.of(ingredient)), headers), Map.class).getBody();
+        var presetItem = Map.of("itemType", "FOOD", "itemId", foodId, "mealType", "DINNER", "quantity", 100, "unit", "GRAM", "proteinGrams", 10, "carbsGrams", 0, "fatGrams", 0);
+        var preset = rest.postForEntity("/api/nutrition/day-presets", new HttpEntity<>(Map.of("name", "Plantilla previa", "items", List.of(presetItem)), headers), Map.class).getBody();
+        rest.exchange("/api/foods/" + foodId, HttpMethod.DELETE, new HttpEntity<>(headers), Void.class);
+        var mealPayload = Map.of("itemType", "RECIPE", "itemId", recipe.get("id"), "mealType", "DINNER", "quantity", 1, "unit", "PORTION");
+        var blockedMeal = rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(mealPayload, headers), Map.class);
+        assertThat(blockedMeal.getStatusCode().value()).isEqualTo(409);
+        assertThat(blockedMeal.getBody()).containsEntry("code", "ARCHIVED_FOOD_ACKNOWLEDGEMENT_REQUIRED");
+        var blockedTemplate = rest.postForEntity("/api/nutrition/day-presets/" + preset.get("id") + "/apply", new HttpEntity<>(Map.of("logDate", LocalDate.now().toString(), "replace", true), headers), Map.class);
+        assertThat(blockedTemplate.getStatusCode().value()).isEqualTo(409);
+        var dashboard = rest.exchange("/api/nutrition/dashboard", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(dashboard.getBody()).containsEntry("caloriesConsumed", 0);
+        var acceptedMeal = new java.util.HashMap<String, Object>(mealPayload); acceptedMeal.put("acknowledgedArchivedFoodIds", List.of(foodId));
+        assertThat(rest.postForEntity("/api/nutrition/meal-logs", new HttpEntity<>(acceptedMeal, headers), Map.class).getStatusCode().is2xxSuccessful()).isTrue();
+        var acceptedBatch = Map.of("logs", List.of(Map.of("itemType", "FOOD", "itemId", foodId, "mealType", "LUNCH", "quantity", 100, "unit", "GRAM")), "acknowledgedArchivedFoodIds", List.of(foodId));
+        assertThat(rest.postForEntity("/api/nutrition/meal-logs/batch", new HttpEntity<>(acceptedBatch, headers), List.class).getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(rest.postForEntity("/api/nutrition/day-presets/" + preset.get("id") + "/apply", new HttpEntity<>(Map.of("logDate", LocalDate.now().toString(), "replace", false, "acknowledgedArchivedFoodIds", List.of(foodId)), headers), Void.class).getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(rest.postForEntity("/api/recipes/" + recipe.get("id") + "/copy", new HttpEntity<>(Map.of("acknowledgedArchivedFoodIds", List.of(foodId)), headers), Map.class).getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(foods.findById(((Number) foodId).longValue()).orElseThrow().getDeletedAt()).isNotNull();
     }
 
 }

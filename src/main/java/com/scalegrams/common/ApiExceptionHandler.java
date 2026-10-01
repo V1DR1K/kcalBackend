@@ -32,6 +32,11 @@ import com.scalegrams.common.ForbiddenException;
 public class ApiExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
+    @ExceptionHandler(ArchivedFoodAcknowledgementException.class)
+    ResponseEntity<ApiError> archivedFood(ArchivedFoodAcknowledgementException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError("ARCHIVED_FOOD_ACKNOWLEDGEMENT_REQUIRED", ex.getMessage(), ex.getFields(), Instant.now()));
+    }
+
     @ExceptionHandler(NotFoundException.class)
     ResponseEntity<ApiError> notFound(NotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiError("NOT_FOUND", ex.getMessage(), null, Instant.now()));
