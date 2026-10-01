@@ -21,6 +21,8 @@ import com.scalegrams.auth.CentralJwtService;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ProfileTimelineIntegrationTests extends com.scalegrams.PostgresTestSupport {
     @Autowired TestRestTemplate rest;
+    @Autowired com.scalegrams.user.UserRepository users;
+    @BeforeEach void patchClient() { rest.getRestTemplate().setRequestFactory(new org.springframework.http.client.JdkClientHttpRequestFactory()); }
     @MockitoBean CentralAuthClient auth;
     @MockitoBean CentralJwtService jwt;
     @BeforeEach void authenticate() {
@@ -84,4 +86,22 @@ class ProfileTimelineIntegrationTests extends com.scalegrams.PostgresTestSupport
                 new HttpEntity<>(Map.of("version", plan.get("version")), headers("other-" + UUID.randomUUID())), Map.class);
         assertThat(denied.getStatusCode().value()).isEqualTo(404);
     }
+    @Test void measurementsPreserveManualGoalsAndResponsesResolveTheScheduledGoal() {
+        String name = "measurements-" + UUID.randomUUID(); HttpHeaders headers = headers(name);
+        UUID subject = UUID.nameUUIDFromBytes(("timeline-token-" + name).getBytes());
+        var user = users.findByAuthUserId(subject).orElseThrow();
+        user.setDailyCalorieGoal(1990); user.setProteinGoalGrams(125); user.setCarbsGoalGrams(250); user.setFatGoalGrams(54);
+        user.setBirthDate(LocalDate.of(1990, 1, 1)); user.setGender(com.scalegrams.user.Gender.MALE);
+        user.setWeightKg(java.math.BigDecimal.valueOf(75)); user.setHeightCm(java.math.BigDecimal.valueOf(175)); users.save(user);
+        var profile = rest.exchange("/api/profile", HttpMethod.PATCH, new HttpEntity<>(Map.of("heightCm", 180, "weightKg", 76), headers), Map.class);
+        assertThat(profile.getStatusCode().value()).isEqualTo(200);
+        assertThat(profile.getBody()).containsEntry("dailyCalorieGoal", 1990).containsEntry("goalOrigin", "MANUAL");
+        var plan = create(headers, "Programado", LocalDate.now(), true); confirm(headers, plan, "schedule");
+        profile = rest.exchange("/api/profile", HttpMethod.PATCH, new HttpEntity<>(Map.of("heightCm", 181), headers), Map.class);
+        assertThat(profile.getBody()).containsEntry("dailyCalorieGoal", 1800).containsEntry("goalOrigin", "SCHEDULED");
+        assertThat(users.findById(user.getId()).orElseThrow().getDailyCalorieGoal()).isEqualTo(1990);
+        rest.postForEntity("/api/profile/weight-entries", new HttpEntity<>(Map.of("weightKg", 77, "entryDate", LocalDate.now().toString()), headers), Map.class);
+        assertThat(users.findById(user.getId()).orElseThrow().getDailyCalorieGoal()).isEqualTo(1990);
+    }
+
 }

@@ -18,7 +18,8 @@ public class ProfileDtos {
     public record ProfileResponse(Long id, String fullName, String email, String planName, String nutritionStyle,
             BigDecimal weightKg, BigDecimal heightCm, Integer age, Gender gender, ActivityLevel activityLevel,
             FitnessGoal goal, BigDecimal targetWeightKg, Integer dailyCalorieGoal, Integer proteinGoalGrams,
-            Integer carbsGoalGrams, Integer fatGoalGrams, BigDecimal waterGoalLiters) {
+            Integer carbsGoalGrams, Integer fatGoalGrams, BigDecimal waterGoalLiters, String goalOrigin, Long nutritionPlanId,
+            String nutritionPlanName, LocalDate goalDate) {
     }
 
     public record WeightEntryResponse(Long id, LocalDate entryDate, BigDecimal weightKg) {

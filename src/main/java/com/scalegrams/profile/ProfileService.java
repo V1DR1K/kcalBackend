@@ -17,7 +17,6 @@ import com.scalegrams.profile.ProfileDtos.ConfirmPlanTimelineRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.scalegrams.auth.NutritionGoalCalculator;
 import com.scalegrams.common.BadRequestException;
 import com.scalegrams.common.NotFoundException;
 import com.scalegrams.profile.ProfileDtos.NutritionPlanPresetResponse;
@@ -71,7 +70,6 @@ public class ProfileService {
         if (request.targetWeightKg() != null) user.setTargetWeightKg(request.targetWeightKg());
         if (request.nutritionStyle() != null) user.setNutritionStyle(request.nutritionStyle());
         if (request.waterGoalLiters() != null) user.setWaterGoalLiters(request.waterGoalLiters());
-        NutritionGoalCalculator.apply(user);
         return toResponse(users.save(user));
     }
 
@@ -253,10 +251,12 @@ public class ProfileService {
 
     private ProfileResponse toResponse(AppUser user) {
         Integer age = user.getBirthDate() == null ? null : Period.between(user.getBirthDate(), LocalDate.now()).getYears();
+        NutritionPlan effective = resolvePlan(user, LocalDate.now());
         return new ProfileResponse(user.getId(), user.getFullName(), user.getEmail(), user.getPlanName(),
                 user.getNutritionStyle(), user.getWeightKg(), user.getHeightCm(), age, user.getGender(),
-                user.getActivityLevel(), user.getGoal(), user.getTargetWeightKg(), user.getDailyCalorieGoal(),
-                user.getProteinGoalGrams(), user.getCarbsGoalGrams(), user.getFatGoalGrams(), user.getWaterGoalLiters());
+                user.getActivityLevel(), user.getGoal(), user.getTargetWeightKg(), effective.getDailyCalories(),
+                effective.getProteinGoalGrams(), effective.getCarbsGoalGrams(), effective.getFatGoalGrams(), user.getWaterGoalLiters(),
+                effective.getId() == null ? "MANUAL" : "SCHEDULED", effective.getId(), effective.getName(), LocalDate.now());
     }
 
     private void validatePlan(AppUser user, UpsertNutritionPlanRequest request, Long excludedId) {
