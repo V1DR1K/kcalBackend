@@ -635,7 +635,7 @@ public class NutritionService {
         Page<Recipe> result = !query.isBlank()
                 ? recipes.findBySearchNameContaining(query, pageable)
                 : recipes.findAll(pageable);
-        return page(result.map(this::toRecipeSummary));
+        return recipeSummaryPage(result);
     }
 
     @Transactional(readOnly = true)
@@ -645,7 +645,7 @@ public class NutritionService {
         Page<Recipe> result = hasRecipeQuery(query)
                 ? recipes.findByCreatedByIdAndSearchNameContaining(user.getId(), query, pageable)
                 : recipes.findByCreatedById(user.getId(), pageable);
-        return page(result.map(this::toRecipeSummary));
+        return recipeSummaryPage(result);
     }
 
     @Transactional(readOnly = true)
@@ -662,7 +662,7 @@ public class NutritionService {
         Page<Recipe> result = hasRecipeQuery(query)
                 ? recipes.findByCreatedByIdAndSearchNameContaining(ownerId, query, pageable)
                 : recipes.findByCreatedById(ownerId, pageable);
-        return page(result.map(this::toRecipeSummary));
+        return recipeSummaryPage(result);
     }
 
     @Transactional(readOnly = true)
@@ -2080,11 +2080,17 @@ public class NutritionService {
                 recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams());
     }
 
-    private RecipeResponse toRecipeSummary(Recipe recipe) {
+    private PageResponse<RecipeResponse> recipeSummaryPage(Page<Recipe> result) {
+        if (result.isEmpty()) return page(result.map(recipe -> toRecipeSummary(recipe, 0)));
+        Map<Long, Integer> counts = recipes.countIngredientsForPage(result.getContent().stream().map(Recipe::getId).toList())
+                .stream().collect(Collectors.toMap(RecipeRepository.RecipeIngredientCountProjection::getRecipeId, item -> Math.toIntExact(item.getIngredientCount())));
+        return page(result.map(recipe -> toRecipeSummary(recipe, counts.getOrDefault(recipe.getId(), 0))));
+    }
+
+    private RecipeResponse toRecipeSummary(Recipe recipe, int ingredientCount) {
         return new RecipeResponse(recipe.getId(), recipe.getName(), recipe.getDescription(), recipe.getRawTotalWeightGrams(),
-                recipe.getRawTotalWeightGrams(), recipe.getCookedTotalWeightGrams(),
-                recipe.getCalories(), recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams(),
-                List.of(), scaleRecipeNutrients(recipe, BigDecimal.ONE));
+                recipe.getRawTotalWeightGrams(), recipe.getCookedTotalWeightGrams(), recipe.getCalories(),
+                recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams(), List.of(), List.of(), ingredientCount);
     }
 
     private static BigDecimal sum(List<FoodLog> logs, java.util.function.Function<FoodLog, BigDecimal> mapper) {

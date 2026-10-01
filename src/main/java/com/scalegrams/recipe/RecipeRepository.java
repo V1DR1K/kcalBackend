@@ -37,6 +37,13 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
         Long getRecipeCount();
     }
 
+    @Query("select r.id as recipeId, count(ingredient.id) as ingredientCount from Recipe r left join r.ingredients ingredient where r.id in :ids group by r.id")
+    List<RecipeIngredientCountProjection> countIngredientsForPage(@Param("ids") List<Long> ids);
+    interface RecipeIngredientCountProjection {
+        Long getRecipeId();
+        Long getIngredientCount();
+    }
+
     long countByCreatedById(Long createdById);
 
     @Query("select count(r) > 0 from Recipe r join r.ingredients ingredient where ingredient.ingredientRecipe.id = :recipeId")

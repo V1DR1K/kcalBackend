@@ -414,7 +414,10 @@ public class NutritionDtos {
     public record RecipeResponse(Long id, String name, String description, BigDecimal totalWeightGrams,
             BigDecimal rawTotalWeightGrams, BigDecimal cookedTotalWeightGrams, Integer calories,
             BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
-            List<RecipeIngredientResponse> ingredients, List<NutrientValueResponse> nutrients) {
+            List<RecipeIngredientResponse> ingredients, List<NutrientValueResponse> nutrients, Integer ingredientCount) {
+        public RecipeResponse(Long id, String name, String description, BigDecimal totalWeightGrams, BigDecimal rawTotalWeightGrams, BigDecimal cookedTotalWeightGrams, Integer calories, BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams, List<RecipeIngredientResponse> ingredients, List<NutrientValueResponse> nutrients) {
+            this(id, name, description, totalWeightGrams, rawTotalWeightGrams, cookedTotalWeightGrams, calories, proteinGrams, carbsGrams, fatGrams, ingredients, nutrients, ingredients == null || ingredients.isEmpty() ? null : ingredients.size());
+        }
         public RecipeResponse(Long id, String name, String description, BigDecimal totalWeightGrams, Integer calories,
                 BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams,
                 List<RecipeIngredientResponse> ingredients) {

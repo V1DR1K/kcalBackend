@@ -1510,4 +1510,15 @@ class ScaleGramsApplicationTests {
         assertThat(names).containsExactly(query, "Pechuga de " + query, "Re" + query);
     }
 
+    @Test void recipeSummariesExposeCountsWithoutExpandingIngredients() {
+        var headers = authHeaders("recipe-count-" + UUID.randomUUID());
+        var recipe = rest.postForEntity("/api/recipes", new HttpEntity<>(Map.of("name", "Receta de dos ingredientes", "ingredients", List.of(Map.of("foodId", 1, "quantity", 100, "unit", "GRAM"), Map.of("foodId", 2, "quantity", 150, "unit", "GRAM"))), headers), Map.class);
+        assertThat(recipe.getStatusCode().is2xxSuccessful()).isTrue();
+        var listing = rest.exchange("/api/recipes/mine", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        var item = (Map) ((List) listing.getBody().get("items")).getFirst();
+        assertThat(item).containsEntry("ingredientCount", 2).containsEntry("ingredients", List.of());
+        var detail = rest.exchange("/api/recipes/" + recipe.getBody().get("id"), HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat((List) detail.getBody().get("ingredients")).hasSize(2);
+    }
+
 }
