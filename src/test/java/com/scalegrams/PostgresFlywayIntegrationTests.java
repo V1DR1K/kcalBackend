@@ -17,21 +17,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.scalegrams.nutrition.FoodLogRepository;
 
-@Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
         "spring.flyway.enabled=true", "spring.jpa.hibernate.ddl-auto=validate" })
-class PostgresFlywayIntegrationTests {
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
-
-    @DynamicPropertySource
-    static void databaseProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
-    }
-
+class PostgresFlywayIntegrationTests extends PostgresTestSupport {
     @Autowired
     Flyway flyway;
 
