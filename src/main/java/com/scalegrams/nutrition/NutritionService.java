@@ -1627,10 +1627,7 @@ public class NutritionService {
                         progress("carbs", "Carbohidratos", carbs, BigDecimal.valueOf(plan.getCarbsGoalGrams())),
                         progress("fat", "Grasas", fat, BigDecimal.valueOf(plan.getFatGoalGrams()))),
                 meals, water, user.getWaterGoalLiters(),
-                new NutritionPlanResponse(plan.getId(), plan.getName(), plan.getDailyCalories(), plan.getProteinPercent(),
-                        plan.getCarbsPercent(), plan.getFatPercent(), plan.getProteinGoalGrams(), plan.getCarbsGoalGrams(),
-                        plan.getFatGoalGrams(), plan.getStartDate(), plan.getEndDate(), !plan.getStartDate().isAfter(targetDate)
-                                && (plan.getEndDate() == null || !plan.getEndDate().isBefore(targetDate))), dailyNutrients.values().stream().toList());
+                profileService.activePlan(user, targetDate), dailyNutrients.values().stream().toList());
     }
 
     @Transactional(readOnly = true)

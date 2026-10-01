@@ -2,6 +2,7 @@ package com.scalegrams.profile;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 import com.scalegrams.user.ActivityLevel;
 import com.scalegrams.user.FitnessGoal;
@@ -34,7 +35,7 @@ public class ProfileDtos {
 
     public record NutritionPlanResponse(Long id, String name, Integer dailyCalories, BigDecimal proteinPercent,
             BigDecimal carbsPercent, BigDecimal fatPercent, Integer proteinGoalGrams, Integer carbsGoalGrams,
-            Integer fatGoalGrams, LocalDate startDate, LocalDate endDate, boolean current) {
+            Integer fatGoalGrams, LocalDate startDate, LocalDate endDate, boolean current, NutritionPlanStatus status, Long version, LocalDate effectiveEndDate, String goalOrigin) {
     }
 
     public record UpsertNutritionPlanRequest(@NotBlank @Size(min = 2, max = 120) String name,
@@ -43,8 +44,13 @@ public class ProfileDtos {
             @NotNull @PositiveOrZero BigDecimal carbsPercent,
             @NotNull @PositiveOrZero BigDecimal fatPercent,
             @NotNull LocalDate startDate,
-            LocalDate endDate) {
+            LocalDate endDate, NutritionPlanStatus status, @PositiveOrZero Long version) {
     }
+
+    public record PlanVersionRequest(@NotNull @PositiveOrZero Long version) {}
+    public record ConfirmPlanTimelineRequest(@NotNull @PositiveOrZero Long version, @NotBlank String previewToken) {}
+    public record PlanTimelinePreview(String action, List<NutritionPlanResponse> before, List<NutritionPlanResponse> after,
+            List<Long> affectedPlanIds, String previewToken) {}
 
     public record NutritionPlanPresetResponse(String key, String name, String description, Integer dailyCalories,
             BigDecimal proteinPercent, BigDecimal carbsPercent, BigDecimal fatPercent) {

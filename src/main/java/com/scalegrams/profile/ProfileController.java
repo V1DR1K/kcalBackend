@@ -69,6 +69,30 @@ public class ProfileController {
         return profileService.updatePlan(currentUser.from(authentication), id, request);
     }
 
+    @PostMapping("/nutrition-plans/{id}/schedule-preview")
+    ProfileDtos.PlanTimelinePreview schedulePreview(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody ProfileDtos.PlanVersionRequest request) {
+        return profileService.previewTimeline(currentUser.from(authentication), id, request, false);
+    }
+
+    @PostMapping("/nutrition-plans/{id}/schedule")
+    NutritionPlanResponse schedulePlan(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody ProfileDtos.ConfirmPlanTimelineRequest request) {
+        return profileService.confirmTimeline(currentUser.from(authentication), id, request, false);
+    }
+
+    @PostMapping("/nutrition-plans/{id}/cancel-preview")
+    ProfileDtos.PlanTimelinePreview cancelPreview(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody ProfileDtos.PlanVersionRequest request) {
+        return profileService.previewTimeline(currentUser.from(authentication), id, request, true);
+    }
+
+    @PostMapping("/nutrition-plans/{id}/cancel")
+    NutritionPlanResponse cancelPlan(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody ProfileDtos.ConfirmPlanTimelineRequest request) {
+        return profileService.confirmTimeline(currentUser.from(authentication), id, request, true);
+    }
+
     @DeleteMapping("/nutrition-plans/{id}")
     void deletePlan(Authentication authentication, @PathVariable Long id) {
         profileService.deletePlan(currentUser.from(authentication), id);

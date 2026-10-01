@@ -6,6 +6,13 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.Period;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Objects;
+import java.util.Comparator;
+import com.scalegrams.common.ConflictException;
+import com.scalegrams.profile.ProfileDtos.PlanTimelinePreview;
+import com.scalegrams.profile.ProfileDtos.PlanVersionRequest;
+import com.scalegrams.profile.ProfileDtos.ConfirmPlanTimelineRequest;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -97,7 +104,8 @@ public class ProfileService {
 
     @Transactional(readOnly = true)
     public List<NutritionPlanResponse> plans(AppUser user) {
-        return nutritionPlans.findByUserAndActiveTrueOrderByStartDateDescIdDesc(user).stream().map(this::toPlanResponse).toList();
+        List<NutritionPlan> all = nutritionPlans.findByUserOrderByStartDateDescIdDesc(user);
+        return all.stream().map(plan -> toPlanResponse(plan, all)).toList();
     }
 
     @Transactional(readOnly = true)
@@ -108,57 +116,113 @@ public class ProfileService {
     @Transactional
     public NutritionPlanResponse createPlan(AppUser user, UpsertNutritionPlanRequest request) {
         lockUser(user);
-        LocalDate previousEnd = request.startDate().minusDays(1);
-        NutritionPlan sameDay = nutritionPlans.findActiveForUserAndDate(user, request.startDate()).stream()
-                .filter(plan -> plan.getEndDate() == null || !plan.getEndDate().isBefore(request.startDate()))
-                .filter(plan -> plan.getStartDate().equals(request.startDate()))
-                .findFirst().orElse(null);
-        validatePlan(user, request, sameDay == null ? null : sameDay.getId());
-        validateNoOverlaps(user, request, sameDay == null ? null : sameDay.getId(), sameDay == null);
-        NutritionPlan plan;
-        if (sameDay != null) {
-            plan = sameDay;
-        } else {
-            nutritionPlans.findActiveForUserAndDate(user, request.startDate()).stream()
-                    .filter(active -> active.getEndDate() == null || !active.getEndDate().isBefore(request.startDate()))
-                    .findFirst()
-                    .ifPresent(previous -> {
-                        previous.setEndDate(previousEnd);
-                        previous.setUpdatedAt(OffsetDateTime.now());
-                    });
-            plan = new NutritionPlan();
-            plan.setUser(user);
-        }
-        applyPlan(plan, request);
-        syncUserFallback(user, plan);
-        users.save(user);
-        return toPlanResponse(nutritionPlans.save(plan));
+        validatePlan(user, request, null);
+        if (request.status() != null && request.status() != NutritionPlanStatus.ALTERNATIVE)
+            throw new BadRequestException("Guardá una alternativa y confirmá su programación.");
+        NutritionPlan plan = new NutritionPlan(); plan.setUser(user); applyPlan(plan, request);
+        // Old clients keep their wire contract, without implicitly overwriting another plan.
+        plan.setStatus(request.status() == null ? NutritionPlanStatus.SCHEDULED : NutritionPlanStatus.ALTERNATIVE);
+        plan.setActive(plan.getStatus() == NutritionPlanStatus.SCHEDULED);
+        if (plan.isActive()) rejectSameStart(user, plan);
+        nutritionPlans.saveAndFlush(plan);
+        return toPlanResponse(plan);
     }
 
     @Transactional
     public NutritionPlanResponse updatePlan(AppUser user, Long id, UpsertNutritionPlanRequest request) {
         lockUser(user);
-        NutritionPlan plan = nutritionPlans.findByIdAndUserAndActiveTrue(id, user)
-                .orElseThrow(() -> new NotFoundException("Plan alimenticio no encontrado."));
-        validatePlan(user, request, plan.getId());
-        validateNoOverlaps(user, request, plan.getId(), false);
-        applyPlan(plan, request);
-        syncUserFallback(user, plan);
-        users.save(user);
-        return toPlanResponse(nutritionPlans.save(plan));
+        NutritionPlan plan = requirePlan(user, id); checkPlanVersion(plan, request.version());
+        validatePlan(user, request, id);
+        if (plan.getStatus() == NutritionPlanStatus.SCHEDULED &&
+                (!Objects.equals(plan.getStartDate(), request.startDate()) || !Objects.equals(plan.getEndDate(), request.endDate())))
+            throw new BadRequestException("Para cambiar la vigencia, creá una alternativa y confirmá su programación.");
+        if (request.status() != null && request.status() != plan.getStatus())
+            throw new BadRequestException("Usá la programación o cancelación para cambiar el estado del plan.");
+        applyPlan(plan, request); nutritionPlans.saveAndFlush(plan);
+        return toPlanResponse(plan);
     }
 
     @Transactional
     public void deletePlan(AppUser user, Long id) {
-        NutritionPlan plan = nutritionPlans.findByIdAndUserAndActiveTrue(id, user)
-                .orElseThrow(() -> new NotFoundException("Plan alimenticio no encontrado."));
-        LocalDate today = LocalDate.now();
-        if (!plan.getStartDate().isAfter(today) && (plan.getEndDate() == null || !plan.getEndDate().isBefore(today))) {
-            throw new BadRequestException("No podés borrar el plan vigente. Primero activá otro plan.");
+        lockUser(user);
+        NutritionPlan plan = requirePlan(user, id);
+        if (toPlanResponse(plan).current()) throw new BadRequestException("Cancelá la programación antes de archivar el plan vigente.");
+        plan.setStatus(NutritionPlanStatus.ARCHIVED); plan.setActive(false); plan.setUpdatedAt(OffsetDateTime.now());
+        nutritionPlans.saveAndFlush(plan);
+    }
+
+    @Transactional(readOnly = true)
+    public PlanTimelinePreview previewTimeline(AppUser user, Long id, PlanVersionRequest request, boolean cancel) {
+        NutritionPlan plan = requirePlan(user, id); checkPlanVersion(plan, request.version());
+        return timelinePreview(user, plan, cancel);
+    }
+
+    @Transactional
+    public NutritionPlanResponse confirmTimeline(AppUser user, Long id, ConfirmPlanTimelineRequest request, boolean cancel) {
+        lockUser(user);
+        NutritionPlan plan = requirePlan(user, id); checkPlanVersion(plan, request.version());
+        PlanTimelinePreview preview = timelinePreview(user, plan, cancel);
+        if (!Objects.equals(preview.previewToken(), request.previewToken()))
+            throw new ConflictException("La programación cambió. Revisá una nueva vista previa antes de confirmar.");
+        if (!cancel) for (NutritionPlan displaced : nutritionPlans.findByUserOrderByStartDateDescIdDesc(user)) {
+            if (!Objects.equals(displaced.getId(), id) && displaced.getStatus() == NutritionPlanStatus.SCHEDULED
+                    && displaced.getStartDate().equals(plan.getStartDate())) {
+                displaced.setStatus(NutritionPlanStatus.ARCHIVED); displaced.setActive(false); displaced.setUpdatedAt(OffsetDateTime.now());
+            }
         }
-        plan.setActive(false);
-        plan.setUpdatedAt(OffsetDateTime.now());
-        nutritionPlans.save(plan);
+        plan.setStatus(cancel ? NutritionPlanStatus.ALTERNATIVE : NutritionPlanStatus.SCHEDULED);
+        plan.setActive(!cancel); plan.setUpdatedAt(OffsetDateTime.now()); nutritionPlans.saveAndFlush(plan);
+        return toPlanResponse(plan);
+    }
+
+    private PlanTimelinePreview timelinePreview(AppUser user, NutritionPlan candidate, boolean cancel) {
+        if (cancel && candidate.getStatus() != NutritionPlanStatus.SCHEDULED
+                || !cancel && candidate.getStatus() != NutritionPlanStatus.ALTERNATIVE)
+            throw new BadRequestException("El estado del plan cambió. Recargá antes de continuar.");
+        List<NutritionPlan> all = nutritionPlans.findByUserOrderByStartDateDescIdDesc(user);
+        List<NutritionPlan> after = new ArrayList<>();
+        for (NutritionPlan source : all) {
+            NutritionPlan copy = planCopy(source);
+            if (Objects.equals(copy.getId(), candidate.getId())) copy.setStatus(cancel ? NutritionPlanStatus.ALTERNATIVE : NutritionPlanStatus.SCHEDULED);
+            else if (!cancel && copy.getStatus() == NutritionPlanStatus.SCHEDULED && copy.getStartDate().equals(candidate.getStartDate())) copy.setStatus(NutritionPlanStatus.ARCHIVED);
+            after.add(copy);
+        }
+        String action = cancel ? "CANCEL" : "SCHEDULE";
+        String fingerprint = action + ":" + candidate.getId() + ":" + all.stream().sorted(Comparator.comparing(NutritionPlan::getId))
+                .map(item -> item.getId() + ":" + item.getVersion() + ":" + item.getStatus()).collect(java.util.stream.Collectors.joining("|"));
+        String token;
+        try { token = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(fingerprint.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }
+        catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+        List<NutritionPlanResponse> beforeViews = timelineViews(all);
+        List<NutritionPlanResponse> afterViews = timelineViews(after);
+        List<Long> affected = all.stream().filter(item -> !Objects.equals(toPlanResponse(item, all), toPlanResponse(after.stream()
+                .filter(changed -> Objects.equals(changed.getId(), item.getId())).findFirst().orElseThrow(), after)))
+                .map(NutritionPlan::getId).toList();
+        return new PlanTimelinePreview(action, beforeViews, afterViews, affected, token);
+    }
+
+    private List<NutritionPlanResponse> timelineViews(List<NutritionPlan> plans) {
+        return plans.stream().filter(item -> item.getStatus() == NutritionPlanStatus.SCHEDULED)
+                .sorted(Comparator.comparing(NutritionPlan::getStartDate).thenComparing(NutritionPlan::getId))
+                .map(item -> toPlanResponse(item, plans)).toList();
+    }
+
+    private NutritionPlan requirePlan(AppUser user, Long id) {
+        return nutritionPlans.findByIdAndUser(id, user).orElseThrow(() -> new NotFoundException("Plan alimenticio no encontrado."));
+    }
+
+    private void checkPlanVersion(NutritionPlan plan, Long version) {
+        if (version != null && !Objects.equals(version, plan.getVersion())) throw new ConflictException("El plan cambió. Recargá antes de guardar.");
+    }
+
+    private void rejectSameStart(AppUser user, NutritionPlan plan) {
+        if (nutritionPlans.findByUserAndActiveTrueOrderByStartDateDescIdDesc(user).stream()
+                .anyMatch(item -> item.getStartDate().equals(plan.getStartDate())))
+            throw new ConflictException("Ya hay un plan para esa fecha. Guardá una alternativa y revisá el reemplazo antes de confirmar.");
+    }
+
+    private static NutritionPlan planCopy(NutritionPlan source) {
+        NutritionPlan copy = new NutritionPlan(); org.springframework.beans.BeanUtils.copyProperties(source, copy); return copy;
     }
 
     public List<NutritionPlanPresetResponse> presets() {
@@ -177,7 +241,10 @@ public class ProfileService {
 
     @Transactional(readOnly = true)
     public List<NutritionPlan> plansForRange(AppUser user, LocalDate start, LocalDate end) {
-        return nutritionPlans.findActiveForUserAndDateRange(user, start, end);
+        List<NutritionPlan> timeline = nutritionPlans.findByUserAndActiveTrueOrderByStartDateDescIdDesc(user);
+        return timeline.stream().map(source -> { NutritionPlan copy = planCopy(source);
+            copy.setEndDate(NutritionPlanTimeline.effectiveEnd(source, timeline)); return copy; })
+            .filter(item -> !item.getStartDate().isAfter(end) && (item.getEndDate() == null || !item.getEndDate().isBefore(start))).toList();
     }
 
     private WeightEntryResponse toWeightResponse(WeightEntry entry) {
@@ -194,7 +261,8 @@ public class ProfileService {
 
     private void validatePlan(AppUser user, UpsertNutritionPlanRequest request, Long excludedId) {
         String normalizedName = request.name().trim();
-        if (nutritionPlans.existsActiveName(user, normalizedName, excludedId)) {
+        if (nutritionPlans.findByUserOrderByStartDateDescIdDesc(user).stream().anyMatch(item -> item.getStatus() != NutritionPlanStatus.ARCHIVED
+                && !Objects.equals(item.getId(), excludedId) && item.getName().equalsIgnoreCase(normalizedName))) {
             throw new BadRequestException("Ya existe un plan con ese nombre.");
         }
         if (request.endDate() != null && request.endDate().isBefore(request.startDate())) {
@@ -210,15 +278,6 @@ public class ProfileService {
         users.findByIdForUpdate(user.getId()).orElseThrow(() -> new NotFoundException("Usuario no encontrado."));
     }
 
-    private void validateNoOverlaps(AppUser user, UpsertNutritionPlanRequest request, Long excludedId,
-            boolean mayReplacePreviousPlan) {
-        List<NutritionPlan> overlaps = nutritionPlans.findOverlapping(user, request.startDate(),
-                request.endDate() == null ? LocalDate.of(9999, 12, 31) : request.endDate(), excludedId);
-        boolean conflict = overlaps.stream().anyMatch(existing -> !mayReplacePreviousPlan
-                || !existing.getStartDate().isBefore(request.startDate()));
-        if (conflict) throw new BadRequestException("El período se superpone con otro plan activo.");
-    }
-
     private void applyPlan(NutritionPlan plan, UpsertNutritionPlanRequest request) {
         plan.setName(request.name().trim());
         plan.setDailyCalories(request.dailyCalories());
@@ -231,17 +290,6 @@ public class ProfileService {
         plan.setStartDate(request.startDate());
         plan.setEndDate(request.endDate());
         plan.setUpdatedAt(OffsetDateTime.now());
-    }
-
-    private void syncUserFallback(AppUser user, NutritionPlan plan) {
-        LocalDate today = LocalDate.now();
-        if (!plan.getStartDate().isAfter(today) && (plan.getEndDate() == null || !plan.getEndDate().isBefore(today))) {
-            user.setNutritionStyle(plan.getName());
-            user.setDailyCalorieGoal(plan.getDailyCalories());
-            user.setProteinGoalGrams(plan.getProteinGoalGrams());
-            user.setCarbsGoalGrams(plan.getCarbsGoalGrams());
-            user.setFatGoalGrams(plan.getFatGoalGrams());
-        }
     }
 
     private NutritionPlan fallbackPlan(AppUser user, LocalDate date) {
@@ -264,12 +312,18 @@ public class ProfileService {
     }
 
     private NutritionPlanResponse toPlanResponse(NutritionPlan plan) {
+        return toPlanResponse(plan, nutritionPlans.findByUserOrderByStartDateDescIdDesc(plan.getUser()));
+    }
+
+    private NutritionPlanResponse toPlanResponse(NutritionPlan plan, List<NutritionPlan> timeline) {
+        LocalDate effectiveEnd = NutritionPlanTimeline.effectiveEnd(plan, timeline);
         LocalDate today = LocalDate.now();
-        boolean current = !plan.getStartDate().isAfter(today)
-                && (plan.getEndDate() == null || !plan.getEndDate().isBefore(today));
+        boolean current = plan.getStatus() == NutritionPlanStatus.SCHEDULED && !plan.getStartDate().isAfter(today)
+                && (effectiveEnd == null || !effectiveEnd.isBefore(today));
         return new NutritionPlanResponse(plan.getId(), plan.getName(), plan.getDailyCalories(), plan.getProteinPercent(),
                 plan.getCarbsPercent(), plan.getFatPercent(), plan.getProteinGoalGrams(), plan.getCarbsGoalGrams(),
-                plan.getFatGoalGrams(), plan.getStartDate(), plan.getEndDate(), current);
+                plan.getFatGoalGrams(), plan.getStartDate(), plan.getEndDate(), current, plan.getStatus(), plan.getVersion(),
+                effectiveEnd, plan.getId() == null ? "MANUAL" : plan.getStatus().name());
     }
 
     private NutritionPlanPresetResponse preset(String key, String name, String description, int calories,

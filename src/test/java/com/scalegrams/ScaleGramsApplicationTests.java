@@ -157,7 +157,7 @@ class ScaleGramsApplicationTests {
 
 	@Test
 	void createsNutritionPlanAndDashboardUsesIt() {
-		HttpHeaders headers = authHeaders();
+		HttpHeaders headers = authHeaders("createsNutritionPlanAndDashboardUsesIt-" + UUID.randomUUID());
 		NutritionPlanRequest request = new NutritionPlanRequest("Plan test", 2500, 35, 50, 15, "2026-01-01", null);
 		ResponseEntity<String> created = rest.postForEntity("/api/profile/nutrition-plans", new HttpEntity<>(request, headers), String.class);
 		assertThat(created.getStatusCode().is2xxSuccessful()).isTrue();
@@ -170,7 +170,7 @@ class ScaleGramsApplicationTests {
 
 	@Test
 	void updatingCurrentNutritionPlanRefreshesProfileAndDashboardValues() {
-		HttpHeaders headers = authHeaders();
+		HttpHeaders headers = authHeaders("updatingCurrentNutritionPlanRefreshesProfileAndDashboardValues-" + UUID.randomUUID());
 		String date = java.time.LocalDate.now().toString();
 		ResponseEntity<NutritionPlanResponse> created = rest.postForEntity("/api/profile/nutrition-plans",
 				new HttpEntity<>(new NutritionPlanRequest("Plan vigente", 2200, 25, 50, 25, date, null), headers), NutritionPlanResponse.class);
@@ -188,8 +188,8 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
-	void creatingPlanOnSameDayReplacesActivePlan() {
-		HttpHeaders headers = authHeaders();
+	void creatingPlanOnSameDayRequiresExplicitReplacement() {
+		HttpHeaders headers = authHeaders("same-start-" + UUID.randomUUID());
 		NutritionPlanRequest first = new NutritionPlanRequest("Plan A", 2200, 25, 50, 25, "2026-09-01", null);
 		ResponseEntity<String> firstResponse = rest.postForEntity("/api/profile/nutrition-plans",
 				new HttpEntity<>(first, headers), String.class);
@@ -199,16 +199,16 @@ class ScaleGramsApplicationTests {
 		NutritionPlanRequest second = new NutritionPlanRequest("Plan B", 1800, 40, 30, 30, "2026-09-01", null);
 		ResponseEntity<String> secondResponse = rest.postForEntity("/api/profile/nutrition-plans",
 				new HttpEntity<>(second, headers), String.class);
-		assertThat(secondResponse.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(secondResponse.getStatusCode().value()).isEqualTo(409);
 
 		ResponseEntity<String> list = rest.exchange("/api/profile/nutrition-plans", HttpMethod.GET,
 				new HttpEntity<>(headers), String.class);
 		assertThat(list.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(list.getBody()).contains("\"name\":\"Plan B\"").doesNotContain("\"name\":\"Plan A\"");
+		assertThat(list.getBody()).contains("\"name\":\"Plan A\"").doesNotContain("\"name\":\"Plan B\"");
 	}
 
 	@Test
-	void rejectsNutritionPlanPeriodsThatOverlapFuturePlans() {
+	void derivesEffectiveDatesForMultipleFutureNutritionPlans() {
 		HttpHeaders headers = authHeaders("plan-overlap-user");
 		NutritionPlanRequest future = new NutritionPlanRequest("Futuro", 2200, 25, 50, 25, "2038-06-01", "2038-12-31");
 		ResponseEntity<String> created = rest.postForEntity("/api/profile/nutrition-plans", new HttpEntity<>(future, headers), String.class);
@@ -216,8 +216,8 @@ class ScaleGramsApplicationTests {
 
 		NutritionPlanRequest overlapping = new NutritionPlanRequest("Cruza el futuro", 1800, 30, 40, 30, "2038-01-01", "2039-01-01");
 		ResponseEntity<String> rejected = rest.postForEntity("/api/profile/nutrition-plans", new HttpEntity<>(overlapping, headers), String.class);
-		assertThat(rejected.getStatusCode().value()).isEqualTo(400);
-		assertThat(rejected.getBody()).contains("se superpone con otro plan activo");
+		assertThat(rejected.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(rejected.getBody()).contains("\"effectiveEndDate\":\"2038-05-31\"", "\"endDate\":\"2039-01-01\"");
 	}
 
 	@Test
@@ -237,7 +237,7 @@ class ScaleGramsApplicationTests {
 
 	@Test
 	void deletingNutritionPlanDeactivatesAndHidesIt() {
-		HttpHeaders headers = authHeaders();
+		HttpHeaders headers = authHeaders("deletingNutritionPlanDeactivatesAndHidesIt-" + UUID.randomUUID());
 		NutritionPlanRequest request = new NutritionPlanRequest("Plan para borrar", 1800, 30, 40, 30, "2026-12-01", null);
 		ResponseEntity<NutritionPlanResponse> created = rest.postForEntity("/api/profile/nutrition-plans",
 				new HttpEntity<>(request, headers), NutritionPlanResponse.class);
@@ -248,7 +248,7 @@ class ScaleGramsApplicationTests {
 
 		ResponseEntity<String> list = rest.exchange("/api/profile/nutrition-plans", HttpMethod.GET,
 				new HttpEntity<>(headers), String.class);
-		assertThat(list.getBody()).doesNotContain("Plan para borrar");
+		assertThat(list.getBody()).contains("Plan para borrar", "ARCHIVED");
 	}
 
 	@Test

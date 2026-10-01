@@ -67,6 +67,12 @@ public class NutritionPlan {
     private LocalDate endDate;
     @Column(nullable = false)
     private boolean active = true;
+    @jakarta.persistence.Enumerated(jakarta.persistence.EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private NutritionPlanStatus status = NutritionPlanStatus.SCHEDULED;
+    @jakarta.persistence.Version
+    @Column(nullable = false)
+    private Long version;
     private OffsetDateTime createdAt = OffsetDateTime.now();
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 }
