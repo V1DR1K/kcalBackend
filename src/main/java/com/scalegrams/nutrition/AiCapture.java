@@ -42,9 +42,6 @@ public class AiCapture {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String draftJson;
 
-    @Column(columnDefinition = "TEXT")
-    private String jevDecisionJson;
-
     private Long confirmedLogId;
 
     private Long confirmedFoodId;

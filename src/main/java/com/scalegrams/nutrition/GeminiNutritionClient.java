@@ -16,8 +16,10 @@ import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,12 +77,19 @@ public class GeminiNutritionClient {
     private final ObjectMapper objectMapper;
     private final AiNutritionProperties properties;
 
+    @Autowired
     public GeminiNutritionClient(RestClient.Builder restClientBuilder, ObjectMapper objectMapper,
             AiNutritionProperties properties) {
         HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(Duration.ofSeconds(45));
         this.restClient = restClientBuilder.requestFactory(requestFactory).build();
+        this.objectMapper = objectMapper;
+        this.properties = properties;
+    }
+
+    GeminiNutritionClient(RestClient restClient, ObjectMapper objectMapper, AiNutritionProperties properties) {
+        this.restClient = restClient;
         this.objectMapper = objectMapper;
         this.properties = properties;
     }
@@ -191,7 +200,9 @@ public class GeminiNutritionClient {
         } catch (BadRequestException ex) {
             throw ex;
         } catch (Exception ex) {
-            log.warn("Gemini meal analysis did not return a valid estimate: {}", ex.getClass().getSimpleName());
+            Throwable cause = ex.getCause();
+            log.warn("Gemini meal analysis did not return a valid estimate: {} cause={}", ex.getClass().getSimpleName(),
+                    cause == null ? "none" : cause.getClass().getSimpleName());
             throw new AiProviderException("AI_PROVIDER_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE,
                     "Gemini no está disponible por el momento. Intentá nuevamente en unos minutos.");
         }
@@ -255,24 +266,32 @@ public class GeminiNutritionClient {
 
     private JsonNode generateContent(List<Map<String, Object>> parts, boolean jsonResponse) {
         RestClientResponseException retryableFailure = null;
+        boolean transportRetried = false;
         for (String model : candidateModels()) {
-            try {
-                Map<String, Object> generationConfig = new HashMap<>();
-                generationConfig.put("temperature", 0.2);
-                if (jsonResponse) generationConfig.put("responseMimeType", "application/json");
-                Map<String, Object> content = Map.of("parts", parts);
-                Map<String, Object> body = Map.of("contents", List.of(content), "generationConfig", generationConfig);
-                return restClient.post()
-                        .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}", model, properties.getGeminiApiKey())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .body(JsonNode.class);
-            } catch (RestClientResponseException ex) {
-                int status = ex.getStatusCode().value();
-                if (status != 404 && status != 500 && status != 503) throw ex;
-                retryableFailure = ex;
-                log.warn("Gemini model {} returned {} ({}); trying a compatible fallback", model, status, upstreamReason(ex));
+            for (int attempt = 0; attempt < 2; attempt++) {
+                try {
+                    Map<String, Object> generationConfig = new HashMap<>();
+                    generationConfig.put("temperature", 0.2);
+                    if (jsonResponse) generationConfig.put("responseMimeType", "application/json");
+                    Map<String, Object> content = Map.of("parts", parts);
+                    Map<String, Object> body = Map.of("contents", List.of(content), "generationConfig", generationConfig);
+                    return restClient.post()
+                            .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}", model, properties.getGeminiApiKey())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(body)
+                            .retrieve()
+                            .body(JsonNode.class);
+                } catch (ResourceAccessException ex) {
+                    if (transportRetried) throw ex;
+                    transportRetried = true;
+                    log.warn("Gemini transport failed; retrying once ({}).", ex.getMostSpecificCause().getClass().getSimpleName());
+                } catch (RestClientResponseException ex) {
+                    int status = ex.getStatusCode().value();
+                    if (status != 404 && status != 500 && status != 503) throw ex;
+                    retryableFailure = ex;
+                    log.warn("Gemini model {} returned {} ({}); trying a compatible fallback", model, status, upstreamReason(ex));
+                    break;
+                }
             }
         }
         throw retryableFailure == null ? new IllegalStateException("No Gemini model configured") : retryableFailure;

@@ -7,6 +7,8 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.scalegrams.common.BadRequestException;
 import com.scalegrams.common.NotFoundException;
@@ -23,6 +25,7 @@ import com.scalegrams.user.AppUser;
 
 @Service
 public class AiNutritionService {
+    private static final Logger log = LoggerFactory.getLogger(AiNutritionService.class);
     private static final List<String> ACCEPTED_TYPES = List.of("image/jpeg", "image/png", "image/webp");
     private static final List<String> ACCEPTED_AUDIO_TYPES = List.of("audio/aac", "audio/m4a", "audio/mp4", "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm");
 
@@ -31,19 +34,17 @@ public class AiNutritionService {
     private final AiNutritionProperties properties;
     private final AiFoodMatcher foodMatcher;
     private final AiCaptureRepository captures;
-    private final JevNutritionClient jev;
     private final ObjectMapper objectMapper;
     private final NutritionService nutritionService;
 
     public AiNutritionService(AiEstimateUsageRepository usages, GeminiNutritionClient gemini,
             AiNutritionProperties properties, AiFoodMatcher foodMatcher, AiCaptureRepository captures,
-            JevNutritionClient jev, ObjectMapper objectMapper, NutritionService nutritionService) {
+            ObjectMapper objectMapper, NutritionService nutritionService) {
         this.usages = usages;
         this.gemini = gemini;
         this.properties = properties;
         this.foodMatcher = foodMatcher;
         this.captures = captures;
-        this.jev = jev;
         this.objectMapper = objectMapper;
         this.nutritionService = nutritionService;
     }
@@ -69,7 +70,7 @@ public class AiNutritionService {
 
     public AiEstimateResponse analyze(AppUser user, MultipartFile image, String context, AiCaptureTarget targetType) {
         AiCaptureTarget target = targetType == null ? AiCaptureTarget.RECIPE : targetType;
-        return estimate(user, image, context, target,
+        return estimate(user, image, context, target, "analysis",
                 (content, contentType, normalizedContext) -> gemini.analyze(content, contentType, normalizedContext, target));
     }
 
@@ -81,12 +82,13 @@ public class AiNutritionService {
             RefineAiEstimateRequest request, AiCaptureTarget targetType) {
         String correction = normalizeCorrection(request.correction());
         AiCaptureTarget target = targetType == null ? AiCaptureTarget.RECIPE : targetType;
-        return estimate(user, image, context, target,
+        return estimate(user, image, context, target, "refinement",
                 (content, contentType, normalizedContext) -> gemini.refine(content, contentType, normalizedContext,
                         request.currentEstimate(), correction, target));
     }
 
     private AiEstimateResponse estimate(AppUser user, MultipartFile image, String context, AiCaptureTarget targetType,
+            String stage,
             EstimateOperation operation) {
         if (!properties.isEnabled() || properties.getGeminiApiKey() == null || properties.getGeminiApiKey().isBlank()) {
             throw new BadRequestException("La estimación por foto no está disponible por el momento.");
@@ -106,30 +108,36 @@ public class AiNutritionService {
             throw new BadRequestException("Alcanzaste el límite diario de estimaciones. Probá nuevamente mañana.");
         }
 
+        String failureStage = stage;
         try {
             AiNutritionResult result = operation.estimate(image.getBytes(), contentType, normalizeContext(context));
+            log.info("AI estimate completed; requestId={} stage={}", org.slf4j.MDC.get("requestId"), stage);
+            failureStage = "save";
             List<AiEstimateItem> items = result.items().stream()
                     .map(item -> new AiEstimateItem(item.name(), item.estimatedGrams(), item.category(), item.preparation(), item.proteinGrams(), item.carbsGrams(), item.fatGrams(), item.nutrients()))
                     .toList();
             items = foodMatcher.enrich(items);
             AiCaptureTarget resolvedTarget = targetFor(items.size());
             usages.updateProviderState(user.getId(), date, null, null);
-            var decision = jev.classify(resolvedTarget, result).orElse(null);
             AiEstimateResponse draft = new AiEstimateResponse(null, resolvedTarget, result.name(), result.description(),
-                    result.confidence(), result.assumptions(), items, usage(user), decision);
+                    result.confidence(), result.assumptions(), items, usage(user));
             AiCapture capture = new AiCapture();
             capture.setUser(user);
             capture.setTargetType(resolvedTarget);
             capture.setDraftJson(objectMapper.writeValueAsString(draft));
-            if (decision != null) capture.setJevDecisionJson(objectMapper.writeValueAsString(decision));
             capture = captures.save(capture);
+            log.info("AI estimate saved; requestId={} stage=save", org.slf4j.MDC.get("requestId"));
             return new AiEstimateResponse(capture.getId(), resolvedTarget, draft.name(), draft.description(),
-                    draft.confidence(), draft.assumptions(), draft.items(), draft.usage(), decision);
+                    draft.confidence(), draft.assumptions(), draft.items(), draft.usage());
         } catch (AiQuotaExceededException ex) {
+            log.warn("AI estimate stopped by provider quota; requestId={} stage={} cause={}",
+                    org.slf4j.MDC.get("requestId"), stage, ex.getClass().getSimpleName());
             usages.updateProviderState(user.getId(), date, ex.getRetryAt(), "Gemini informó cuota agotada.");
             throw new BadRequestException("Gemini alcanzó su cuota disponible. Probá nuevamente cuando se renueve.");
         } catch (Exception ex) {
             usages.release(user.getId(), date);
+            log.warn("AI estimate operation failed; requestId={} stage={} cause={}",
+                    org.slf4j.MDC.get("requestId"), failureStage, ex.getClass().getSimpleName());
             if (ex instanceof BadRequestException badRequest) throw badRequest;
             throw new BadRequestException("No se pudo analizar la foto. Intentá nuevamente en unos minutos.");
         }
@@ -137,26 +145,33 @@ public class AiNutritionService {
 
     @Transactional
     public AiRegistrationResponse confirmRegistration(AppUser user, ConfirmAiRegistrationRequest request) {
-        AiCapture capture = captures.findOwnedForUpdate(request.captureId(), user)
-                .orElseThrow(() -> new NotFoundException("Captura asistida no encontrada."));
-        if (capture.getStatus() == AiCaptureStatus.CONFIRMED) {
-            return nutritionService.findAiRegistrationResult(user, capture.getTargetType(),
-                    capture.getConfirmedFoodId(), capture.getConfirmedRecipeId(), capture.getConfirmedLogId());
+        try {
+            AiCapture capture = captures.findOwnedForUpdate(request.captureId(), user)
+                    .orElseThrow(() -> new NotFoundException("Captura asistida no encontrada."));
+            if (capture.getStatus() == AiCaptureStatus.CONFIRMED) {
+                return nutritionService.findAiRegistrationResult(user, capture.getTargetType(),
+                        capture.getConfirmedFoodId(), capture.getConfirmedRecipeId(), capture.getConfirmedLogId());
+            }
+            if (capture.getStatus() != AiCaptureStatus.DRAFT) {
+                throw new BadRequestException("Esta captura ya no se puede confirmar.");
+            }
+            if (capture.getExpiresAt().isBefore(OffsetDateTime.now())) {
+                throw new BadRequestException("La captura venció. Analizá las fotos nuevamente.");
+            }
+            var registration = nutritionService.confirmAiRegistration(user, request, "ai-capture:" + capture.getId());
+            capture.setStatus(AiCaptureStatus.CONFIRMED);
+            capture.setTargetType(registration.targetType());
+            capture.setConfirmedFoodId(registration.food() == null ? null : registration.food().id());
+            capture.setConfirmedRecipeId(registration.recipe() == null ? null : registration.recipe().id());
+            capture.setConfirmedLogId(registration.log() == null ? null : registration.log().id());
+            captures.save(capture);
+            log.info("AI registration saved; requestId={} stage=save", org.slf4j.MDC.get("requestId"));
+            return registration;
+        } catch (RuntimeException ex) {
+            log.warn("AI registration failed; requestId={} stage=save cause={}",
+                    org.slf4j.MDC.get("requestId"), ex.getClass().getSimpleName());
+            throw ex;
         }
-        if (capture.getStatus() != AiCaptureStatus.DRAFT) {
-            throw new BadRequestException("Esta captura ya no se puede confirmar.");
-        }
-        if (capture.getExpiresAt().isBefore(OffsetDateTime.now())) {
-            throw new BadRequestException("La captura venció. Analizá las fotos nuevamente.");
-        }
-        var registration = nutritionService.confirmAiRegistration(user, request, "ai-capture:" + capture.getId());
-        capture.setStatus(AiCaptureStatus.CONFIRMED);
-        capture.setTargetType(registration.targetType());
-        capture.setConfirmedFoodId(registration.food() == null ? null : registration.food().id());
-        capture.setConfirmedRecipeId(registration.recipe() == null ? null : registration.recipe().id());
-        capture.setConfirmedLogId(registration.log() == null ? null : registration.log().id());
-        captures.save(capture);
-        return registration;
     }
 
     private static AiCaptureTarget targetFor(int itemCount) {
@@ -183,11 +198,15 @@ public class AiNutritionService {
         try {
             return new AiTranscriptionResponse(gemini.transcribe(audio.getBytes(), contentType));
         } catch (AiQuotaExceededException ex) {
+            log.warn("AI transcription stopped by provider quota; requestId={} stage=transcription cause={}",
+                    org.slf4j.MDC.get("requestId"), ex.getClass().getSimpleName());
             usages.updateProviderState(user.getId(), date, ex.getRetryAt(), "Gemini informó cuota agotada.");
             throw new BadRequestException("Gemini alcanzó su cuota disponible. Probá nuevamente cuando se renueve.");
         } catch (Exception ex) {
             usages.release(user.getId(), date);
             if (ex instanceof BadRequestException badRequest) throw badRequest;
+            log.warn("AI transcription failed; requestId={} stage=transcription cause={}",
+                    org.slf4j.MDC.get("requestId"), ex.getClass().getSimpleName());
             throw new BadRequestException("No se pudo transcribir la nota. Intentá nuevamente.");
         }
     }

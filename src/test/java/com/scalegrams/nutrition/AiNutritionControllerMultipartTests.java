@@ -118,11 +118,13 @@ class AiNutritionControllerMultipartTests {
 
 		assertThat(response.getStatusCode().value()).isEqualTo(415);
 		assertThat(response.getBody()).contains("\"code\":\"UNSUPPORTED_MEDIA_TYPE\"");
+		assertThat(response.getHeaders().getFirst("X-Request-ID")).isNotBlank();
+		assertThat(response.getBody()).contains(response.getHeaders().getFirst("X-Request-ID"));
 		verifyNoInteractions(aiNutritionService);
 	}
 
 	private AiEstimateResponse aiEstimateResponse(AiCaptureTarget target) {
-		return new AiEstimateResponse(null, target, "Estimación de prueba", "", 90, List.of(), List.of(), null, null);
+		return new AiEstimateResponse(null, target, "Estimación de prueba", "", 90, List.of(), List.of(), null);
 	}
 
 	private HttpEntity<MultiValueMap<String, Object>> aiEstimateMultipart(HttpHeaders headers, String targetType) {

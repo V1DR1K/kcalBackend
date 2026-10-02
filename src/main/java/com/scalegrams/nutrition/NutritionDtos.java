@@ -224,11 +224,10 @@ public class NutritionDtos {
             int confidence,
             List<String> assumptions,
             List<AiEstimateItem> items,
-            AiEstimateUsageResponse usage,
-            JevNutritionClient.JevDecision decision) {
+            AiEstimateUsageResponse usage) {
         public AiEstimateResponse(String name, String description, int confidence, List<String> assumptions,
                 List<AiEstimateItem> items, AiEstimateUsageResponse usage) {
-            this(null, AiCaptureTarget.RECIPE, name, description, confidence, assumptions, items, usage, null);
+            this(null, AiCaptureTarget.RECIPE, name, description, confidence, assumptions, items, usage);
         }
     }
 

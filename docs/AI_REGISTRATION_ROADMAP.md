@@ -17,8 +17,6 @@ Foto + intención
       ▼
 Gemini: extracción nutricional
       │
-      ├── JEV (shadow): tipo, calidad de evidencia y necesidad de revisión
-      │
       ▼
 AiCapture DRAFT (vence en 24 h)
       │ revisión humana
@@ -32,7 +30,7 @@ Confirmación idempotente
 
 ### Fase 1 — Contrato y persistencia: completada
 
-- `AiCapture` persiste intención, estado, borrador, decisión JEV y registro confirmado.
+- `AiCapture` persiste intención, estado, borrador y registro confirmado.
 - Estados: `DRAFT`, `CONFIRMED`, `DISCARDED`.
 - La confirmación bloquea la captura, valida propietario/vencimiento y es idempotente.
 - Migraciones Flyway `V40__ai_capture_workflow.sql` y `V41__support_ai_registration_lifecycle.sql`.
@@ -52,20 +50,17 @@ Confirmación idempotente
 - El flujo existente de foto en una comida utiliza `RECIPE`.
 - La corrección de una estimación conserva su intención original.
 
-### Fase 4 — JEV: piloto shadow implementado
+### Fase 4 — JEV: retirado
 
-- JEV recibe el tipo solicitado y la extracción estructurada, nunca la API key en el cliente.
-- Devuelve: tipo detectado y clasificación independiente de plausibilidad de proteínas, carbohidratos y grasas por 100 g, con confianza cuando esté disponible.
-- Sus fallos no bloquean al usuario y no modifican macros ni crean entidades.
-- Activación por variables de entorno; se mantiene en `shadow`. La interfaz muestra las etiquetas como apoyo, nunca como bloqueo ni como fuente nutricional.
-- La llamada agrupa cuatro preguntas en una petición; presupuestar según los tokens de entrada y comprobar `usage`/`quota` del proveedor antes de ampliar el tráfico. El nivel gratuito publicado es de 5 créditos/mes (1 crédito por cada 1.000 tokens de entrada), por lo que el piloto debe ser deliberadamente acotado.
+- Se retiraron cliente, llamada, configuración y etiquetas porque la integración agregaba fallos sin mejorar el flujo de registro.
+- La columna histórica `jev_decision_json` se conserva en la base de datos y no se consulta ni se modifica.
 
 ### Correcciones cerradas antes de promoción
 
 - Se elimina la dependencia obligatoria de `FoodLog` para conservar una captura FOOD/RECIPE confirmada; `ON DELETE SET NULL` permite borrar el registro del diario.
 - Se distingue “guardar en catálogo” de “agregar también a mi día”; la ruta de escáner permanece abierta cuando solo se guarda el alimento.
 - Los macros son editables y la edición invalida una coincidencia de catálogo para que los valores revisados sean los que se materialicen.
-- JEV clasifica los tres macronutrientes por separado y los muestra junto a cada alimento detectado.
+- El destino se resuelve por cantidad: un alimento se guarda como alimento; dos o más forman una receta.
 
 ## Próximos incrementos recomendados
 
@@ -79,15 +74,11 @@ Confirmación idempotente
 
 Criterio de salida: un usuario puede registrar un paquete aun cuando marca y tabla estén en caras distintas, sin duplicar entidades.
 
-### P2 — Política JEV con datos reales
+### P2 — Diagnóstico y resiliencia del proveedor
 
-1. Registrar métricas sin PII: latencia, disponibilidad, costo, acuerdo con intención y edición humana posterior.
-2. Comparar durante al menos 200 capturas revisadas.
-3. Segmentar `FOOD` y `RECIPE`; medir falso bloqueo y correcciones evitadas.
-4. Definir umbrales únicamente después del piloto.
-5. Pasar gradualmente de `shadow` a `advisory`; no habilitar bloqueo automático sin un nuevo criterio de aceptación.
-
-Criterio de viabilidad sugerido: disponibilidad ≥ 99 %, p95 compatible con el flujo, costo aceptable por confirmación y mejora medible de errores sin aumentar abandonos.
+1. Correlacionar análisis, correcciones y confirmaciones con un identificador de solicitud.
+2. Medir latencia y disponibilidad sin registrar fotos, contexto ni datos personales.
+3. Mantener un único reintento ante errores de transporte y respetar los límites de cuota del proveedor.
 
 ### P3 — Limpieza del legado
 
@@ -99,15 +90,15 @@ Criterio de viabilidad sugerido: disponibilidad ≥ 99 %, p95 compatible con el 
 ### P4 — Calidad y operación
 
 1. Dashboard de embudo: captura → análisis → revisión → confirmación → descarte.
-2. Alarmas separadas para Gemini y JEV.
+2. Alertas de disponibilidad y latencia de Gemini.
 3. Job de purga de capturas vencidas y política de retención de imágenes (actualmente no se persisten).
 4. Pruebas E2E móviles con cámara/galería y accesibilidad del diálogo.
-5. Feature flags por usuario para despliegue gradual y rollback independiente de JEV.
+5. Feature flags por usuario para despliegue gradual.
 
 ## Reglas que una IA implementadora debe respetar
 
 - Nunca guardar claves en Git, logs, respuestas HTTP ni frontend.
-- No permitir que JEV altere macros en modo `shadow`.
+- No registrar fotos, contexto, claves ni datos personales en logs.
 - No crear entidades antes de la confirmación humana.
 - Toda confirmación debe ser idempotente y pertenecer al usuario autenticado.
 - `FOOD` produce un solo alimento; `RECIPE` produce una receta compuesta.
@@ -116,4 +107,4 @@ Criterio de viabilidad sugerido: disponibilidad ≥ 99 %, p95 compatible con el 
 
 ## Decisión sobre JEV
 
-**Viable como clasificador y control de calidad secundario.** No debe reemplazar a Gemini para extraer nutrientes ni ser fuente nutricional. El modo inicial correcto es `shadow`: permite medir precisión, latencia y costo con tráfico real sin perjudicar la experiencia. La decisión de promoverlo a `advisory` queda condicionada a las métricas de P2.
+JEV quedó retirado. La columna histórica `jev_decision_json` permanece para conservar datos previos; una limpieza futura requeriría una migración auditable y explícita.

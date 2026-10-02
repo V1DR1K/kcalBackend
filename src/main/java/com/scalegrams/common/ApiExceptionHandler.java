@@ -124,11 +124,14 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiError> unexpected(Exception ex) {
-        log.error("Unhandled API error", ex);
+        log.error("Unhandled API error; requestId={}", org.slf4j.MDC.get("requestId"), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiError("INTERNAL_ERROR", "Ocurrió un error inesperado. Intentá nuevamente.", null, Instant.now()));
     }
 
-    public record ApiError(String code, String message, Map<String, String> fields, Instant timestamp) {
+    public record ApiError(String code, String message, Map<String, String> fields, Instant timestamp, String requestId) {
+        public ApiError(String code, String message, Map<String, String> fields, Instant timestamp) {
+            this(code, message, fields, timestamp, org.slf4j.MDC.get("requestId"));
+        }
     }
 }
