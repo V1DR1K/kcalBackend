@@ -43,6 +43,16 @@ public class TrainingCardioServiceEvent {
     @Column(length = 2000)
     private String notes;
 
+    @jakarta.persistence.Version
+    @Column(nullable = false)
+    private Long version = 0L;
+
+    private OffsetDateTime updatedAt = OffsetDateTime.now();
+    private OffsetDateTime annulledAt;
+    private Long annulledByUserId;
+    @Column(length = 2000)
+    private String annulmentReason;
+
     @Column(nullable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 }

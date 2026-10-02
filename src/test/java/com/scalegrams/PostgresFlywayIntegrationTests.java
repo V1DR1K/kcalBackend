@@ -31,7 +31,7 @@ class PostgresFlywayIntegrationTests extends PostgresTestSupport {
 
     @Test
     void appliesAllPostgresMigrationsAndKeepsTheProductionConstraints() {
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("46");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("47");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'food' AND column_name = 'nutrition_fingerprint'", Integer.class))
                 .isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'uq_food_active_ai_identity'", Integer.class))

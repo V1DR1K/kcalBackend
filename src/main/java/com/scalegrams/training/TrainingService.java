@@ -92,12 +92,13 @@ public class TrainingService {
     private final TrainingSessionBaselineRepository baselines;
     private final TrainingCardioRecordRepository cardioRecords;
     private final TrainingCardioServiceEventRepository cardioServices;
+    private final com.scalegrams.user.UserRepository users;
 
     public TrainingService(TrainingExerciseRepository exercises, TrainingCategoryRepository categories, TrainingPlanRepository presets,
             TrainingPlanDayRepository days, TrainingPlanExerciseRepository presetExercises,
             TrainingSessionRepository sessions, TrainingSessionExerciseRepository sessionExercises,
             TrainingSessionBaselineRepository baselines, TrainingCardioRecordRepository cardioRecords,
-            TrainingCardioServiceEventRepository cardioServices) {
+            TrainingCardioServiceEventRepository cardioServices, com.scalegrams.user.UserRepository users) {
         this.exercises = exercises;
         this.categories = categories;
         this.presets = presets;
@@ -108,6 +109,7 @@ public class TrainingService {
         this.baselines = baselines;
         this.cardioRecords = cardioRecords;
         this.cardioServices = cardioServices;
+        this.users = users;
     }
 
     @Transactional(readOnly = true)
@@ -149,7 +151,8 @@ public class TrainingService {
 
     @Transactional
     public CardioServiceResponse createCardioService(AppUser user, CreateCardioServiceRequest request) {
-        validateNotFuture(request.servicedAt(), "La fecha de service no puede ser futura.");
+        lockCardioServiceOwner(user);
+        validateCardioService(user, null, request.equipment(), request.servicedAt(), request.notes());
         TrainingCardioServiceEvent service = new TrainingCardioServiceEvent();
         service.setUser(user);
         service.setEquipment(request.equipment());
@@ -159,10 +162,51 @@ public class TrainingService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<CardioServiceResponse> cardioServices(AppUser user, TrainingEquipment equipment, int page, int size) {
+        var pageable = page(page, size, Sort.by(Sort.Order.desc("servicedAt"), Sort.Order.desc("id")));
+        var result = equipment == null ? cardioServices.findByUser(user, pageable) : cardioServices.findByUserAndEquipment(user, equipment, pageable);
+        return page(result, this::toCardioServiceResponse);
+    }
+    @Transactional
+    public CardioServiceResponse updateCardioService(AppUser user, Long id, TrainingDtos.UpdateCardioServiceRequest request) {
+        lockCardioServiceOwner(user);
+        var event = ownedCardioService(user, id);
+        if (event.getAnnulledAt() != null) throw new ConflictException("Un mantenimiento anulado no se puede editar.");
+        requireCardioServiceVersion(event, request.version());
+        validateCardioService(user, id, request.equipment(), request.servicedAt(), request.notes());
+        event.setEquipment(request.equipment()); event.setServicedAt(request.servicedAt()); event.setNotes(blankToNull(request.notes()));
+        event.setUpdatedAt(OffsetDateTime.now());
+        return toCardioServiceResponse(cardioServices.saveAndFlush(event));
+    }
+    @Transactional
+    public CardioServiceResponse annulCardioService(AppUser user, Long id, TrainingDtos.AnnulCardioServiceRequest request) {
+        lockCardioServiceOwner(user);
+        var event = ownedCardioService(user, id);
+        if (event.getAnnulledAt() != null) return toCardioServiceResponse(event);
+        requireCardioServiceVersion(event, request.version());
+        event.setAnnulledAt(OffsetDateTime.now()); event.setAnnulledByUserId(user.getId()); event.setAnnulmentReason(blankToNull(request.reason()));
+        event.setUpdatedAt(event.getAnnulledAt());
+        return toCardioServiceResponse(cardioServices.saveAndFlush(event));
+    }
+    private void lockCardioServiceOwner(AppUser user) {
+        users.findByIdForUpdate(user.getId()).orElseThrow(() -> new NotFoundException("Usuario no encontrado."));
+    }
+    private TrainingCardioServiceEvent ownedCardioService(AppUser user, Long id) {
+        return cardioServices.findByIdAndUser(id, user).orElseThrow(() -> new NotFoundException("Mantenimiento no encontrado."));
+    }
+    private void requireCardioServiceVersion(TrainingCardioServiceEvent event, Long version) {
+        if (!java.util.Objects.equals(event.getVersion(), version)) throw new ConflictException("El mantenimiento cambió. Recargá el historial antes de volver a editarlo.");
+    }
+    private void validateCardioService(AppUser user, Long excludedId, TrainingEquipment equipment, OffsetDateTime date, String notes) {
+        validateNotFuture(date, "La fecha de mantenimiento no puede ser futura.");
+        if (cardioServices.existsDuplicate(user, equipment, date, blankToNull(notes), excludedId)) throw new ConflictException("Ya existe un mantenimiento con el mismo equipo, fecha y notas.");
+    }
+
+    @Transactional(readOnly = true)
     public CardioSummaryResponse cardioSummary(AppUser user) {
         TrainingEquipment equipment = TrainingEquipment.TREADMILL;
         TrainingCardioServiceEvent latestService = cardioServices
-                .findFirstByUserAndEquipmentOrderByServicedAtDescIdDesc(user, equipment).orElse(null);
+                .findFirstByUserAndEquipmentAndAnnulledAtIsNullOrderByServicedAtDescIdDesc(user, equipment).orElse(null);
         long totalMinutes = latestService == null
                 ? cardioRecords.sumDuration(user, equipment)
                 : cardioRecords.sumDurationAfter(user, equipment, latestService.getServicedAt());
@@ -1761,7 +1805,8 @@ public class TrainingService {
 
     private CardioServiceResponse toCardioServiceResponse(TrainingCardioServiceEvent service) {
         return new CardioServiceResponse(service.getId(), service.getEquipment(), service.getServicedAt(),
-                service.getNotes(), service.getCreatedAt());
+                service.getNotes(), service.getCreatedAt(), service.getVersion(), service.getUpdatedAt(), service.getAnnulledAt(),
+                service.getAnnulledByUserId(), service.getAnnulmentReason());
     }
 
     private TrainingSessionSummaryResponse toSessionSummaryResponse(TrainingSession session) {

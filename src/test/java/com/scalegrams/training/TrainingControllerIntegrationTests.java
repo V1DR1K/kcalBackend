@@ -599,4 +599,34 @@ class TrainingControllerIntegrationTests extends com.scalegrams.PostgresTestSupp
 
     record LoginResponse(String accessToken) {
     }
+    @Test void maintenanceHistoryEditsAnnulsAndChecksOwnershipVersionsAndDuplicates() {
+        var headers = authHeaders("maintenance-" + UUID.randomUUID());
+        for (var entry : List.of(Map.entry("2024-02-01T08:00:00Z", 30), Map.entry("2024-03-01T08:00:00Z", 60))) {
+            var response = rest.postForEntity("/api/training/cardio", new HttpEntity<>(Map.of("equipment", "TREADMILL", "recordedAt", entry.getKey(), "durationMinutes", entry.getValue(), "speedKmh", 5), headers), Map.class);
+            assertThat(response.getStatusCode().is2xxSuccessful()).as("%s", response.getBody()).isTrue();
+        }
+        Map<String,Object> firstBody = Map.of("equipment","TREADMILL","servicedAt","2024-02-15T08:00:00Z","notes","Correa");
+        var first = rest.postForEntity("/api/training/cardio/services", new HttpEntity<>(firstBody, headers), Map.class);
+        assertThat(first.getStatusCode().is2xxSuccessful()).as("%s", first.getBody()).isTrue();
+        assertThat(rest.postForEntity("/api/training/cardio/services", new HttpEntity<>(firstBody, headers), Map.class).getStatusCode().value()).isEqualTo(409);
+        assertThat(rest.postForEntity("/api/training/cardio/services", new HttpEntity<>(Map.of("equipment","TREADMILL","servicedAt",java.time.OffsetDateTime.now().plusDays(1).toString()), headers), Map.class).getStatusCode().value()).isEqualTo(400);
+        var second = rest.postForEntity("/api/training/cardio/services", new HttpEntity<>(Map.of("equipment","TREADMILL","servicedAt","2024-03-15T08:00:00Z"), headers), Map.class);
+        assertThat(rest.exchange("/api/training/cardio/summary",HttpMethod.GET,new HttpEntity<>(headers),Map.class).getBody()).containsEntry("totalDurationMinutes",0);
+        Object secondId = second.getBody().get("id");
+        var updateBody = Map.of("equipment","TREADMILL","servicedAt","2024-01-15T08:00:00Z","notes","Fecha corregida","version",second.getBody().get("version"));
+        var edited = rest.exchange("/api/training/cardio/services/"+secondId,HttpMethod.PUT,new HttpEntity<>(updateBody,headers),Map.class);
+        assertThat(edited.getStatusCode().is2xxSuccessful()).as("%s",edited.getBody()).isTrue();
+        assertThat(rest.exchange("/api/training/cardio/summary",HttpMethod.GET,new HttpEntity<>(headers),Map.class).getBody()).containsEntry("totalDurationMinutes",60);
+        assertThat(rest.exchange("/api/training/cardio/services/"+secondId,HttpMethod.PUT,new HttpEntity<>(updateBody,headers),Map.class).getStatusCode().value()).isEqualTo(409);
+        String annulFirst = "/api/training/cardio/services/"+first.getBody().get("id")+"/annul";
+        assertThat(rest.postForEntity(annulFirst,new HttpEntity<>(Map.of("version",0),authHeaders("maintenance-other-"+UUID.randomUUID())),Map.class).getStatusCode().value()).isEqualTo(404);
+        var annulled = rest.postForEntity(annulFirst,new HttpEntity<>(Map.of("version",first.getBody().get("version"),"reason","Error de fecha"),headers),Map.class);
+        assertThat(annulled.getStatusCode().is2xxSuccessful()).isTrue();
+        var repeated = rest.postForEntity(annulFirst,new HttpEntity<>(Map.of("version",first.getBody().get("version")),headers),Map.class);
+        assertThat(repeated.getBody()).containsEntry("version",annulled.getBody().get("version"));
+        assertThat(rest.exchange("/api/training/cardio/summary",HttpMethod.GET,new HttpEntity<>(headers),Map.class).getBody()).containsEntry("totalDurationMinutes",90);
+        rest.postForEntity("/api/training/cardio/services/"+secondId+"/annul",new HttpEntity<>(Map.of("version",edited.getBody().get("version")),headers),Map.class);
+        var history = rest.exchange("/api/training/cardio/services",HttpMethod.GET,new HttpEntity<>(headers),Map.class);
+        assertThat((List<Map>)history.getBody().get("items")).hasSize(2).allMatch(item -> item.get("annulledAt") != null);
+    }
 }

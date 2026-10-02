@@ -34,8 +34,15 @@ public class TrainingDtos {
             @Size(max = 2000) String notes) {
     }
 
+    public record UpdateCardioServiceRequest(@NotNull TrainingEquipment equipment, @NotNull OffsetDateTime servicedAt,
+            @Size(max = 2000) String notes, @NotNull @PositiveOrZero Long version) {}
+    public record AnnulCardioServiceRequest(@NotNull @PositiveOrZero Long version, @Size(max = 2000) String reason) {}
     public record CardioServiceResponse(Long id, TrainingEquipment equipment, OffsetDateTime servicedAt, String notes,
-            OffsetDateTime createdAt) {
+            OffsetDateTime createdAt, Long version, OffsetDateTime updatedAt, OffsetDateTime annulledAt,
+            Long annulledByUserId, String annulmentReason) {
+        public CardioServiceResponse(Long id, TrainingEquipment equipment, OffsetDateTime servicedAt, String notes, OffsetDateTime createdAt) {
+            this(id, equipment, servicedAt, notes, createdAt, 0L, createdAt, null, null, null);
+        }
     }
 
     public record CardioSummaryResponse(TrainingEquipment equipment, int thresholdMinutes, long totalDurationMinutes,

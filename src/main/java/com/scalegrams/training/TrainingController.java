@@ -99,6 +99,23 @@ public class TrainingController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/cardio/services")
+    PageResponse<CardioServiceResponse> cardioServices(Authentication authentication,
+            @RequestParam(required = false) TrainingEquipment equipment,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return trainingService.cardioServices(currentUser.from(authentication), equipment, page, size);
+    }
+    @PutMapping("/cardio/services/{id}")
+    CardioServiceResponse updateCardioService(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody TrainingDtos.UpdateCardioServiceRequest request) {
+        return trainingService.updateCardioService(currentUser.from(authentication), id, request);
+    }
+    @PostMapping("/cardio/services/{id}/annul")
+    CardioServiceResponse annulCardioService(Authentication authentication, @PathVariable Long id,
+            @Valid @RequestBody TrainingDtos.AnnulCardioServiceRequest request) {
+        return trainingService.annulCardioService(currentUser.from(authentication), id, request);
+    }
+
     @PostMapping("/cardio/services")
     CardioServiceResponse createCardioService(Authentication authentication,
             @Valid @RequestBody CreateCardioServiceRequest request) {
