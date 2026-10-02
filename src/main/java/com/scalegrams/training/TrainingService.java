@@ -908,7 +908,9 @@ public class TrainingService {
 
     @Transactional
     public TrainingSessionResponse completeSession(AppUser user, Long id, CompleteTrainingSessionRequest request) {
+        users.findByIdForUpdate(user.getId()).orElseThrow(() -> new NotFoundException("Usuario no encontrado."));
         TrainingSession session = requireSession(user, id);
+        if (session.getStatus() == TrainingSessionStatus.COMPLETED) return toSessionResponse(session);
         checkVersion(request.version(), session.getVersion(), "La sesión");
         if (session.getStatus() != TrainingSessionStatus.IN_PROGRESS) {
             throw new BadRequestException("Solo se puede completar una sesión IN_PROGRESS.");

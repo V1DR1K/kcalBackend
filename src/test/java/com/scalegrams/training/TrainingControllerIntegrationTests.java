@@ -188,7 +188,7 @@ class TrainingControllerIntegrationTests extends com.scalegrams.PostgresTestSupp
 
         HttpHeaders otherHeaders = authHeaders("training-global-consumer");
         ResponseEntity<Map> listed = rest.exchange(
-                "/api/training/exercises?module=GYM&size=50", HttpMethod.GET,
+                "/api/training/exercises?module=GYM&size=50&q=Ejercicio global compartido", HttpMethod.GET,
                 new HttpEntity<>(otherHeaders), Map.class);
         assertThat(listed.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(listed.getBody().get("items").toString()).contains("Ejercicio global compartido");
@@ -525,11 +525,14 @@ class TrainingControllerIntegrationTests extends com.scalegrams.PostgresTestSupp
         }
         String endpoint = "/api/training/sessions/" + current.get("id") + "/complete";
         HttpEntity<?> completion = new HttpEntity<>(Map.of("version", current.get("version")), headers);
-        ResponseEntity<Map> completed = rest.postForEntity(endpoint, completion, Map.class);
-        assertThat(completed.getStatusCode().is2xxSuccessful()).isTrue();
-        ResponseEntity<Map> repeated = rest.postForEntity(endpoint, completion, Map.class);
-        assertThat(repeated.getStatusCode().is2xxSuccessful()).isTrue();
+        var first = java.util.concurrent.CompletableFuture.supplyAsync(() -> rest.postForEntity(endpoint, completion, Map.class));
+        var second = java.util.concurrent.CompletableFuture.supplyAsync(() -> rest.postForEntity(endpoint, completion, Map.class));
+        ResponseEntity<Map> completed = first.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
+        ResponseEntity<Map> repeated = second.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).join();
+        assertThat(completed.getStatusCode().is2xxSuccessful()).as("complete: %s", completed.getBody()).isTrue();
+        assertThat(repeated.getStatusCode().is2xxSuccessful()).as("repeat complete: %s", repeated.getBody()).isTrue();
         assertThat(repeated.getBody().get("version")).isEqualTo(completed.getBody().get("version"));
+        assertThat(repeated.getBody().get("finishedAt")).isEqualTo(completed.getBody().get("finishedAt"));
     }
 
     @Test
