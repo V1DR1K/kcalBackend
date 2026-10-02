@@ -5,7 +5,7 @@ La rama fix/ux-ui-audit sólo ejecuta CI. Producción se despliega únicamente d
 ## Orden
 
 1. Completar los 33 commits, publicar ambas ramas y esperar CI aprobado, incluidos PostgreSQL 17 desde base nueva y upgrade V43→V47 y recorridos Chromium/WebKit. Integrar cambios de origin/main sin sobrescribir trabajo ajeno.
-2. Publicar backend main primero. release-api.sh exige la revisión completa, identifica contenedores desde el compose existente y falla antes de desplegar si no los encuentra. Guarda pg_dump custom, verifica su índice con pg_restore --list y conserva la imagen anterior comprimida. Los archivos privados quedan en /opt/backups/scalegrams/ux-audit-REVISION con permisos restrictivos. READY sólo existe tras completar respaldo y registro de versión anterior.
+2. Publicar backend main primero. release-api.sh exige la revisión completa, identifica contenedores desde el compose existente y falla antes de desplegar si no los encuentra. Guarda pg_dump custom, verifica su índice con pg_restore --list y conserva la imagen anterior comprimida. Los archivos privados quedan en $HOME/.local/state/scalegrams/backups/ux-audit-REVISION (o SCALEGRAMS_BACKUP_ROOT explícito) con permisos restrictivos. READY sólo existe tras completar respaldo y registro de versión anterior.
 3. Verificar salud y /api/version con la revisión exacta; luego publicar frontend main. Su workflow comprueba version.json y conserva su imagen anterior antes de desplegar.
 4. Comprobar ingreso, rutas y recursos de producción. Las verificaciones públicas no requieren escrituras. Cualquier recorrido con registros usa nombres y fechas aislados y deja evidencia de su limpieza.
 

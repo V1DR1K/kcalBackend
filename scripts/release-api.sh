@@ -8,7 +8,8 @@ compose=(docker compose -f docker-compose.prod.yml)
 postgres_id="$("${compose[@]}" ps -q postgres)"
 api_id="$("${compose[@]}" ps -q app)"
 test -n "$postgres_id" && test -n "$api_id"
-backup="/opt/backups/scalegrams/ux-audit-$revision"
+backup_root="${SCALEGRAMS_BACKUP_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/scalegrams/backups}"
+backup="$backup_root/ux-audit-$revision"
 mkdir -p "$backup"
 if [[ ! -f "$backup/READY" ]]; then
   docker exec "$postgres_id" sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup/postgres.dump.tmp"

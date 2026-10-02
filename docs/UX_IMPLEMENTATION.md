@@ -17,3 +17,5 @@
 Corrección de CI posterior a los 33 commits: PostgreSQL/Flyway y las 63 regresiones de nutrición pasaron. SG042 reveló una finalización repetida rechazada: se serializa la transición y se devuelve la sesión completada sin volver a modificarla. La búsqueda de ejercicio global de prueba ahora consulta su nombre para no depender de la primera página de un catálogo amplio. CI completo obligatorio antes de main.
 
 CI confirmó la finalización concurrente, con una diferencia de precisión en finishedAt entre la respuesta en memoria (nanosegundos) y PostgreSQL (microsegundos). La transición normaliza ese valor a microsegundos para conservar también la respuesta idempotente.
+
+Despliegue: /opt/backups no era escribible por el usuario SSH. El script se detuvo antes de desplegar y ahora guarda el respaldo en su directorio privado de estado, con umask 077 y ubicación configurable.
