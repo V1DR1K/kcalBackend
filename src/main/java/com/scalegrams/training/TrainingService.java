@@ -921,7 +921,7 @@ public class TrainingService {
         OffsetDateTime finishedAt = request.finishedAt() != null ? request.finishedAt() : OffsetDateTime.now();
         validateTimes(session.getStartedAt(), finishedAt);
         session.setStatus(TrainingSessionStatus.COMPLETED);
-        session.setFinishedAt(finishedAt);
+        session.setFinishedAt(finishedAt.truncatedTo(java.time.temporal.ChronoUnit.MICROS));
         session.setDurationMinutes(resolveDuration(session.getStartedAt(), finishedAt,
                 request.durationMinutes(), session.getDurationMinutes()));
         session.setUpdatedAt(OffsetDateTime.now());
@@ -1239,7 +1239,7 @@ public class TrainingService {
         session.setTitle(blankToNull(title));
         session.setStatus(status);
         session.setStartedAt(startedAt);
-        session.setFinishedAt(finishedAt);
+        session.setFinishedAt(finishedAt.truncatedTo(java.time.temporal.ChronoUnit.MICROS));
         session.setDurationMinutes(resolveDuration(startedAt, finishedAt, durationMinutes, null));
         session.setNotes(blankToNull(notes));
         session.setUpdatedAt(OffsetDateTime.now());
