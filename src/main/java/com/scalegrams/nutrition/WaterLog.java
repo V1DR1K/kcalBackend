@@ -31,6 +31,7 @@ public class WaterLog {
     private AppUser user;
 
     private LocalDate logDate;
+    @jakarta.persistence.Column(precision = 38, scale = 3)
     private BigDecimal liters;
     private OffsetDateTime createdAt = OffsetDateTime.now();
 }

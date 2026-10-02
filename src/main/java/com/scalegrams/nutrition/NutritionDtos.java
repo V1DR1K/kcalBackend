@@ -327,11 +327,21 @@ public class NutritionDtos {
     }
 
     public record DaySummary(LocalDate date, Integer caloriesConsumed, Integer calorieGoal, BigDecimal proteinGrams,
-            BigDecimal carbsGrams, BigDecimal fatGrams, boolean goalReached, Long planId, String planName) {
+            BigDecimal carbsGrams, BigDecimal fatGrams, boolean goalReached, Long planId, String planName,
+            long recordCount, boolean energyComplete, boolean nutritionComplete, String recordState,
+            BigDecimal knownProteinGrams, BigDecimal knownCarbsGrams, BigDecimal knownFatGrams) {
+        public DaySummary(LocalDate date, Integer caloriesConsumed, Integer calorieGoal, BigDecimal proteinGrams,
+                BigDecimal carbsGrams, BigDecimal fatGrams, boolean goalReached, Long planId, String planName) {
+            this(date, caloriesConsumed, calorieGoal, proteinGrams, carbsGrams, fatGrams, goalReached, planId, planName,
+                    0, true, true, "NONE", proteinGrams, carbsGrams, fatGrams);
+        }
     }
 
     public record HistoryResponse(int year, int month, List<DaySummary> days, Integer averageCalories,
-            long completedGoalDays) {
+            long completedGoalDays, long averageDayCount) {
+        public HistoryResponse(int year, int month, List<DaySummary> days, Integer averageCalories, long completedGoalDays) {
+            this(year, month, days, averageCalories, completedGoalDays, 0);
+        }
     }
 
     public record MealTypeResponse(MealType code, String label) {

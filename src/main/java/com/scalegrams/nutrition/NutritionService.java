@@ -1667,26 +1667,29 @@ public class NutritionService {
         Map<LocalDate, FoodLogRepository.DayNutritionProjection> byDate = summaries.stream()
                 .collect(Collectors.toMap(FoodLogRepository.DayNutritionProjection::getDate, item -> item));
         List<NutritionPlan> plans = profileService.plansForRange(user, ym.atDay(1), ym.atEndOfMonth());
+        LocalDate today = LocalDate.now();
         List<DaySummary> days = ym.atDay(1).datesUntil(ym.atEndOfMonth().plusDays(1)).map(date -> {
             FoodLogRepository.DayNutritionProjection summary = byDate.get(date);
+            long count = summary == null ? 0 : summary.getRecordCount();
+            boolean energyComplete = count > 0 && summary.getEnergyCount() == count;
+            boolean proteinComplete = count > 0 && summary.getProteinCount() == count;
+            boolean carbsComplete = count > 0 && summary.getCarbsCount() == count;
+            boolean fatComplete = count > 0 && summary.getFatCount() == count;
+            boolean complete = energyComplete && proteinComplete && carbsComplete && fatComplete;
+            int calories = summary == null ? 0 : Math.toIntExact(summary.getCalories());
             BigDecimal protein = summary == null ? BigDecimal.ZERO : scale(summary.getProteinGrams());
             BigDecimal carbs = summary == null ? BigDecimal.ZERO : scale(summary.getCarbsGrams());
             BigDecimal fat = summary == null ? BigDecimal.ZERO : scale(summary.getFatGrams());
-            Integer resolvedCalories = macroCalories(protein, carbs, fat);
-            int calories = resolvedCalories == null ? 0 : resolvedCalories;
-            NutritionPlan plan = plans.stream()
-                    .filter(candidate -> !candidate.getStartDate().isAfter(date)
-                            && (candidate.getEndDate() == null || !candidate.getEndDate().isBefore(date)))
-                    .findFirst()
-                    .orElseGet(() -> profileService.resolvePlan(user, date));
-            return new DaySummary(date, calories, plan.getDailyCalories(), protein,
-                    carbs, fat,
-                    calories > 0 && calories <= plan.getDailyCalories(), plan.getId(), plan.getName());
+            NutritionPlan plan = profileService.resolvePlanFromRange(user, date, plans);
+            return new DaySummary(date, calories, plan.getDailyCalories(), proteinComplete ? protein : null,
+                    carbsComplete ? carbs : null, fatComplete ? fat : null,
+                    !date.isAfter(today) && energyComplete && calories <= plan.getDailyCalories(), plan.getId(), plan.getName(),
+                    count, energyComplete, complete, count == 0 ? "NONE" : complete ? "COMPLETE" : "PARTIAL", protein, carbs, fat);
         }).toList();
-        int average = days.stream().filter(day -> day.caloriesConsumed() > 0).mapToInt(DaySummary::caloriesConsumed)
-                .average().stream().mapToInt(value -> (int) Math.round(value)).findFirst().orElse(0);
-        long completed = days.stream().filter(DaySummary::goalReached).count();
-        return new HistoryResponse(year, month, days, average, completed);
+        List<DaySummary> eligible = days.stream().filter(day -> !day.date().isAfter(today) && day.recordCount() > 0 && day.energyComplete()).toList();
+        Integer average = eligible.isEmpty() ? null : (int) Math.round(eligible.stream().mapToInt(DaySummary::caloriesConsumed).average().orElseThrow());
+        long completed = eligible.stream().filter(DaySummary::goalReached).count();
+        return new HistoryResponse(year, month, days, average, completed, eligible.size());
     }
 
     private void checkArchived(List<Food> referenced, Set<Long> acknowledged) {
@@ -1864,7 +1867,7 @@ public class NutritionService {
         BigDecimal carbs = NutritionMath.scaled(recipe.getCarbsGrams(), ratio);
         BigDecimal fat = NutritionMath.scaled(recipe.getFatGrams(), ratio);
         return new NutritionPreviewResponse(
-                macroCalories(protein, carbs, fat),
+                scaledCalories(recipe.getCalories(), ratio, protein, carbs, fat),
                 protein,
                 carbs,
                 fat,
@@ -1888,7 +1891,7 @@ public class NutritionService {
         BigDecimal protein = NutritionMath.scaled(recipe.getProteinGrams(), ratio);
         BigDecimal carbs = NutritionMath.scaled(recipe.getCarbsGrams(), ratio);
         BigDecimal fat = NutritionMath.scaled(recipe.getFatGrams(), ratio);
-        return new NutritionPreviewResponse(macroCalories(protein, carbs, fat), protein, carbs, fat,
+        return new NutritionPreviewResponse(scaledCalories(recipe.getCalories(), ratio, protein, carbs, fat), protein, carbs, fat,
                 scaleRecipeNutrients(recipe, ratio));
     }
 

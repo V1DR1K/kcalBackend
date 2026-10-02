@@ -1,0 +1,1 @@
+ALTER TABLE water_log ALTER COLUMN liters TYPE NUMERIC(38, 3);

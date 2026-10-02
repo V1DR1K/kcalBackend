@@ -61,6 +61,12 @@ public interface FoodLogRepository extends JpaRepository<FoodLog, Long> {
 
     @Query("""
             select log.logDate as date,
+                   count(log) as recordCount,
+                   count(log.calories) as energyCount,
+                   count(log.proteinGrams) as proteinCount,
+                   count(log.carbsGrams) as carbsCount,
+                   count(log.fatGrams) as fatCount,
+                   coalesce(sum(log.calories), 0) as calories,
                    coalesce(sum(log.proteinGrams), 0) as proteinGrams,
                    coalesce(sum(log.carbsGrams), 0) as carbsGrams,
                    coalesce(sum(log.fatGrams), 0) as fatGrams
@@ -74,6 +80,12 @@ public interface FoodLogRepository extends JpaRepository<FoodLog, Long> {
 
     interface DayNutritionProjection {
         LocalDate getDate();
+        Long getRecordCount();
+        Long getEnergyCount();
+        Long getProteinCount();
+        Long getCarbsCount();
+        Long getFatCount();
+        Long getCalories();
         java.math.BigDecimal getProteinGrams();
         java.math.BigDecimal getCarbsGrams();
         java.math.BigDecimal getFatGrams();

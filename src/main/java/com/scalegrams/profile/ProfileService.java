@@ -237,6 +237,12 @@ public class ProfileService {
         return nutritionPlans.findActiveForUserAndDate(user, targetDate).orElseGet(() -> fallbackPlan(user, targetDate));
     }
 
+    public NutritionPlan resolvePlanFromRange(AppUser user, LocalDate date, List<NutritionPlan> effectivePlans) {
+        return effectivePlans.stream().filter(plan -> !plan.getStartDate().isAfter(date)
+                && (plan.getEndDate() == null || !plan.getEndDate().isBefore(date))).findFirst()
+                .orElseGet(() -> fallbackPlan(user, date));
+    }
+
     @Transactional(readOnly = true)
     public List<NutritionPlan> plansForRange(AppUser user, LocalDate start, LocalDate end) {
         List<NutritionPlan> timeline = nutritionPlans.findByUserAndActiveTrueOrderByStartDateDescIdDesc(user);

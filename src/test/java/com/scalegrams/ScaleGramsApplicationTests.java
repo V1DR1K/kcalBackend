@@ -1548,4 +1548,37 @@ class ScaleGramsApplicationTests {
         assertThat(foods.findById(((Number) foodId).longValue()).orElseThrow().getDeletedAt()).isNotNull();
     }
 
+
+    @Test void historySeparatesMissingPartialZeroAndFutureRecords() {
+        String username = "history-" + UUID.randomUUID(); var headers = authHeaders(username);
+        var me = rest.exchange("/api/auth/me", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        AppUser user = users.findById(((Number) me.getBody().get("id")).longValue()).orElseThrow();
+        LocalDate today = LocalDate.now(); LocalDate zeroDate = today.minusDays(3);
+        LocalDate knownDate = today.minusDays(2); LocalDate partialDate = today.minusDays(1);
+        for (var entry : List.of(Map.entry(zeroDate, 0), Map.entry(knownDate, 200), Map.entry(today.plusDays(1), 900))) {
+            FoodLog log = new FoodLog(); log.setUser(user); log.setLogDate(entry.getKey()); log.setMealType(MealType.BREAKFAST);
+            log.setItemType(MealItemType.FOOD); log.setFood(foods.findById(1L).orElseThrow()); log.setQuantity(BigDecimal.ONE);
+            log.setUnit(FoodUnit.GRAM); log.setCalories(entry.getValue()); log.setProteinGrams(BigDecimal.ZERO); log.setCarbsGrams(BigDecimal.ZERO); log.setFatGrams(BigDecimal.ZERO); foodLogs.save(log);
+        }
+        FoodLog partial = new FoodLog(); partial.setUser(user); partial.setLogDate(partialDate); partial.setMealType(MealType.LUNCH);
+        partial.setItemType(MealItemType.FOOD); partial.setFood(foods.findById(1L).orElseThrow()); partial.setQuantity(BigDecimal.ONE); partial.setUnit(FoodUnit.GRAM); partial.setCarbsGrams(BigDecimal.ZERO); partial.setFatGrams(BigDecimal.ZERO); foodLogs.save(partial);
+        var history = rest.exchange("/api/nutrition/history?year=" + knownDate.getYear() + "&month=" + knownDate.getMonthValue(), HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        List<Map> days = (List<Map>) history.getBody().get("days");
+        long included = List.of(zeroDate, knownDate).stream().filter(date -> date.getMonth() == knownDate.getMonth()).count();
+        assertThat(((Number) history.getBody().get("averageDayCount")).longValue()).isEqualTo(included);
+        assertThat(((Number) history.getBody().get("averageCalories")).intValue()).isEqualTo(included == 2 ? 100 : 200);
+        assertThat(days.stream().filter(day -> day.get("date").equals(knownDate.toString())).findFirst().orElseThrow()).containsEntry("recordState", "COMPLETE");
+        if (partialDate.getMonth() == knownDate.getMonth()) assertThat(days.stream().filter(day -> day.get("date").equals(partialDate.toString())).findFirst().orElseThrow()).containsEntry("recordState", "PARTIAL").containsEntry("energyComplete", false).containsEntry("proteinGrams", null);
+        assertThat(days.stream().filter(day -> day.get("recordState").equals("NONE"))).allMatch(day -> Boolean.FALSE.equals(day.get("goalReached")));
+    }
+
+    @Test void waterPreservesMillilitersAndUndoRemovesTheActualLatestEntry() {
+        var headers = authHeaders("water-" + UUID.randomUUID());
+        for (double liters : List.of(0.25, 0.123)) assertThat(rest.postForEntity("/api/nutrition/water-logs", new HttpEntity<>(Map.of("liters", liters), headers), String.class).getStatusCode().is2xxSuccessful()).isTrue();
+        var day = rest.exchange("/api/nutrition/dashboard", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(new BigDecimal(day.getBody().get("waterConsumedLiters").toString())).isEqualByComparingTo("0.373");
+        rest.exchange("/api/nutrition/water-logs/latest?date=" + LocalDate.now(), HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
+        day = rest.exchange("/api/nutrition/dashboard", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(new BigDecimal(day.getBody().get("waterConsumedLiters").toString())).isEqualByComparingTo("0.25");
+    }
 }
