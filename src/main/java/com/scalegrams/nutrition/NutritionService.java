@@ -49,7 +49,6 @@ import com.scalegrams.externalfood.ExternalFoodLookupService;
 import com.scalegrams.externalfood.UsdaFoodDataProvider;
 import com.scalegrams.nutrition.NutritionDtos.AddMealLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddFoodLogRequest;
-import com.scalegrams.nutrition.NutritionDtos.AddWaterRequest;
 import com.scalegrams.nutrition.NutritionDtos.ApplyDayPresetRequest;
 import com.scalegrams.nutrition.NutritionDtos.BatchAddMealLogsRequest;
 import com.scalegrams.nutrition.NutritionDtos.BatchAddMealLogRequest;
@@ -109,7 +108,6 @@ public class NutritionService {
     private final RecipeRepository recipes;
     private final FoodLogRepository foodLogs;
     private final DayPresetRepository dayPresets;
-    private final WaterLogRepository waterLogs;
     private final ProfileService profileService;
     private final ExternalFoodLookupService externalFoodLookup;
     private final ObjectMapper objectMapper;
@@ -121,7 +119,7 @@ public class NutritionService {
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
             DayPresetRepository dayPresets,
-            WaterLogRepository waterLogs, ProfileService profileService,
+            ProfileService profileService,
             ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper,
             NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda, AiFoodMatcher aiFoodMatcher,
             JdbcTemplate jdbcTemplate, @Value("${spring.datasource.driver-class-name:org.postgresql.Driver}") String driver) {
@@ -129,7 +127,6 @@ public class NutritionService {
         this.recipes = recipes;
         this.foodLogs = foodLogs;
         this.dayPresets = dayPresets;
-        this.waterLogs = waterLogs;
         this.profileService = profileService;
         this.externalFoodLookup = externalFoodLookup;
         this.objectMapper = objectMapper;
@@ -1512,15 +1509,6 @@ public class NutritionService {
     }
 
     @Transactional
-    public void addWater(AppUser user, AddWaterRequest request) {
-        WaterLog log = new WaterLog();
-        log.setUser(user);
-        log.setLogDate(request.logDate() == null ? LocalDate.now() : request.logDate());
-        log.setLiters(request.liters());
-        waterLogs.save(log);
-    }
-
-    @Transactional
     public void deleteFoodLog(AppUser user, Long logId) {
         FoodLog log = foodLogs.findByIdAndUser(logId, user)
                 .orElseThrow(() -> new NotFoundException("Registro de comida no encontrado."));
@@ -1616,14 +1604,6 @@ public class NutritionService {
         foodLogs.save(log);
     }
 
-    @Transactional
-    public void deleteLatestWaterLog(AppUser user, LocalDate date) {
-        LocalDate targetDate = date == null ? LocalDate.now() : date;
-        WaterLog log = waterLogs.findFirstByUserAndLogDateOrderByCreatedAtDesc(user, targetDate)
-                .orElseThrow(() -> new NotFoundException("No hay registros de agua para descontar."));
-        waterLogs.delete(log);
-    }
-
     @Transactional(readOnly = true)
     public DashboardResponse dashboard(AppUser user, LocalDate date) {
         LocalDate targetDate = date == null ? LocalDate.now() : date;
@@ -1635,7 +1615,6 @@ public class NutritionService {
         Map<String, NutrientValueResponse> dailyNutrients = new LinkedHashMap<>();
         logs.forEach(log -> mergeNutrients(dailyNutrients, log.getNutrientSnapshot().stream().map(this::toNutrientResponse).toList()));
         int calories = logs.stream().map(FoodLog::getCalories).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
-        BigDecimal water = waterLogs.sumLitersByUserAndLogDate(user, targetDate);
         Map<MealType, List<FoodLog>> byMeal = logs.stream().collect(Collectors.groupingBy(FoodLog::getMealType));
         List<MealSummary> meals = Arrays.stream(MealType.values()).map(meal -> {
             List<FoodLogResponse> items = byMeal.getOrDefault(meal, List.of()).stream().map(this::toFoodLogResponse).toList();
@@ -1651,7 +1630,7 @@ public class NutritionService {
                         progress("protein", "Proteina", protein, BigDecimal.valueOf(plan.getProteinGoalGrams())),
                         progress("carbs", "Carbohidratos", carbs, BigDecimal.valueOf(plan.getCarbsGoalGrams())),
                         progress("fat", "Grasas", fat, BigDecimal.valueOf(plan.getFatGoalGrams()))),
-                meals, water, user.getWaterGoalLiters(),
+                meals,
                 profileService.activePlan(user, targetDate), dailyNutrients.values().stream().toList());
     }
 

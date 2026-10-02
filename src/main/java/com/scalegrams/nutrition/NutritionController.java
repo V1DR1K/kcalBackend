@@ -20,7 +20,6 @@ import org.springframework.web.multipart.MultipartFile;
 import com.scalegrams.common.CurrentUser;
 import com.scalegrams.nutrition.NutritionDtos.AddFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddMealLogRequest;
-import com.scalegrams.nutrition.NutritionDtos.AddWaterRequest;
 import com.scalegrams.nutrition.NutritionDtos.ApplyDayPresetRequest;
 import com.scalegrams.nutrition.NutritionDtos.BatchAddMealLogsRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddRecipeMealLogRequest;
@@ -169,11 +168,6 @@ public class NutritionController {
         return aiNutritionService.confirmRegistration(currentUser.from(authentication), request);
     }
 
-    @PostMapping("/water-logs")
-    void addWater(Authentication authentication, @Valid @RequestBody AddWaterRequest request) {
-        nutritionService.addWater(currentUser.from(authentication), request);
-    }
-
     @DeleteMapping("/food-logs/{id}")
     ResponseEntity<Void> deleteFoodLog(Authentication authentication, @PathVariable Long id) {
         nutritionService.deleteFoodLog(currentUser.from(authentication), id);
@@ -220,12 +214,6 @@ public class NutritionController {
     @DeleteMapping("/food-logs/{id}/recipe-ingredients")
     ResponseEntity<Void> resetRecipeLogIngredients(Authentication authentication, @PathVariable Long id, @Valid @RequestBody(required = false) NutritionDtos.ArchivedFoodAcknowledgementRequest request) {
         nutritionService.resetRecipeLogIngredients(currentUser.from(authentication), id, request == null ? java.util.Set.of() : request.acknowledgedArchivedFoodIds());
-        return ResponseEntity.noContent().build();
-    }
-
-    @DeleteMapping("/water-logs/latest")
-    ResponseEntity<Void> deleteLatestWaterLog(Authentication authentication, @RequestParam(required = false) LocalDate date) {
-        nutritionService.deleteLatestWaterLog(currentUser.from(authentication), date);
         return ResponseEntity.noContent().build();
     }
 

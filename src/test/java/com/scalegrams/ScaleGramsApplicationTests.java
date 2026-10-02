@@ -394,7 +394,7 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
-	void userCanDeleteOwnFoodLogAndUndoLatestWaterLog() {
+	void userCanDeleteOwnFoodLogAndDashboardNoLongerIncludesHydration() {
 		HttpHeaders headers = authHeaders();
 		String date = "2030-01-15";
 		Map<String, Object> meal = Map.of("itemType", "FOOD", "itemId", 1, "mealType", "LUNCH",
@@ -407,15 +407,9 @@ class ScaleGramsApplicationTests {
 				new HttpEntity<>(headers), Void.class);
 		assertThat(deleted.getStatusCode().is2xxSuccessful()).isTrue();
 
-		Map<String, Object> water = Map.of("liters", 0.5, "logDate", date);
-		rest.postForEntity("/api/nutrition/water-logs", new HttpEntity<>(water, headers), Void.class);
-		ResponseEntity<Void> undone = rest.exchange("/api/nutrition/water-logs/latest?date=" + date, HttpMethod.DELETE,
-				new HttpEntity<>(headers), Void.class);
-		assertThat(undone.getStatusCode().is2xxSuccessful()).isTrue();
-
 		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard?date=" + date, HttpMethod.GET,
 				new HttpEntity<>(headers), String.class);
-		assertThat(dashboard.getBody()).contains("\"waterConsumedLiters\":0");
+		assertThat(dashboard.getBody()).doesNotContain("waterConsumedLiters", "waterGoalLiters");
 	}
 
 	@Test
@@ -1570,16 +1564,6 @@ class ScaleGramsApplicationTests {
         assertThat(days.stream().filter(day -> day.get("date").equals(knownDate.toString())).findFirst().orElseThrow()).containsEntry("recordState", "COMPLETE");
         if (partialDate.getMonth() == knownDate.getMonth()) assertThat(days.stream().filter(day -> day.get("date").equals(partialDate.toString())).findFirst().orElseThrow()).containsEntry("recordState", "PARTIAL").containsEntry("energyComplete", false).containsEntry("proteinGrams", null);
         assertThat(days.stream().filter(day -> day.get("recordState").equals("NONE"))).allMatch(day -> Boolean.FALSE.equals(day.get("goalReached")));
-    }
-
-    @Test void waterPreservesMillilitersAndUndoRemovesTheActualLatestEntry() {
-        var headers = authHeaders("water-" + UUID.randomUUID());
-        for (double liters : List.of(0.25, 0.123)) assertThat(rest.postForEntity("/api/nutrition/water-logs", new HttpEntity<>(Map.of("liters", liters), headers), String.class).getStatusCode().is2xxSuccessful()).isTrue();
-        var day = rest.exchange("/api/nutrition/dashboard", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
-        assertThat(new BigDecimal(day.getBody().get("waterConsumedLiters").toString())).isEqualByComparingTo("0.373");
-        rest.exchange("/api/nutrition/water-logs/latest?date=" + LocalDate.now(), HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
-        day = rest.exchange("/api/nutrition/dashboard", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
-        assertThat(new BigDecimal(day.getBody().get("waterConsumedLiters").toString())).isEqualByComparingTo("0.25");
     }
 
     @Test void maintenanceHistoryEditsAnnulsAndChecksOwnershipVersionsAndDuplicates() {

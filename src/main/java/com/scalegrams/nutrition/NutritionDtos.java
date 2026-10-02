@@ -299,9 +299,6 @@ public class NutritionDtos {
             @Size(max = 10) Set<@Size(max = 40) String> tags) {
     }
 
-    public record AddWaterRequest(LocalDate logDate, @Positive BigDecimal liters) {
-    }
-
     public record MacroProgress(String key, String label, BigDecimal consumed, BigDecimal goal, BigDecimal remaining) {
     }
 
@@ -314,13 +311,7 @@ public class NutritionDtos {
     }
 
     public record DashboardResponse(LocalDate date, Integer calorieGoal, Integer caloriesConsumed, Integer caloriesRemaining,
-            List<MacroProgress> macros, List<MealSummary> meals, BigDecimal waterConsumedLiters, BigDecimal waterGoalLiters,
-            NutritionPlanResponse plan, List<NutrientValueResponse> nutrients) {
-        public DashboardResponse(LocalDate date, Integer calorieGoal, Integer caloriesConsumed, Integer caloriesRemaining,
-                List<MacroProgress> macros, List<MealSummary> meals, BigDecimal waterConsumedLiters, BigDecimal waterGoalLiters,
-                NutritionPlanResponse plan) {
-            this(date, calorieGoal, caloriesConsumed, caloriesRemaining, macros, meals, waterConsumedLiters, waterGoalLiters, plan, List.of());
-        }
+            List<MacroProgress> macros, List<MealSummary> meals, NutritionPlanResponse plan, List<NutrientValueResponse> nutrients) {
         @com.fasterxml.jackson.annotation.JsonProperty public boolean energyComplete() { return meals.stream().flatMap(meal -> meal.items().stream()).allMatch(FoodLogResponse::energyComplete); }
         @com.fasterxml.jackson.annotation.JsonProperty public boolean nutritionComplete() { return meals.stream().flatMap(meal -> meal.items().stream()).allMatch(FoodLogResponse::nutritionComplete); }
     }

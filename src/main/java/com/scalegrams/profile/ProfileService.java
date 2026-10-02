@@ -69,7 +69,6 @@ public class ProfileService {
         if (request.goal() != null) user.setGoal(request.goal());
         if (request.targetWeightKg() != null) user.setTargetWeightKg(request.targetWeightKg());
         if (request.nutritionStyle() != null) user.setNutritionStyle(request.nutritionStyle());
-        if (request.waterGoalLiters() != null) user.setWaterGoalLiters(request.waterGoalLiters());
         return toResponse(users.save(user));
     }
 
@@ -261,7 +260,7 @@ public class ProfileService {
         return new ProfileResponse(user.getId(), user.getFullName(), user.getEmail(), user.getPlanName(),
                 user.getNutritionStyle(), user.getWeightKg(), user.getHeightCm(), age, user.getGender(),
                 user.getActivityLevel(), user.getGoal(), user.getTargetWeightKg(), effective.getDailyCalories(),
-                effective.getProteinGoalGrams(), effective.getCarbsGoalGrams(), effective.getFatGoalGrams(), user.getWaterGoalLiters(),
+                effective.getProteinGoalGrams(), effective.getCarbsGoalGrams(), effective.getFatGoalGrams(),
                 effective.getId() == null ? "MANUAL" : "SCHEDULED", effective.getId(), effective.getName(), LocalDate.now());
     }
 

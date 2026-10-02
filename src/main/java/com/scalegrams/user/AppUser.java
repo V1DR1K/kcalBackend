@@ -60,7 +60,6 @@ public class AppUser {
     private Integer proteinGoalGrams = 165;
     private Integer carbsGoalGrams = 220;
     private Integer fatGoalGrams = 75;
-    private BigDecimal waterGoalLiters = BigDecimal.valueOf(3);
     private String planName = "Premium";
     private String nutritionStyle = "Balanceado";
     private OffsetDateTime createdAt = OffsetDateTime.now();

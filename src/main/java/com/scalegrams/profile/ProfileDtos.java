@@ -18,7 +18,7 @@ public class ProfileDtos {
     public record ProfileResponse(Long id, String fullName, String email, String planName, String nutritionStyle,
             BigDecimal weightKg, BigDecimal heightCm, Integer age, Gender gender, ActivityLevel activityLevel,
             FitnessGoal goal, BigDecimal targetWeightKg, Integer dailyCalorieGoal, Integer proteinGoalGrams,
-            Integer carbsGoalGrams, Integer fatGoalGrams, BigDecimal waterGoalLiters, String goalOrigin, Long nutritionPlanId,
+            Integer carbsGoalGrams, Integer fatGoalGrams, String goalOrigin, Long nutritionPlanId,
             String nutritionPlanName, LocalDate goalDate) {
     }
 
@@ -31,7 +31,7 @@ public class ProfileDtos {
 
     public record UpdateProfileRequest(String fullName, @Positive BigDecimal weightKg, @Positive BigDecimal heightCm,
             LocalDate birthDate, Gender gender, ActivityLevel activityLevel, FitnessGoal goal,
-            @Positive BigDecimal targetWeightKg, String nutritionStyle, @Positive BigDecimal waterGoalLiters) {
+            @Positive BigDecimal targetWeightKg, String nutritionStyle) {
     }
 
     public record NutritionPlanResponse(Long id, String name, Integer dailyCalories, BigDecimal proteinPercent,
