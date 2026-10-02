@@ -16,6 +16,8 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
+      - name: Require Docker for PostgreSQL 17 regression tests
+        run: docker info > /dev/null
       - run: mvn -B clean verify
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -39,7 +41,7 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
-        run: ssh "$VPS_USER@$VPS_HOST" "cd /opt/projects/scalegrams/back/scalegrams-backend && git fetch origin main && git diff --quiet && git diff --cached --quiet && git checkout main && git pull --ff-only origin main && test \"\$(git rev-parse HEAD)\" = '${{ github.sha }}' && GIT_HASH=\$(git rev-parse --short HEAD) /opt/infra/bin/deploy-service scalegrams api"
+        run: ssh "$VPS_USER@$VPS_HOST" "cd /opt/projects/scalegrams/back/scalegrams-backend && git fetch origin main && git diff --quiet && git diff --cached --quiet && git checkout main && git pull --ff-only origin main && test \"\$(git rev-parse HEAD)\" = '${{ github.sha }}' && bash scripts/release-api.sh ${{ github.sha }}"
       - name: Verify API health on VPS
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -48,3 +50,10 @@ jobs:
           health="$(ssh "$VPS_USER@$VPS_HOST" "cd /opt/projects/scalegrams/back/scalegrams-backend && docker compose -f docker-compose.prod.yml exec -T app curl --fail --silent --show-error http://localhost:8081/api/health")"
           echo "$health"
           grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' <<<"$health"
+      - name: Verify published API revision
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          version="$(ssh "$VPS_USER@$VPS_HOST" 'curl --fail --silent --show-error --retry 6 --retry-delay 5 https://scalegrams.neticar.com.ar/api/version')"
+          grep -Fq '${{ github.sha }}' <<<"$version"

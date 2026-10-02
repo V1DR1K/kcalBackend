@@ -60,7 +60,7 @@ public class NutritionDtos {
         @com.fasterxml.jackson.annotation.JsonProperty public boolean nutritionComplete() { return calories != null && proteinGrams != null && carbsGrams != null && fatGrams != null; }
         @com.fasterxml.jackson.annotation.JsonProperty public String nutritionWarning() {
             if (!nutritionComplete()) return "Información nutricional incompleta.";
-            return category == FoodCategory.PROTEIN && calories == 0 && proteinGrams.signum() == 0 && carbsGrams.signum() == 0 && fatGrams.signum() == 0 ? "Composición pendiente de verificar. Compará con otra variante." : null;
+            return (category == FoodCategory.PROTEIN || category == FoodCategory.MEAT) && calories == 0 && proteinGrams.signum() == 0 && carbsGrams.signum() == 0 && fatGrams.signum() == 0 ? "Composición pendiente de verificar. Compará con otra variante." : null;
         }
     }
 
@@ -80,7 +80,7 @@ public class NutritionDtos {
         @com.fasterxml.jackson.annotation.JsonProperty public boolean nutritionComplete() { return calories != null && proteinGrams != null && carbsGrams != null && fatGrams != null; }
         @com.fasterxml.jackson.annotation.JsonProperty public String nutritionWarning() {
             if (!nutritionComplete()) return "Información nutricional incompleta.";
-            return category == FoodCategory.PROTEIN && calories == 0 && proteinGrams.signum() == 0 && carbsGrams.signum() == 0 && fatGrams.signum() == 0 ? "Composición pendiente de verificar. Compará con otra variante." : null;
+            return (category == FoodCategory.PROTEIN || category == FoodCategory.MEAT) && calories == 0 && proteinGrams.signum() == 0 && carbsGrams.signum() == 0 && fatGrams.signum() == 0 ? "Composición pendiente de verificar. Compará con otra variante." : null;
         }
     }
 

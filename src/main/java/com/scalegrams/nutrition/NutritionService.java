@@ -2088,6 +2088,7 @@ public class NutritionService {
 
     private RecipeResponse toRecipeResponse(FoodLog log) {
         if (log.getRecipeIngredients().isEmpty()) return toRecipeResponse(log.getRecipe());
+        Integer calories = 0;
         BigDecimal protein = BigDecimal.ZERO;
         BigDecimal carbs = BigDecimal.ZERO;
         BigDecimal fat = BigDecimal.ZERO;
@@ -2098,6 +2099,7 @@ public class NutritionService {
         }).toList();
         for (FoodLogRecipeIngredient ingredient : log.getRecipeIngredients()) {
             NutritionPreviewResponse preview = preview(ingredient.getFood(), ingredient.getQuantity(), ingredient.getUnit());
+            calories = calories == null || preview.calories() == null ? null : Integer.valueOf(Math.addExact(calories, preview.calories()));
             protein = NutritionMath.add(protein, preview.proteinGrams());
             carbs = NutritionMath.add(carbs, preview.carbsGrams());
             fat = NutritionMath.add(fat, preview.fatGrams());
@@ -2106,7 +2108,7 @@ public class NutritionService {
         }
         rawTotalWeight = scale(rawTotalWeight);
         return new RecipeResponse(log.getRecipe().getId(), log.getRecipe().getName(), log.getRecipe().getDescription(), rawTotalWeight,
-                rawTotalWeight, null, macroCalories(protein, carbs, fat), scale(protein), scale(carbs), scale(fat), ingredients,
+                rawTotalWeight, null, calories, scale(protein), scale(carbs), scale(fat), ingredients,
                 nutrients.values().stream().toList());
     }
 

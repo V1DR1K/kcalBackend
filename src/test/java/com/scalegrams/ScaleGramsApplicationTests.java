@@ -296,7 +296,7 @@ class ScaleGramsApplicationTests {
 		assertThat(copied.getBody()).hasSize(1);
 		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard?date=" + targetDate,
 				HttpMethod.GET, new HttpEntity<>(headers), String.class);
-		assertThat(dashboard.getBody()).contains("Plato estimado", "\"mealType\":\"DINNER\"", "\"calories\":424", "SODIUM");
+		assertThat(dashboard.getBody()).contains("Plato estimado", "\"mealType\":\"DINNER\"", "\"calories\":480", "SODIUM");
 	}
 
 	@Test
@@ -621,7 +621,7 @@ class ScaleGramsApplicationTests {
 		assertThat(accepted.getStatusCode().is2xxSuccessful()).isTrue();
 		ResponseEntity<String> recipientDay = rest.exchange("/api/nutrition/dashboard?date=" + targetDate,
 				HttpMethod.GET, new HttpEntity<>(authHeaders("avril")), String.class);
-		assertThat(recipientDay.getBody()).contains("Plato IA legado", "\"mealType\":\"DINNER\"", "\"calories\":378");
+		assertThat(recipientDay.getBody()).contains("Plato IA legado", "\"mealType\":\"DINNER\"", "\"calories\":420");
 	}
 
 	@Test
@@ -699,7 +699,7 @@ class ScaleGramsApplicationTests {
 				new HttpEntity<>(update, headers), String.class);
 
 		assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(updated.getBody()).contains("\"mealType\":\"DINNER\"", "\"quantity\":200", "\"calories\":313");
+		assertThat(updated.getBody()).contains("\"mealType\":\"DINNER\"", "\"quantity\":200", "\"calories\":330");
 	}
 
 	@Test
@@ -1185,7 +1185,7 @@ class ScaleGramsApplicationTests {
 		ResponseEntity<String> dashboard = rest.exchange("/api/nutrition/dashboard?date=" + date, HttpMethod.GET, new HttpEntity<>(headers), String.class);
 
 		assertThat(updated.getStatusCode().is2xxSuccessful()).isTrue();
-		assertThat(otherLog.getBody().get("calories")).isEqualTo(156);
+		assertThat(otherLog.getBody().get("calories")).isEqualTo(165);
 		assertThat(updated.getBody()).contains("\"recipeAdjusted\":true", "\"totalWeightGrams\":200.0");
 		assertThat(baseRecipe.getBody()).contains("\"quantity\":100.00");
 		assertThat(dashboard.getBody()).contains("\"recipeAdjusted\":true", "\"recipeAdjusted\":false");
