@@ -63,4 +63,5 @@ public class AppUser {
     private String planName = "Premium";
     private String nutritionStyle = "Balanceado";
     private OffsetDateTime createdAt = OffsetDateTime.now();
+    private OffsetDateTime deletedAt;
 }

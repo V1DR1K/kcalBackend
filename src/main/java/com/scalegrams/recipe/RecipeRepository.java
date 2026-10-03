@@ -12,20 +12,22 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface RecipeRepository extends JpaRepository<Recipe, Long> {
-    Page<Recipe> findBySearchNameContaining(String name, Pageable pageable);
+    Page<Recipe> findBySearchNameContainingAndDeletedAtIsNull(String name, Pageable pageable);
 
-    Page<Recipe> findAll(Pageable pageable);
+    Page<Recipe> findAllByDeletedAtIsNull(Pageable pageable);
 
-    Page<Recipe> findByCreatedById(Long createdById, Pageable pageable);
+    Page<Recipe> findByCreatedByIdAndDeletedAtIsNull(Long createdById, Pageable pageable);
 
-    Page<Recipe> findByCreatedByIdAndSearchNameContaining(Long createdById, String name, Pageable pageable);
+    Page<Recipe> findByCreatedByIdAndSearchNameContainingAndDeletedAtIsNull(Long createdById, String name, Pageable pageable);
 
-    @Query("select r.createdBy from Recipe r where r.createdBy.id <> :userId order by r.createdBy.fullName asc, r.createdBy.id asc")
+    @Query("select distinct r.createdBy from Recipe r where r.createdBy.id <> :userId and r.deletedAt is null " +
+            "and r.createdBy.deletedAt is null order by r.createdBy.fullName asc, r.createdBy.id asc")
     List<AppUser> findAuthorsExcluding(@Param("userId") Long userId);
 
     @Query("""
             select r.createdBy.id as ownerId, r.createdBy.fullName as ownerName, count(r) as recipeCount
             from Recipe r where r.createdBy is not null and r.createdBy.id <> :userId
+              and r.deletedAt is null and r.createdBy.deletedAt is null
             group by r.createdBy.id, r.createdBy.fullName
             order by r.createdBy.fullName asc, r.createdBy.id asc
             """)
@@ -52,4 +54,7 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     @Override
     @EntityGraph(attributePaths = {"ingredients", "ingredients.food", "ingredients.ingredientRecipe"})
     Optional<Recipe> findById(Long id);
+
+    @EntityGraph(attributePaths = {"ingredients", "ingredients.food", "ingredients.ingredientRecipe"})
+    Optional<Recipe> findByIdAndDeletedAtIsNull(Long id);
 }

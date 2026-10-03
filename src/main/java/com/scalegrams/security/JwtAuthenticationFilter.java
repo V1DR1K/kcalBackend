@@ -46,6 +46,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             UUID authUserId = jwtService.subject(token);
             if (SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserPrincipal userDetails = users.findByAuthUserId(authUserId)
+                        .filter(user -> user.getDeletedAt() == null)
                         .map(UserPrincipal::new)
                         .orElseThrow(() -> new IllegalArgumentException("Usuario local no provisionado."));
                 var auth = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());

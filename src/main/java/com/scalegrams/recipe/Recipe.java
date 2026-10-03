@@ -63,6 +63,7 @@ public class Recipe {
 
     private OffsetDateTime createdAt = OffsetDateTime.now();
     private OffsetDateTime updatedAt = OffsetDateTime.now();
+    private OffsetDateTime deletedAt;
 
     @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true)
     @BatchSize(size = 50)

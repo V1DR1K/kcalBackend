@@ -80,6 +80,9 @@ public class AuthService {
         if (user.getAuthUserId() != null && !user.getAuthUserId().equals(authUserId)) {
             throw new BadRequestException("La cuenta local ya está vinculada a otro usuario central.");
         }
+        if (user.getDeletedAt() != null) {
+            throw new BadRequestException("Esta cuenta fue desactivada.");
+        }
         boolean newUser = user.getId() == null;
         user.setAuthUserId(authUserId);
         user.setPasswordHash(null);

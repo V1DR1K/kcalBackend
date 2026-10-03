@@ -407,7 +407,7 @@ public class NutritionService {
 
     @Transactional(readOnly = true)
     public FoodResponse findFood(Long id) {
-        return toFoodResponse(getFood(id));
+        return toFoodResponse(getActiveFood(id));
     }
 
     @Transactional(readOnly = true)
@@ -633,8 +633,8 @@ public class NutritionService {
             if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
         }
         Page<Recipe> result = !query.isBlank()
-                ? recipes.findBySearchNameContaining(query, pageable)
-                : recipes.findAll(pageable);
+                ? recipes.findBySearchNameContainingAndDeletedAtIsNull(query, pageable)
+                : recipes.findAllByDeletedAtIsNull(pageable);
         return recipeSummaryPage(result);
     }
 
@@ -643,8 +643,8 @@ public class NutritionService {
         Pageable pageable = recipePageable(page, size);
         query = SearchTextNormalizer.normalize(query);
         Page<Recipe> result = hasRecipeQuery(query)
-                ? recipes.findByCreatedByIdAndSearchNameContaining(user.getId(), query, pageable)
-                : recipes.findByCreatedById(user.getId(), pageable);
+                ? recipes.findByCreatedByIdAndSearchNameContainingAndDeletedAtIsNull(user.getId(), query, pageable)
+                : recipes.findByCreatedByIdAndDeletedAtIsNull(user.getId(), pageable);
         return recipeSummaryPage(result);
     }
 
@@ -660,14 +660,16 @@ public class NutritionService {
         Pageable pageable = recipePageable(page, size);
         query = SearchTextNormalizer.normalize(query);
         Page<Recipe> result = hasRecipeQuery(query)
-                ? recipes.findByCreatedByIdAndSearchNameContaining(ownerId, query, pageable)
-                : recipes.findByCreatedById(ownerId, pageable);
+                ? recipes.findByCreatedByIdAndSearchNameContainingAndDeletedAtIsNull(ownerId, query, pageable)
+                : recipes.findByCreatedByIdAndDeletedAtIsNull(ownerId, pageable);
         return recipeSummaryPage(result);
     }
 
     @Transactional(readOnly = true)
     public RecipeResponse findRecipe(Long id) {
-        return toRecipeResponse(getRecipe(id));
+        Recipe recipe = recipes.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new NotFoundException("Receta no encontrada."));
+        return toRecipeResponse(recipe);
     }
 
     @Transactional
@@ -873,7 +875,7 @@ public class NutritionService {
 
     @Transactional
     public RecipeResponse copyRecipe(AppUser user, Long id, Set<Long> acknowledged) {
-        Recipe source = getRecipe(id);
+        Recipe source = getActiveRecipe(id);
         checkArchived(recipeFoods(source, new LinkedHashSet<>()), acknowledged);
         Recipe copy = new Recipe();
         copy.setName(source.getName());
@@ -900,7 +902,7 @@ public class NutritionService {
 
     @Transactional
     public RecipeResponse updateOwnedRecipe(AppUser user, Long id, CreateRecipeRequest request) {
-        Recipe recipe = getRecipe(id);
+        Recipe recipe = getActiveRecipe(id);
         if (recipe.getCreatedBy() == null || !recipe.getCreatedBy().getId().equals(user.getId())) {
             throw new BadRequestException("Solo podes editar recetas creadas por vos.");
         }
@@ -917,7 +919,7 @@ public class NutritionService {
 
     @Transactional
     public void deleteOwnedRecipe(AppUser user, Long id) {
-        Recipe recipe = getRecipe(id);
+        Recipe recipe = getActiveRecipe(id);
         if (recipe.getCreatedBy() == null || !recipe.getCreatedBy().getId().equals(user.getId())) {
             throw new BadRequestException("Solo podes borrar recetas creadas por vos.");
         }
@@ -938,7 +940,7 @@ public class NutritionService {
             if (item.foodId() != null) {
                 ingredient.setFood(allowDeletedFoods ? getFood(item.foodId()) : getActiveFood(item.foodId()));
             } else {
-                Recipe ingredientRecipe = getRecipe(item.recipeId());
+                Recipe ingredientRecipe = getActiveRecipe(item.recipeId());
                 validateRecipeIngredient(recipe, ingredientRecipe, item.unit());
                 ingredient.setIngredientRecipe(ingredientRecipe);
             }
@@ -1003,7 +1005,7 @@ public class NutritionService {
             if (item.foodId() != null) {
                 ingredient.setFood(getFood(item.foodId()));
             } else {
-                Recipe ingredientRecipe = getRecipe(item.recipeId());
+                Recipe ingredientRecipe = getActiveRecipe(item.recipeId());
                 validateRecipeIngredient(recipe, ingredientRecipe, item.unit());
                 ingredient.setIngredientRecipe(ingredientRecipe);
             }
@@ -1037,7 +1039,7 @@ public class NutritionService {
             preview = preview(food, request.quantity(), request.unit());
             log.setFood(food);
         } else if (request.itemType() == MealItemType.RECIPE) {
-            Recipe recipe = getRecipe(request.itemId());
+            Recipe recipe = getActiveRecipe(request.itemId());
             validateRecipeLogUnit(request.unit(), recipe.getCookedTotalWeightGrams(), false);
             preview = previewRecipeServing(recipe, request.quantity(), request.unit(), recipe.getCookedTotalWeightGrams());
             log.setRecipe(recipe);
@@ -1240,7 +1242,7 @@ public class NutritionService {
     @Transactional
     public FoodLogResponse addRecipeMealLog(AppUser user, AddRecipeMealLogRequest request) {
         checkArchived(ingredientFoods(request.ingredients()), request.acknowledgedArchivedFoodIds());
-        Recipe recipe = getRecipe(request.recipeId());
+        Recipe recipe = getActiveRecipe(request.recipeId());
         FoodLog log = new FoodLog();
         log.setUser(user);
         log.setItemType(MealItemType.RECIPE);
@@ -1682,10 +1684,10 @@ public class NutritionService {
         return recipe.getIngredients().stream().flatMap(item -> item.getFood() != null ? java.util.stream.Stream.of(item.getFood()) : recipeFoods(item.getIngredientRecipe(), visited).stream()).toList();
     }
     private List<Food> ingredientFoods(List<RecipeIngredientRequest> ingredients) {
-        return ingredients.stream().flatMap(item -> item.foodId() != null ? java.util.stream.Stream.of(getFood(item.foodId())) : recipeFoods(getRecipe(item.recipeId()), new LinkedHashSet<>()).stream()).toList();
+        return ingredients.stream().flatMap(item -> item.foodId() != null ? java.util.stream.Stream.of(getFood(item.foodId())) : recipeFoods(getActiveRecipe(item.recipeId()), new LinkedHashSet<>()).stream()).toList();
     }
     private List<Food> itemFoods(MealItemType type, Long id) {
-        return type == MealItemType.FOOD ? List.of(getFood(id)) : type == MealItemType.RECIPE ? recipeFoods(getRecipe(id), new LinkedHashSet<>()) : List.of();
+        return type == MealItemType.FOOD ? List.of(getFood(id)) : type == MealItemType.RECIPE ? recipeFoods(getActiveRecipe(id), new LinkedHashSet<>()) : List.of();
     }
     private List<Food> templateFoods(List<DayPresetItemRequest> items) {
         return items.stream().flatMap(item -> itemFoods(item.itemType(), item.itemId()).stream()).toList();
@@ -1709,8 +1711,9 @@ public class NutritionService {
         return food;
     }
 
-    private Recipe getRecipe(Long recipeId) {
-        return recipes.findById(recipeId).orElseThrow(() -> new NotFoundException("Receta no encontrada."));
+    private Recipe getActiveRecipe(Long recipeId) {
+        return recipes.findByIdAndDeletedAtIsNull(recipeId)
+                .orElseThrow(() -> new NotFoundException("Receta no encontrada."));
     }
 
     @Transactional(readOnly = true)
