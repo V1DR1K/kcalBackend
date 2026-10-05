@@ -30,6 +30,7 @@ for attempt in $(seq 1 12); do
   health="$(curl --fail --silent https://scalegrams.neticar.com.ar/api/health || true)"
   version="$(curl --fail --silent https://scalegrams.neticar.com.ar/api/version || true)"
   if grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' <<<"$health" && grep -Fq "$revision" <<<"$version"; then
+    /opt/infra/bin/update-repository-images || printf "Warning: repository image snapshot was not refreshed.\n" >&2
     printf 'API healthy; published revision %s; backup %s\n' "$revision" "$backup"
     exit 0
   fi
