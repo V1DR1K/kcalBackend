@@ -1,6 +1,6 @@
 # Backend architecture status
 
-See `../PROJECT_STATUS.md` for the complete operational report.
+This file is the current operational architecture summary for the backend. The cross-repository cleanup guide is maintained in `kcalFrontend/docs/INFORME_AUDITORIA_CALIDAD.md`.
 
 The backend is organized by business domain. Food and recipe catalogs return bounded pages with stable ordering. Any new unbounded collection endpoint must implement pagination before release.
 

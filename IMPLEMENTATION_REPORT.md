@@ -1,5 +1,7 @@
 # Informe de implementacion - ScaleGrams backend
 
+> Documento historico de la etapa inicial del proyecto. La descripcion del frontend como prototipo estatico ya no refleja el estado actual; para instrucciones vigentes, consultar `README.md` y `ARCHITECTURE_STATUS.md`.
+
 ## Escaneo del frontend
 
 El cliente frontend contiene prototipos HTML estaticos generados desde Google Stitch. No habia integracion real con API (`fetch`, `axios` o storage persistente), por lo que se infirieron contratos desde campos, botones, textos y datos visibles de cada vista.
