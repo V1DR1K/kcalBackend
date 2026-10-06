@@ -3,10 +3,12 @@ package com.scalegrams;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 
 /** Production database and migrations are mandatory for persistence regressions. */
 public abstract class PostgresTestSupport {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
+    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
+            DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
     static { POSTGRES.start(); }
 
     @DynamicPropertySource

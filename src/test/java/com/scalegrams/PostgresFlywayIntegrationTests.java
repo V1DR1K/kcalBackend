@@ -32,7 +32,7 @@ class PostgresFlywayIntegrationTests extends PostgresTestSupport {
 
     @Test
     void appliesAllPostgresMigrationsAndKeepsTheProductionConstraints() {
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("48");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("50");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'food' AND column_name = 'nutrition_fingerprint'", Integer.class))
                 .isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'uq_food_active_ai_identity'", Integer.class))
@@ -68,7 +68,7 @@ class PostgresFlywayIntegrationTests extends PostgresTestSupport {
             Flyway latest = Flyway.configure().dataSource(dataSource).schemas(schema).defaultSchema(schema)
                     .locations("classpath:db/migration").load();
             latest.migrate(); latest.validate();
-            assertThat(latest.info().current().getVersion().getVersion()).isEqualTo("48");
+            assertThat(latest.info().current().getVersion().getVersion()).isEqualTo("50");
             assertThat(legacy.queryForObject("select status from nutrition_plan where name='V43 active'", String.class)).isEqualTo("SCHEDULED");
             assertThat(legacy.queryForObject("select status from nutrition_plan where name='V43 archived'", String.class)).isEqualTo("ARCHIVED");
             assertThat(legacy.queryForObject("select end_date from nutrition_plan where name='V43 active'", LocalDate.class)).isEqualTo(LocalDate.of(2027,12,31));
