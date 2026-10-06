@@ -63,19 +63,22 @@ public class TrainingController {
     private final TrainingService trainingService;
     private final TrainingCardioService cardioService;
     private final TrainingPlanService trainingPlanService;
+    private final TrainingCatalogService trainingCatalogService;
     private final CurrentUser currentUser;
 
     public TrainingController(TrainingService trainingService, TrainingCardioService cardioService,
-            TrainingPlanService trainingPlanService, CurrentUser currentUser) {
+            TrainingPlanService trainingPlanService, TrainingCatalogService trainingCatalogService,
+            CurrentUser currentUser) {
         this.trainingService = trainingService;
         this.cardioService = cardioService;
         this.trainingPlanService = trainingPlanService;
+        this.trainingCatalogService = trainingCatalogService;
         this.currentUser = currentUser;
     }
 
     @GetMapping("/modules")
     List<TrainingModuleResponse> modules() {
-        return trainingService.modules();
+        return trainingCatalogService.modules();
     }
 
     @GetMapping("/cardio")
@@ -142,24 +145,24 @@ public class TrainingController {
             @RequestParam(required = false) TrainingModule module, @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "false") boolean includeInactive,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
-        return trainingService.categories(currentUser.from(authentication), q, module, includeInactive, page, size);
+        return trainingCatalogService.categories(currentUser.from(authentication), q, module, includeInactive, page, size);
     }
 
     @PostMapping("/categories")
     TrainingCategoryResponse createCategory(Authentication authentication,
             @Valid @RequestBody UpsertTrainingCategoryRequest request) {
-        return trainingService.createCategory(currentUser.from(authentication), request);
+        return trainingCatalogService.createCategory(currentUser.from(authentication), request);
     }
 
     @PutMapping("/categories/{id}")
     TrainingCategoryResponse updateCategory(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody UpsertTrainingCategoryRequest request) {
-        return trainingService.updateCategory(currentUser.from(authentication), id, request);
+        return trainingCatalogService.updateCategory(currentUser.from(authentication), id, request);
     }
 
     @DeleteMapping("/categories/{id}")
     ResponseEntity<Void> deleteCategory(Authentication authentication, @PathVariable Long id) {
-        trainingService.deleteCategory(currentUser.from(authentication), id);
+        trainingCatalogService.deleteCategory(currentUser.from(authentication), id);
         return ResponseEntity.noContent().build();
     }
 
@@ -172,30 +175,30 @@ public class TrainingController {
             @RequestParam(required = false) TrainingRegistrationType registrationType,
             @RequestParam(defaultValue = "false") boolean includeInactive,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
-        return trainingService.exercises(currentUser.from(authentication), q, module, categoryId, category, equipment,
+        return trainingCatalogService.exercises(currentUser.from(authentication), q, module, categoryId, category, equipment,
                 difficulty, registrationType, includeInactive, page, size);
     }
 
     @GetMapping("/exercises/{id}")
     TrainingExerciseResponse exercise(Authentication authentication, @PathVariable Long id) {
-        return trainingService.exercise(currentUser.from(authentication), id);
+        return trainingCatalogService.exercise(currentUser.from(authentication), id);
     }
 
     @PostMapping("/exercises")
     TrainingExerciseResponse createExercise(Authentication authentication,
             @Valid @RequestBody UpsertExerciseRequest request) {
-        return trainingService.createExercise(currentUser.from(authentication), request);
+        return trainingCatalogService.createExercise(currentUser.from(authentication), request);
     }
 
     @PutMapping("/exercises/{id}")
     TrainingExerciseResponse updateExercise(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody UpsertExerciseRequest request) {
-        return trainingService.updateExercise(currentUser.from(authentication), id, request);
+        return trainingCatalogService.updateExercise(currentUser.from(authentication), id, request);
     }
 
     @DeleteMapping("/exercises/{id}")
     ResponseEntity<Void> deleteExercise(Authentication authentication, @PathVariable Long id) {
-        trainingService.deleteExercise(currentUser.from(authentication), id);
+        trainingCatalogService.deleteExercise(currentUser.from(authentication), id);
         return ResponseEntity.noContent().build();
     }
 
