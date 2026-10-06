@@ -22,8 +22,24 @@ if [[ ! -f "$backup/READY" ]]; then
   mv "$backup/api-image.tar.gz.tmp" "$backup/api-image.tar.gz"
   docker ps --format '{{.Names}} {{.Image}} {{.ID}}' | grep scalegrams > "$backup/previous-containers.txt"
   printf '%s\n' "$api_image" > "$backup/api-image-id.txt"
-  curl --fail --silent --show-error https://scalegrams.neticar.com.ar/api/version > "$backup/previous-api-version.json"
+  if ! curl --fail --silent --show-error https://scalegrams.neticar.com.ar/api/version > "$backup/previous-api-version.json"; then
+    printf '{"status":"unavailable"}\n' > "$backup/previous-api-version.json"
+  fi
   touch "$backup/READY"
+fi
+# The API deployer only replaces the app service; refresh Postgres so V50 can load pgvector.
+"${compose[@]}" pull postgres
+"${compose[@]}" up -d --no-deps postgres
+postgres_id="$("${compose[@]}" ps -q postgres)"
+for attempt in $(seq 1 30); do
+  postgres_health="$(docker inspect --format '{{.State.Health.Status}}' "$postgres_id" 2>/dev/null || true)"
+  [[ "$postgres_health" == "healthy" ]] && break
+  sleep 2
+done
+if [[ "$postgres_health" != "healthy" ]]; then
+  docker logs --tail 100 "$postgres_id" >&2 || true
+  printf 'PostgreSQL did not become healthy after updating its image. Backup: %s\n' "$backup" >&2
+  exit 1
 fi
 GIT_HASH="$revision" /opt/infra/bin/deploy-service scalegrams api
 for attempt in $(seq 1 12); do
