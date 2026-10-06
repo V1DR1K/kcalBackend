@@ -8,11 +8,33 @@ compose=(docker compose -f docker-compose.prod.yml)
 postgres_id="$("${compose[@]}" ps -q postgres)"
 api_id="$("${compose[@]}" ps -q app)"
 test -n "$postgres_id" && test -n "$api_id"
+container_value() {
+  docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$1" \
+    | sed -n "s/^$2=//p" | head -n 1
+}
+POSTGRES_USER="${POSTGRES_USER:-$(container_value "$postgres_id" POSTGRES_USER)}"
+POSTGRES_DB="${POSTGRES_DB:-$(container_value "$postgres_id" POSTGRES_DB)}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(container_value "$postgres_id" POSTGRES_PASSWORD)}"
+POSTGRES_USER="${POSTGRES_USER:-$(container_value "$api_id" SPRING_DATASOURCE_USERNAME)}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(container_value "$api_id" SPRING_DATASOURCE_PASSWORD)}"
+if [[ -z "$POSTGRES_DB" ]]; then
+  datasource_url="$(container_value "$api_id" SPRING_DATASOURCE_URL)"
+  if [[ "$datasource_url" =~ ^jdbc:postgresql://[^/]+/([^?]+) ]]; then
+    POSTGRES_DB="${BASH_REMATCH[1]}"
+  fi
+fi
+if [[ -z "$POSTGRES_USER" || -z "$POSTGRES_DB" || -z "$POSTGRES_PASSWORD" ]]; then
+  printf 'PostgreSQL credentials could not be recovered from the running services; deployment stopped before backup.\n' >&2
+  exit 1
+fi
+export POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD
 backup_root="${SCALEGRAMS_BACKUP_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/scalegrams/backups}"
 backup="$backup_root/ux-audit-$revision"
 mkdir -p "$backup"
 if [[ ! -f "$backup/READY" ]]; then
-  docker exec "$postgres_id" sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup/postgres.dump.tmp"
+  docker exec -e POSTGRES_USER="$POSTGRES_USER" -e POSTGRES_DB="$POSTGRES_DB" \
+    -e PGPASSWORD="$POSTGRES_PASSWORD" "$postgres_id" \
+    sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup/postgres.dump.tmp"
   test -s "$backup/postgres.dump.tmp"
   docker exec -i "$postgres_id" pg_restore --list < "$backup/postgres.dump.tmp" > "$backup/postgres.contents"
   mv "$backup/postgres.dump.tmp" "$backup/postgres.dump"
