@@ -873,8 +873,7 @@ public class NutritionService {
     }
 
     private BigDecimal recipeIngredientWeight(Recipe recipe) {
-        BigDecimal weight = recipeIngredientWeight(recipe);
-        return weight;
+        return recipeRawTotalWeight(recipe.getIngredients());
     }
 
     private void addAggregatedIngredient(Map<RecipeIngredientKey, AggregatedRecipeIngredient> target, Food food,
