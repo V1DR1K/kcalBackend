@@ -21,7 +21,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -34,7 +33,8 @@ import com.scalegrams.training.TrainingDtos.CompleteTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.CancelTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.CreateTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.DuplicateTrainingPlanRequest;
-import com.scalegrams.training.TrainingDtos.PageResponse;
+import com.scalegrams.common.PageResponse;
+import com.scalegrams.common.PaginationProperties;
 import com.scalegrams.training.TrainingDtos.ReorderRequest;
 import com.scalegrams.training.TrainingDtos.TrainingCalendarDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingCalendarSessionResponse;
@@ -93,12 +93,14 @@ public class TrainingService {
     private final TrainingCardioRecordRepository cardioRecords;
     private final TrainingCardioServiceEventRepository cardioServices;
     private final com.scalegrams.user.UserRepository users;
+    private final PaginationProperties pagination;
 
     public TrainingService(TrainingExerciseRepository exercises, TrainingCategoryRepository categories, TrainingPlanRepository presets,
             TrainingPlanDayRepository days, TrainingPlanExerciseRepository presetExercises,
             TrainingSessionRepository sessions, TrainingSessionExerciseRepository sessionExercises,
             TrainingSessionBaselineRepository baselines, TrainingCardioRecordRepository cardioRecords,
-            TrainingCardioServiceEventRepository cardioServices, com.scalegrams.user.UserRepository users) {
+            TrainingCardioServiceEventRepository cardioServices, com.scalegrams.user.UserRepository users,
+            PaginationProperties pagination) {
         this.exercises = exercises;
         this.categories = categories;
         this.presets = presets;
@@ -110,6 +112,7 @@ public class TrainingService {
         this.cardioRecords = cardioRecords;
         this.cardioServices = cardioServices;
         this.users = users;
+        this.pagination = pagination;
     }
 
     @Transactional(readOnly = true)
@@ -1907,12 +1910,11 @@ public class TrainingService {
     }
 
     private Pageable page(int page, int size, Sort sort) {
-        return PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50), sort);
+        return pagination.pageRequest(page, size, sort);
     }
 
     private <S, T> PageResponse<T> page(Page<S> page, java.util.function.Function<S, T> mapper) {
-        return new PageResponse<>(page.getContent().stream().map(mapper).toList(), page.getNumber(), page.getSize(),
-                page.getTotalElements(), page.getTotalPages(), page.hasNext());
+        return PageResponse.from(page.map(mapper));
     }
 
     private static Long idOf(Object entity) {

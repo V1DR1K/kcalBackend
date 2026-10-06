@@ -20,7 +20,7 @@ import com.scalegrams.training.TrainingDtos.CompleteTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.CancelTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.CreateTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.DuplicateTrainingPlanRequest;
-import com.scalegrams.training.TrainingDtos.PageResponse;
+import com.scalegrams.common.PageResponse;
 import com.scalegrams.training.TrainingDtos.ReorderRequest;
 import com.scalegrams.training.TrainingDtos.TrainingCalendarDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingCategoryResponse;
@@ -77,7 +77,7 @@ public class TrainingController {
 
     @GetMapping("/cardio")
     PageResponse<CardioRecordResponse> cardio(Authentication authentication,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
         return trainingService.cardio(currentUser.from(authentication), page, size);
     }
 
@@ -102,7 +102,7 @@ public class TrainingController {
     @GetMapping("/cardio/services")
     PageResponse<CardioServiceResponse> cardioServices(Authentication authentication,
             @RequestParam(required = false) TrainingEquipment equipment,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
         return trainingService.cardioServices(currentUser.from(authentication), equipment, page, size);
     }
     @PutMapping("/cardio/services/{id}")
@@ -138,7 +138,7 @@ public class TrainingController {
     PageResponse<TrainingCategoryResponse> categories(Authentication authentication,
             @RequestParam(required = false) TrainingModule module, @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "false") boolean includeInactive,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
         return trainingService.categories(currentUser.from(authentication), q, module, includeInactive, page, size);
     }
 
@@ -168,7 +168,7 @@ public class TrainingController {
             @RequestParam(required = false) TrainingDifficulty difficulty,
             @RequestParam(required = false) TrainingRegistrationType registrationType,
             @RequestParam(defaultValue = "false") boolean includeInactive,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
         return trainingService.exercises(currentUser.from(authentication), q, module, categoryId, category, equipment,
                 difficulty, registrationType, includeInactive, page, size);
     }
@@ -200,7 +200,7 @@ public class TrainingController {
     PageResponse<LegacyTrainingPlanResponse> presets(Authentication authentication,
             @RequestParam(required = false) TrainingModule module,
             @RequestParam(defaultValue = "false") boolean includeInactive,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
         return trainingService.presets(currentUser.from(authentication), module, includeInactive, page, size);
     }
 
@@ -208,7 +208,7 @@ public class TrainingController {
     PageResponse<TrainingPlanResponse> plans(Authentication authentication,
             @RequestParam(required = false) TrainingModule module,
             @RequestParam(defaultValue = "false") boolean includeInactive,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
         return trainingPlanService.search(currentUser.from(authentication), module, includeInactive, page, size);
     }
 
@@ -345,7 +345,7 @@ public class TrainingController {
             @RequestParam(required = false) TrainingSessionStatus status,
             @RequestParam(required = false) Long planId, @RequestParam(required = false) Long planDayId,
             @RequestParam(required = false) Long presetId, @RequestParam(required = false) Long trainingDayId,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
         return trainingService.sessions(currentUser.from(authentication), from, to, date, module, status,
                 planId != null ? planId : presetId, planDayId != null ? planDayId : trainingDayId, page, size);
     }

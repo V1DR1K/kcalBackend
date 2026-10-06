@@ -16,7 +16,7 @@ import com.scalegrams.common.CurrentUser;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeRequest;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeFromMealRequest;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewResponse;
-import com.scalegrams.nutrition.NutritionDtos.PageResponse;
+import com.scalegrams.common.PageResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeOwnerResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeFromMealResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeResponse;
@@ -37,7 +37,7 @@ public class RecipeController {
     @GetMapping
     PageResponse<RecipeResponse> search(@RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
         return recipeService.search(q, page, size);
     }
 
@@ -48,7 +48,7 @@ public class RecipeController {
 
     @GetMapping("/mine")
     PageResponse<RecipeResponse> mine(Authentication authentication, @RequestParam(required = false) String q,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
         return recipeService.searchOwned(currentUser.from(authentication), q, page, size);
     }
 
@@ -59,7 +59,7 @@ public class RecipeController {
 
     @GetMapping("/explore/users/{ownerId}")
     PageResponse<RecipeResponse> byAuthor(@PathVariable Long ownerId, @RequestParam(required = false) String q,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
         return recipeService.searchByOwner(ownerId, q, page, size);
     }
 

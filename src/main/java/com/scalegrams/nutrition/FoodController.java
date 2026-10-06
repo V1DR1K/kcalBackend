@@ -21,7 +21,7 @@ import com.scalegrams.nutrition.NutritionDtos.FoodResponse;
 import com.scalegrams.nutrition.NutritionDtos.FoodSummaryResponse;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewRequest;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewResponse;
-import com.scalegrams.nutrition.NutritionDtos.PageResponse;
+import com.scalegrams.common.PageResponse;
 import com.scalegrams.nutrition.NutritionDtos.NutrientUpdateRequest;
 
 import jakarta.validation.Valid;
@@ -41,7 +41,7 @@ public class FoodController {
     PageResponse<FoodSummaryResponse> search(@RequestParam(required = false) String q,
             @RequestParam(required = false) FoodCategory category,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
         return nutritionService.searchFoods(q, category, page, size);
     }
 

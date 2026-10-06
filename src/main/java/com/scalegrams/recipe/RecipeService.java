@@ -8,7 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeFromMealRequest;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeRequest;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewResponse;
-import com.scalegrams.nutrition.NutritionDtos.PageResponse;
+import com.scalegrams.common.PageResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeFromMealResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeOwnerResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeResponse;

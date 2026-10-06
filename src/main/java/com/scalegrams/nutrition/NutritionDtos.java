@@ -84,9 +84,6 @@ public class NutritionDtos {
         }
     }
 
-    public record PageResponse<T>(List<T> items, int page, int size, long totalElements, int totalPages, boolean hasNext) {
-    }
-
     public record CreateFoodRequest(
             @NotBlank @Size(min = 2, max = 120) String name,
             @Size(max = 120) String brand,

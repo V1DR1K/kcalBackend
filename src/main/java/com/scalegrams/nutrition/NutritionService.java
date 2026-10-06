@@ -82,7 +82,8 @@ import com.scalegrams.nutrition.NutritionDtos.UpdateDayPresetRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeLogIngredientsRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.SaveAiEstimateItemRequest;
-import com.scalegrams.nutrition.NutritionDtos.PageResponse;
+import com.scalegrams.common.PageResponse;
+import com.scalegrams.common.PaginationProperties;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientRequest;
 import com.scalegrams.nutrition.NutritionDtos.RecipeReferenceResponse;
@@ -118,6 +119,7 @@ public class NutritionService {
     private final FoodSemanticSearchService semanticFoods;
     private final JdbcTemplate jdbcTemplate;
     private final boolean postgres;
+    private final PaginationProperties pagination;
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
             DayPresetRepository dayPresets,
@@ -125,6 +127,7 @@ public class NutritionService {
             ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper,
             NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda, AiFoodMatcher aiFoodMatcher,
             JdbcTemplate jdbcTemplate, FoodSemanticSearchService semanticFoods,
+            PaginationProperties pagination,
             @Value("${spring.datasource.driver-class-name:org.postgresql.Driver}") String driver) {
         this.foods = foods;
         this.recipes = recipes;
@@ -138,6 +141,7 @@ public class NutritionService {
         this.aiFoodMatcher = aiFoodMatcher;
         this.semanticFoods = semanticFoods;
         this.jdbcTemplate = jdbcTemplate;
+        this.pagination = pagination;
         this.postgres = driver.toLowerCase().contains("postgres");
     }
 
@@ -265,14 +269,14 @@ public class NutritionService {
 
     @Transactional
     public PageResponse<FoodSummaryResponse> searchFoods(String query, FoodCategory category, int page, int size) {
-        int normalizedPage = Math.max(0, page);
-        int normalizedSize = Math.min(Math.max(size, 1), 50);
-        Pageable pageable = PageRequest.of(normalizedPage, normalizedSize,
+        int normalizedPage = pagination.normalizePage(page);
+        int normalizedSize = pagination.normalizeSize(size);
+        Pageable pageable = pagination.pageRequest(page, size,
                 Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
         Page<Food> result;
         query = SearchTextNormalizer.normalize(query);
         boolean hasQuery = !query.isBlank();
-        if (hasQuery) pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50));
+        if (hasQuery) pageable = pagination.pageRequest(page, size, Sort.unsorted());
         if (hasQuery) {
             if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
             if (query.length() < 2) return page(new org.springframework.data.domain.PageImpl<>(List.of(), pageable, 0));
@@ -700,7 +704,7 @@ public class NutritionService {
 
     @Transactional(readOnly = true)
     public PageResponse<RecipeResponse> searchRecipes(String query, int page, int size) {
-        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
+        Pageable pageable = pagination.pageRequest(page, size,
                 Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
         query = SearchTextNormalizer.normalize(query);
         if (!query.isBlank()) {
@@ -1059,7 +1063,7 @@ public class NutritionService {
     }
 
     private Pageable recipePageable(int page, int size) {
-        return PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
+        return pagination.pageRequest(page, size,
                 Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
     }
 
@@ -2302,7 +2306,7 @@ public class NutritionService {
     }
 
     private static <T> PageResponse<T> page(Page<T> page) {
-        return new PageResponse<>(page.getContent(), page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages(), page.hasNext());
+        return PageResponse.from(page);
     }
 
     private static BigDecimal sumResponses(List<FoodLogResponse> logs, java.util.function.Function<FoodLogResponse, BigDecimal> mapper) {

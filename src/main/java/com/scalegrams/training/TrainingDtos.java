@@ -62,10 +62,6 @@ public class TrainingDtos {
             boolean editable, boolean active, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
     }
 
-    public record PageResponse<T>(List<T> items, int page, int size, long totalElements, int totalPages,
-            boolean hasNext) {
-    }
-
     public record UpsertExerciseRequest(
             @NotBlank @Size(max = 120) String name,
             @Size(max = 1000) String description,

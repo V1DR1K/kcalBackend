@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.scalegrams.training.TrainingDtos.DuplicateTrainingPlanRequest;
-import com.scalegrams.training.TrainingDtos.PageResponse;
+import com.scalegrams.common.PageResponse;
 import com.scalegrams.training.TrainingDtos.SkipTrainingPlanSessionRequest;
 import com.scalegrams.training.TrainingModule;
 import com.scalegrams.training.TrainingDtos.TrainingPlanDetailResponse;

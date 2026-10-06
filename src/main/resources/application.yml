@@ -43,6 +43,9 @@ server:
     enabled: ${SERVER_SSL_ENABLED:false}
 
 app:
+  pagination:
+    default-size: ${APP_PAGINATION_DEFAULT_SIZE:20}
+    max-size: ${APP_PAGINATION_MAX_SIZE:50}
   security:
     public-prometheus: ${APP_SECURITY_PUBLIC_PROMETHEUS:false}
   email:
