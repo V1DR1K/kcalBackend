@@ -1,5 +1,7 @@
 package com.scalegrams.nutrition;
 
+import java.time.Duration;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -17,4 +19,6 @@ public class AiNutritionProperties {
     private int maxImageBytes = 5_242_880;
     private int maxAudioBytes = 2_097_152;
     private int dailyLimit = 99;
+    private Duration connectTimeout = Duration.ofSeconds(5);
+    private Duration readTimeout = Duration.ofSeconds(45);
 }

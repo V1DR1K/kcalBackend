@@ -81,7 +81,6 @@ import com.scalegrams.user.AppUser;
 @Service
 public class TrainingService {
     private static final BigDecimal STEP_LENGTH_FACTOR = new BigDecimal("0.415");
-    private static final ZoneId DEFAULT_TIME_ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
     private final TrainingExerciseRepository exercises;
     private final TrainingCategoryRepository categories;
     private final TrainingPlanRepository presets;
@@ -94,13 +93,14 @@ public class TrainingService {
     private final TrainingCardioServiceEventRepository cardioServices;
     private final com.scalegrams.user.UserRepository users;
     private final PaginationProperties pagination;
+    private final ZoneId defaultTimeZone;
 
     public TrainingService(TrainingExerciseRepository exercises, TrainingCategoryRepository categories, TrainingPlanRepository presets,
             TrainingPlanDayRepository days, TrainingPlanExerciseRepository presetExercises,
             TrainingSessionRepository sessions, TrainingSessionExerciseRepository sessionExercises,
             TrainingSessionBaselineRepository baselines, TrainingCardioRecordRepository cardioRecords,
             TrainingCardioServiceEventRepository cardioServices, com.scalegrams.user.UserRepository users,
-            PaginationProperties pagination) {
+            PaginationProperties pagination, TrainingProperties trainingProperties) {
         this.exercises = exercises;
         this.categories = categories;
         this.presets = presets;
@@ -113,6 +113,7 @@ public class TrainingService {
         this.cardioServices = cardioServices;
         this.users = users;
         this.pagination = pagination;
+        this.defaultTimeZone = ZoneId.of(trainingProperties.getDefaultTimeZone());
     }
 
     @Transactional(readOnly = true)
@@ -1793,11 +1794,11 @@ public class TrainingService {
     }
 
     private ZoneId resolveTimeZone(String value) {
-        if (value == null || value.isBlank()) return DEFAULT_TIME_ZONE;
+        if (value == null || value.isBlank()) return defaultTimeZone;
         try {
             return ZoneId.of(value);
         } catch (DateTimeException ignored) {
-            return DEFAULT_TIME_ZONE;
+            return defaultTimeZone;
         }
     }
 

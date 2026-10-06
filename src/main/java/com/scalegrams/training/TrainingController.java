@@ -130,7 +130,7 @@ public class TrainingController {
     @GetMapping("/cardio/weekly")
     WeeklyCardioSummaryResponse cardioWeekly(Authentication authentication,
             @RequestParam(required = false) LocalDate date,
-            @RequestParam(required = false, defaultValue = "America/Argentina/Buenos_Aires") String timeZone) {
+            @RequestParam(required = false, defaultValue = "${app.training.default-time-zone:America/Argentina/Buenos_Aires}") String timeZone) {
         return trainingService.cardioWeekly(currentUser.from(authentication), date, timeZone);
     }
 
@@ -393,7 +393,7 @@ public class TrainingController {
 
     @GetMapping("/dashboard")
     TrainingDashboardResponse dashboard(Authentication authentication, @RequestParam(required = false) LocalDate date,
-            @RequestParam(required = false, defaultValue = "America/Argentina/Buenos_Aires") String timeZone) {
+            @RequestParam(required = false, defaultValue = "${app.training.default-time-zone:America/Argentina/Buenos_Aires}") String timeZone) {
         return trainingService.dashboard(currentUser.from(authentication), date, timeZone);
     }
 }

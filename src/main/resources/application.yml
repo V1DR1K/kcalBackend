@@ -46,12 +46,17 @@ app:
   pagination:
     default-size: ${APP_PAGINATION_DEFAULT_SIZE:20}
     max-size: ${APP_PAGINATION_MAX_SIZE:50}
+  training:
+    default-time-zone: ${APP_TRAINING_DEFAULT_TIME_ZONE:America/Argentina/Buenos_Aires}
   security:
     public-prometheus: ${APP_SECURITY_PUBLIC_PROMETHEUS:false}
   email:
     from: ${APP_EMAIL_FROM:}
   auth:
     service-url: ${AUTH_SERVICE_URL:http://localhost:8080}
+    client:
+      connect-timeout: ${AUTH_SERVICE_CONNECT_TIMEOUT:3s}
+      read-timeout: ${AUTH_SERVICE_READ_TIMEOUT:8s}
     public-key-pem: ${AUTH_PUBLIC_KEY_PEM:}
     default-role: ${AUTH_DEFAULT_ROLE:USER}
     cookies:
@@ -78,6 +83,8 @@ app:
     max-image-bytes: ${AI_NUTRITION_MAX_IMAGE_BYTES:5242880}
     max-audio-bytes: ${AI_NUTRITION_MAX_AUDIO_BYTES:2097152}
     daily-limit: ${AI_NUTRITION_DAILY_LIMIT:99}
+    connect-timeout: ${AI_NUTRITION_CONNECT_TIMEOUT:5s}
+    read-timeout: ${AI_NUTRITION_READ_TIMEOUT:45s}
   semantic-search:
     enabled: ${SEMANTIC_SEARCH_ENABLED:true}
     embedding-model: ${FOOD_EMBEDDING_MODEL:gemini-embedding-2}

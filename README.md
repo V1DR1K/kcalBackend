@@ -52,6 +52,13 @@ Variables utiles:
 - `APP_CATALOG_IMPORT_PAGES_PER_BRAND=3`
 - `APP_CATALOG_IMPORT_PAGE_SIZE=100`
 
+Otros ajustes de ejecución configurables por entorno:
+
+- `APP_PAGINATION_DEFAULT_SIZE=20` y `APP_PAGINATION_MAX_SIZE=50` para las colecciones paginadas.
+- `APP_TRAINING_DEFAULT_TIME_ZONE=America/Argentina/Buenos_Aires` para fechas de entrenamiento.
+- `AUTH_SERVICE_CONNECT_TIMEOUT=3s` y `AUTH_SERVICE_READ_TIMEOUT=8s` para Auth central.
+- `AI_NUTRITION_CONNECT_TIMEOUT=5s` y `AI_NUTRITION_READ_TIMEOUT=45s` para Gemini.
+
 La importación masiva está desactivada por defecto. Al activarla, procesa marcas por páginas, espera al menos 6 segundos entre búsquedas y actualiza por código de barras sin duplicar productos.
 
 Fuentes: Open Food Facts y USDA FoodData Central. La migración `V20__normalized_nutrients.sql` crea el catálogo extensible de nutrientes, conserva snapshots por registro y deja los alimentos legacy como perfiles parciales.

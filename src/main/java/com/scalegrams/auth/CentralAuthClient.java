@@ -9,7 +9,6 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import java.net.http.HttpClient;
-import java.time.Duration;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.scalegrams.common.BadRequestException;
@@ -18,11 +17,12 @@ import com.scalegrams.common.BadRequestException;
 public class CentralAuthClient {
     private final RestClient client;
 
-    public CentralAuthClient(RestClient.Builder builder, @Value("${app.auth.service-url}") String serviceUrl) {
+    public CentralAuthClient(RestClient.Builder builder, @Value("${app.auth.service-url}") String serviceUrl,
+            AuthClientProperties properties) {
         String baseUrl = serviceUrl.endsWith("/") ? serviceUrl.substring(0, serviceUrl.length() - 1) : serviceUrl;
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(
-                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
-        requestFactory.setReadTimeout(Duration.ofSeconds(8));
+                HttpClient.newBuilder().connectTimeout(properties.getConnectTimeout()).build());
+        requestFactory.setReadTimeout(properties.getReadTimeout());
         this.client = builder.baseUrl(baseUrl).requestFactory(requestFactory).build();
     }
 

@@ -82,9 +82,9 @@ public class GeminiNutritionClient {
     @Autowired
     public GeminiNutritionClient(RestClient.Builder restClientBuilder, ObjectMapper objectMapper,
             AiNutritionProperties properties) {
-        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(properties.getConnectTimeout()).build();
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(Duration.ofSeconds(45));
+        requestFactory.setReadTimeout(properties.getReadTimeout());
         this.restClient = restClientBuilder.requestFactory(requestFactory).build();
         this.objectMapper = objectMapper;
         this.properties = properties;
