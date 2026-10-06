@@ -399,9 +399,47 @@ public class NutritionDtos {
             LocalDate logDate,
             @NotNull @PositiveOrZero Integer confidence,
             boolean addToDiary,
-            @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items, @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds) {
-        public ConfirmAiRegistrationRequest(UUID captureId, String name, String description, MealType mealType, LocalDate logDate, Integer confidence, boolean addToDiary, List<AiEstimateItem> items) { this(captureId, name, description, mealType, logDate, confidence, addToDiary, items, Set.of()); }
+            @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items,
+            @Size(max = 200) Set<@Positive Long> acknowledgedArchivedFoodIds,
+            @Size(max = 12) List<@Valid AiRegistrationResolution> resolutions) {
+        public ConfirmAiRegistrationRequest(UUID captureId, String name, String description, MealType mealType,
+                LocalDate logDate, Integer confidence, boolean addToDiary, List<AiEstimateItem> items,
+                Set<Long> acknowledgedArchivedFoodIds) {
+            this(captureId, name, description, mealType, logDate, confidence, addToDiary, items,
+                    acknowledgedArchivedFoodIds, List.of());
+        }
 
+        public ConfirmAiRegistrationRequest(UUID captureId, String name, String description, MealType mealType,
+                LocalDate logDate, Integer confidence, boolean addToDiary, List<AiEstimateItem> items) {
+            this(captureId, name, description, mealType, logDate, confidence, addToDiary, items, Set.of(), List.of());
+        }
+    }
+
+    public record AiRegistrationMatchesRequest(@NotNull UUID captureId,
+            @NotEmpty @Size(max = 12) List<@Valid AiEstimateItem> items) {
+    }
+
+    public enum AiCatalogChoice {
+        USE_CATALOG,
+        KEEP_ESTIMATE
+    }
+
+    public record AiRegistrationResolution(@NotNull @PositiveOrZero Integer itemIndex,
+            @NotNull AiCatalogChoice choice, @Positive Long foodId) {
+        @AssertTrue(message = "La resolución del alimento no es válida.")
+        public boolean hasFoodIdOnlyWhenUsingCatalog() {
+            return choice == AiCatalogChoice.USE_CATALOG ? foodId != null : foodId == null;
+        }
+    }
+
+    public record AiCatalogFoodMatchResponse(Long foodId, String name, String brand, double similarity,
+            BigDecimal proteinGrams, BigDecimal carbsGrams, BigDecimal fatGrams, boolean macrosDiffer) {
+    }
+
+    public record AiRegistrationItemMatch(int itemIndex, AiCatalogFoodMatchResponse match) {
+    }
+
+    public record AiRegistrationMatchesResponse(List<AiRegistrationItemMatch> items) {
     }
 
     public record AiRegistrationResponse(AiCaptureTarget targetType, FoodResponse food, RecipeResponse recipe,

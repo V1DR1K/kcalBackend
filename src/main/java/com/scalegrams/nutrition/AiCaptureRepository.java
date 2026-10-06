@@ -13,6 +13,9 @@ import com.scalegrams.user.AppUser;
 import jakarta.persistence.LockModeType;
 
 public interface AiCaptureRepository extends JpaRepository<AiCapture, UUID> {
+    @Query("select capture from AiCapture capture where capture.id = :id and capture.user = :user")
+    Optional<AiCapture> findOwned(@Param("id") UUID id, @Param("user") AppUser user);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select capture from AiCapture capture where capture.id = :id and capture.user = :user")
     Optional<AiCapture> findOwnedForUpdate(@Param("id") UUID id, @Param("user") AppUser user);

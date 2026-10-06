@@ -168,6 +168,12 @@ public class NutritionController {
         return aiNutritionService.confirmRegistration(currentUser.from(authentication), request);
     }
 
+    @PostMapping("/ai-registrations/matches")
+    NutritionDtos.AiRegistrationMatchesResponse previewAiRegistrationMatches(Authentication authentication,
+            @Valid @RequestBody NutritionDtos.AiRegistrationMatchesRequest request) {
+        return aiNutritionService.previewRegistrationMatches(currentUser.from(authentication), request);
+    }
+
     @DeleteMapping("/food-logs/{id}")
     ResponseEntity<Void> deleteFoodLog(Authentication authentication, @PathVariable Long id) {
         nutritionService.deleteFoodLog(currentUser.from(authentication), id);

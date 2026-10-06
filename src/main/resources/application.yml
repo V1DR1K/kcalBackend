@@ -75,6 +75,13 @@ app:
     max-image-bytes: ${AI_NUTRITION_MAX_IMAGE_BYTES:5242880}
     max-audio-bytes: ${AI_NUTRITION_MAX_AUDIO_BYTES:2097152}
     daily-limit: ${AI_NUTRITION_DAILY_LIMIT:99}
+  semantic-search:
+    enabled: ${SEMANTIC_SEARCH_ENABLED:true}
+    embedding-model: ${FOOD_EMBEDDING_MODEL:gemini-embedding-2}
+    embedding-dimensions: 768
+    minimum-similarity: ${FOOD_EMBEDDING_MIN_SIMILARITY:0.8}
+    reindex-batch-size: ${FOOD_EMBEDDING_REINDEX_BATCH_SIZE:25}
+    reindex-delay-ms: ${FOOD_EMBEDDING_REINDEX_DELAY_MS:60000}
   catalog-import:
     enabled: ${APP_CATALOG_IMPORT_ENABLED:false}
     brands: ${APP_CATALOG_IMPORT_BRANDS:Coca-Cola,Mogul,Milka,Fantoche,Ciudad del Lago,Arcor,Bagley,Terrabusi,Havanna,Guaymallen,Jorgito,Bon o Bon,Cofler,Aguila,Don Satur,Pepitos,Sonrisas,Tita,Rhodesia,La Serenisima,Pepsi}

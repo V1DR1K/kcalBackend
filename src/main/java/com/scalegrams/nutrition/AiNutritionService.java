@@ -2,6 +2,7 @@ package com.scalegrams.nutrition;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -20,6 +21,12 @@ import com.scalegrams.nutrition.NutritionDtos.AiEstimateUsageResponse;
 import com.scalegrams.nutrition.NutritionDtos.AiTranscriptionResponse;
 import com.scalegrams.nutrition.NutritionDtos.AiRegistrationResponse;
 import com.scalegrams.nutrition.NutritionDtos.ConfirmAiRegistrationRequest;
+import com.scalegrams.nutrition.NutritionDtos.AiRegistrationMatchesRequest;
+import com.scalegrams.nutrition.NutritionDtos.AiRegistrationMatchesResponse;
+import com.scalegrams.nutrition.NutritionDtos.AiRegistrationItemMatch;
+import com.scalegrams.nutrition.NutritionDtos.AiCatalogFoodMatchResponse;
+import com.scalegrams.nutrition.NutritionDtos.AiCatalogChoice;
+import com.scalegrams.nutrition.NutritionDtos.AiRegistrationResolution;
 import com.scalegrams.nutrition.NutritionDtos.RefineAiEstimateRequest;
 import com.scalegrams.user.AppUser;
 
@@ -158,7 +165,12 @@ public class AiNutritionService {
             if (capture.getExpiresAt().isBefore(OffsetDateTime.now())) {
                 throw new BadRequestException("La captura venció. Analizá las fotos nuevamente.");
             }
-            var registration = nutritionService.confirmAiRegistration(user, request, "ai-capture:" + capture.getId());
+            List<AiEstimateItem> resolvedItems = applyResolutions(request.items(), request.resolutions());
+            ConfirmAiRegistrationRequest resolvedRequest = new ConfirmAiRegistrationRequest(request.captureId(),
+                    request.name(), request.description(), request.mealType(), request.logDate(), request.confidence(),
+                    request.addToDiary(), resolvedItems, request.acknowledgedArchivedFoodIds(), List.of());
+            var registration = nutritionService.confirmAiRegistration(user, resolvedRequest,
+                    "ai-capture:" + capture.getId());
             capture.setStatus(AiCaptureStatus.CONFIRMED);
             capture.setTargetType(registration.targetType());
             capture.setConfirmedFoodId(registration.food() == null ? null : registration.food().id());
@@ -172,6 +184,73 @@ public class AiNutritionService {
                     org.slf4j.MDC.get("requestId"), ex.getClass().getSimpleName());
             throw ex;
         }
+    }
+
+    public AiRegistrationMatchesResponse previewRegistrationMatches(AppUser user,
+            AiRegistrationMatchesRequest request) {
+        AiCapture capture = captures.findOwned(request.captureId(), user)
+                .orElseThrow(() -> new NotFoundException("Captura asistida no encontrada."));
+        validateDraftCapture(capture);
+        List<AiRegistrationItemMatch> matches = new java.util.ArrayList<>(request.items().size());
+        for (int index = 0; index < request.items().size(); index++) {
+            AiEstimateItem item = request.items().get(index);
+            var match = foodMatcher.preview(item).map(candidate -> new AiCatalogFoodMatchResponse(
+                    candidate.food().getId(), candidate.food().getName(), candidate.food().getBrand(),
+                    candidate.similarity(), candidate.proteinGrams(), candidate.carbsGrams(),
+                    candidate.fatGrams(), candidate.macrosDiffer())).orElse(null);
+            matches.add(new AiRegistrationItemMatch(index, match));
+        }
+        return new AiRegistrationMatchesResponse(matches);
+    }
+
+    private static void validateDraftCapture(AiCapture capture) {
+        if (capture.getStatus() != AiCaptureStatus.DRAFT) {
+            throw new BadRequestException("Esta captura ya no se puede confirmar.");
+        }
+        if (capture.getExpiresAt().isBefore(OffsetDateTime.now())) {
+            throw new BadRequestException("La captura venció. Analizá las fotos nuevamente.");
+        }
+    }
+
+    private List<AiEstimateItem> applyResolutions(List<AiEstimateItem> items,
+            List<AiRegistrationResolution> resolutions) {
+        Map<Integer, AiRegistrationResolution> byIndex = new java.util.HashMap<>();
+        if (resolutions != null) {
+            for (AiRegistrationResolution resolution : resolutions) {
+                if (resolution.itemIndex() < 0 || resolution.itemIndex() >= items.size()
+                        || byIndex.putIfAbsent(resolution.itemIndex(), resolution) != null) {
+                    throw new BadRequestException("La resolución de alimentos no coincide con la estimación.");
+                }
+            }
+        }
+        if (!byIndex.isEmpty() && byIndex.size() != items.size()) {
+            throw new BadRequestException("Elegí cómo guardar cada alimento con coincidencia en el catálogo.");
+        }
+        List<AiEstimateItem> resolved = new java.util.ArrayList<>(items.size());
+        for (int index = 0; index < items.size(); index++) {
+            AiEstimateItem item = items.get(index);
+            AiRegistrationResolution resolution = byIndex.get(index);
+            var candidate = resolution == null ? java.util.Optional.<AiFoodMatcher.CatalogMatch>empty()
+                    : foodMatcher.preview(item);
+            Long catalogFoodId = null;
+            if (candidate.isPresent() && !candidate.get().macrosDiffer()) {
+                catalogFoodId = candidate.get().food().getId();
+            } else if (resolution != null && resolution.choice() == AiCatalogChoice.USE_CATALOG) {
+                if (candidate.isEmpty() || !candidate.get().food().getId().equals(resolution.foodId())) {
+                    throw new BadRequestException("La ficha elegida ya no coincide con este alimento. Revisá nuevamente la sugerencia.");
+                }
+                catalogFoodId = candidate.get().food().getId();
+            } else if (resolution != null && resolution.choice() == AiCatalogChoice.KEEP_ESTIMATE
+                    && candidate.isEmpty()) {
+                catalogFoodId = null;
+            }
+            Integer catalogMatchConfidence = catalogFoodId == null ? null
+                    : (int) Math.round(candidate.orElseThrow().similarity() * 100);
+            resolved.add(new AiEstimateItem(item.name(), item.estimatedGrams(), item.category(), item.preparation(),
+                    item.proteinGrams(), item.carbsGrams(), item.fatGrams(), item.nutrients(), catalogFoodId,
+                    catalogFoodId == null ? null : "SEMANTIC", catalogMatchConfidence));
+        }
+        return List.copyOf(resolved);
     }
 
     private static AiCaptureTarget targetFor(int itemCount) {

@@ -2,7 +2,7 @@ name: scalegrams
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -48,6 +48,8 @@ services:
       SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD}
       AI_NUTRITION_ENABLED: ${AI_NUTRITION_ENABLED:-false}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SEMANTIC_SEARCH_ENABLED: ${SEMANTIC_SEARCH_ENABLED:-true}
+      FOOD_EMBEDDING_MODEL: ${FOOD_EMBEDDING_MODEL:-gemini-embedding-2}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
       AI_NUTRITION_MAX_IMAGE_BYTES: ${AI_NUTRITION_MAX_IMAGE_BYTES:-5242880}
       AI_NUTRITION_MAX_AUDIO_BYTES: ${AI_NUTRITION_MAX_AUDIO_BYTES:-2097152}

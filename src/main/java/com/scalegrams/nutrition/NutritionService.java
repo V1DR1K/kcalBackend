@@ -28,6 +28,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -114,6 +115,7 @@ public class NutritionService {
     private final NutrientDefinitionRepository nutrientDefinitions;
     private final UsdaFoodDataProvider usda;
     private final AiFoodMatcher aiFoodMatcher;
+    private final FoodSemanticSearchService semanticFoods;
     private final JdbcTemplate jdbcTemplate;
     private final boolean postgres;
 
@@ -122,7 +124,8 @@ public class NutritionService {
             ProfileService profileService,
             ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper,
             NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda, AiFoodMatcher aiFoodMatcher,
-            JdbcTemplate jdbcTemplate, @Value("${spring.datasource.driver-class-name:org.postgresql.Driver}") String driver) {
+            JdbcTemplate jdbcTemplate, FoodSemanticSearchService semanticFoods,
+            @Value("${spring.datasource.driver-class-name:org.postgresql.Driver}") String driver) {
         this.foods = foods;
         this.recipes = recipes;
         this.foodLogs = foodLogs;
@@ -133,6 +136,7 @@ public class NutritionService {
         this.nutrientDefinitions = nutrientDefinitions;
         this.usda = usda;
         this.aiFoodMatcher = aiFoodMatcher;
+        this.semanticFoods = semanticFoods;
         this.jdbcTemplate = jdbcTemplate;
         this.postgres = driver.toLowerCase().contains("postgres");
     }
@@ -261,7 +265,9 @@ public class NutritionService {
 
     @Transactional
     public PageResponse<FoodSummaryResponse> searchFoods(String query, FoodCategory category, int page, int size) {
-        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(size, 1), 50),
+        int normalizedPage = Math.max(0, page);
+        int normalizedSize = Math.min(Math.max(size, 1), 50);
+        Pageable pageable = PageRequest.of(normalizedPage, normalizedSize,
                 Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
         Page<Food> result;
         query = SearchTextNormalizer.normalize(query);
@@ -272,15 +278,77 @@ public class NutritionService {
             if (query.length() < 2) return page(new org.springframework.data.domain.PageImpl<>(List.of(), pageable, 0));
         }
         if (hasQuery && category != null) {
-            result = foods.search(query, category, ModerationStatus.APPROVED, pageable);
+            result = postgres
+                    ? searchFoodsHybrid(query, category, normalizedPage, normalizedSize)
+                    : foods.search(query, category, ModerationStatus.APPROVED, pageable);
         } else if (hasQuery) {
-            result = foods.search(query, ModerationStatus.APPROVED, pageable);
+            result = postgres
+                    ? searchFoodsHybrid(query, null, normalizedPage, normalizedSize)
+                    : foods.search(query, ModerationStatus.APPROVED, pageable);
         } else if (category != null) {
             result = foods.findByModerationStatusAndCategoryAndDeletedAtIsNull(ModerationStatus.APPROVED, category, pageable);
         } else {
             result = foods.findByModerationStatusAndDeletedAtIsNull(ModerationStatus.APPROVED, pageable);
         }
         return page(result.map(this::toFoodSummaryResponse));
+    }
+
+    private Page<Food> searchFoodsHybrid(String query, FoodCategory category, int page, int size) {
+        int offset = page * size;
+        if (offset >= 500) {
+            return category == null
+                    ? foods.semanticSearch(query, ModerationStatus.APPROVED, PageRequest.of(page, size))
+                    : foods.semanticSearch(query, category, ModerationStatus.APPROVED, PageRequest.of(page, size));
+        }
+        int poolSize = Math.min(500, Math.max(size, offset + size));
+        PageRequest poolPage = PageRequest.of(0, poolSize);
+        List<FoodSemanticSearchService.FoodMatch> semanticMatches = semanticFoods.search(query, category, null, poolSize);
+        if (semanticMatches.isEmpty()) {
+            return category == null
+                    ? foods.semanticSearch(query, ModerationStatus.APPROVED, PageRequest.of(page, size))
+                    : foods.semanticSearch(query, category, ModerationStatus.APPROVED, PageRequest.of(page, size));
+        }
+        Page<Food> lexical = category == null
+                ? foods.semanticSearch(query, ModerationStatus.APPROVED, poolPage)
+                : foods.semanticSearch(query, category, ModerationStatus.APPROVED, poolPage);
+        Map<Long, RankedFood> ranked = new LinkedHashMap<>();
+        for (int index = 0; index < lexical.getContent().size(); index++) {
+            Food food = lexical.getContent().get(index);
+            ranked.computeIfAbsent(food.getId(), ignored -> new RankedFood(food))
+                    .addLexicalRank(index);
+        }
+        for (int index = 0; index < semanticMatches.size(); index++) {
+            FoodSemanticSearchService.FoodMatch match = semanticMatches.get(index);
+            ranked.computeIfAbsent(match.food().getId(), ignored -> new RankedFood(match.food()))
+                    .addSemanticRank(index, match.similarity());
+        }
+        List<Food> ordered = ranked.values().stream().sorted(RankedFood.ORDER)
+                .map(RankedFood::food).toList();
+        int from = Math.min(offset, ordered.size());
+        int to = Math.min(from + size, ordered.size());
+        long total = Math.max(lexical.getTotalElements(), ordered.size());
+        return new PageImpl<>(ordered.subList(from, to), PageRequest.of(page, size), total);
+    }
+
+    private static final class RankedFood {
+        private static final java.util.Comparator<RankedFood> ORDER = java.util.Comparator
+                .comparingDouble(RankedFood::score).reversed()
+                .thenComparing(java.util.Comparator.comparingDouble(RankedFood::similarity).reversed())
+                .thenComparing(rank -> rank.food.getName(), String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(rank -> rank.food.getId());
+        private final Food food;
+        private double score;
+        private double similarity;
+
+        private RankedFood(Food food) { this.food = food; }
+        private void addLexicalRank(int rank) { score += 1.0 / (rank + 1.0); }
+        private void addSemanticRank(int rank, double similarity) {
+            this.similarity = similarity;
+            score += 0.5 * similarity / (rank + 1.0);
+        }
+        private double score() { return score; }
+        private double similarity() { return similarity; }
+        private Food food() { return food; }
     }
 
     @Transactional
@@ -315,7 +383,9 @@ public class NutritionService {
             food.setTags(request.tags().stream()
                     .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
         }
-        return toFoodResponse(foods.save(food));
+        Food saved = foods.saveAndFlush(food);
+        semanticFoods.indexIfAvailable(saved);
+        return toFoodResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -362,7 +432,9 @@ public class NutritionService {
             food.setTags(request.tags().stream()
                     .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
         }
-        return toFoodResponse(foods.save(food));
+        Food saved = foods.saveAndFlush(food);
+        semanticFoods.indexIfAvailable(saved);
+        return toFoodResponse(saved);
     }
 
     private void applyRequestedCookedYield(Food food, CreateFoodRequest request) {
@@ -1356,7 +1428,8 @@ public class NutritionService {
         if (request.tags() != null) {
             food.setTags(request.tags().stream()
                     .map(this::clean).filter(tag -> tag != null).limit(10).collect(Collectors.toCollection(LinkedHashSet::new)));
-            food = foods.save(food);
+            food = foods.saveAndFlush(food);
+            semanticFoods.indexIfAvailable(food);
         }
         return toFoodResponse(food);
     }
@@ -1415,7 +1488,9 @@ public class NutritionService {
         food.setCreatedBy(user);
         food.setCreatedAt(OffsetDateTime.now());
         food.setModerationStatus(ModerationStatus.APPROVED);
-        return foods.save(food);
+        Food savedFood = foods.saveAndFlush(food);
+        semanticFoods.indexIfAvailable(savedFood);
+        return savedFood;
     }
 
     private String nutrientFingerprint(Map<String, BigDecimal> nutrients) {

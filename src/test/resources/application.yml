@@ -12,6 +12,8 @@ spring:
       ddl-auto: create-drop
 
 app:
+  semantic-search:
+    enabled: false
   security:
     public-prometheus: true
   auth:

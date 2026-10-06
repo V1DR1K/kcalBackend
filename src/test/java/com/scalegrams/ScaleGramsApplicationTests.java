@@ -1004,6 +1004,124 @@ class ScaleGramsApplicationTests {
 	}
 
 	@Test
+	void previewsAiCatalogMacrosAndUsesTheReviewedChoiceIdempotently() throws Exception {
+		HttpHeaders headers = authHeaders();
+		AppUser user = users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow();
+		String foodName = "Yogur coincidencia IA " + UUID.randomUUID();
+		Food catalogFood = new Food();
+		catalogFood.setName(foodName);
+		catalogFood.setCategory(FoodCategory.DAIRY);
+		catalogFood.setPreparation(FoodPreparation.AS_SOLD);
+		catalogFood.setBaseUnit(FoodUnit.GRAM);
+		catalogFood.setBaseQuantity(BigDecimal.valueOf(100));
+		catalogFood.setProteinGrams(BigDecimal.TEN);
+		catalogFood.setCarbsGrams(BigDecimal.valueOf(20));
+		catalogFood.setFatGrams(BigDecimal.valueOf(2));
+		catalogFood = foods.saveAndFlush(catalogFood);
+		long catalogFoodId = catalogFood.getId();
+
+		Map<String, Object> estimateItem = Map.of("name", foodName, "category", "DAIRY", "preparation", "AS_SOLD",
+				"estimatedGrams", 200, "proteinGrams", 18, "carbsGrams", 40, "fatGrams", 4);
+		AiCapture keepCapture = new AiCapture();
+		keepCapture.setUser(user);
+		keepCapture.setTargetType(AiCaptureTarget.FOOD);
+		keepCapture.setDraftJson("{}");
+		keepCapture = aiCaptures.save(keepCapture);
+		Map<String, Object> previewRequest = Map.of("captureId", keepCapture.getId(), "items", List.of(estimateItem));
+		ResponseEntity<Map> preview = rest.postForEntity("/api/nutrition/ai-registrations/matches",
+				new HttpEntity<>(previewRequest, headers), Map.class);
+		Map<?, ?> previewMatch = (Map<?, ?>) ((Map<?, ?>) ((List<?>) preview.getBody().get("items")).getFirst()).get("match");
+		assertThat(preview.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(((Number) previewMatch.get("foodId")).longValue()).isEqualTo(catalogFoodId);
+		assertThat(previewMatch.get("macrosDiffer")).isEqualTo(true);
+		assertThat(((Number) previewMatch.get("proteinGrams")).doubleValue()).isEqualTo(20.0);
+
+		Map<String, Object> keepRequest = Map.of("captureId", keepCapture.getId(), "name", foodName,
+				"confidence", 85, "addToDiary", false, "items", List.of(estimateItem),
+				"resolutions", List.of(Map.of("itemIndex", 0, "choice", "KEEP_ESTIMATE")));
+		ResponseEntity<String> kept = rest.postForEntity("/api/nutrition/ai-registrations/confirm",
+				new HttpEntity<>(keepRequest, headers), String.class);
+		ResponseEntity<String> repeated = rest.postForEntity("/api/nutrition/ai-registrations/confirm",
+				new HttpEntity<>(keepRequest, headers), String.class);
+		long keptFoodId = objectMapper.readTree(kept.getBody()).path("food").path("id").asLong();
+		assertThat(kept.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(keptFoodId).isNotEqualTo(catalogFoodId);
+		assertThat(objectMapper.readTree(kept.getBody()).path("food").path("proteinGrams").decimalValue())
+				.isEqualByComparingTo("9.00");
+		assertThat(objectMapper.readTree(repeated.getBody()).path("food").path("id").asLong()).isEqualTo(keptFoodId);
+
+		AiCapture useCapture = new AiCapture();
+		useCapture.setUser(user);
+		useCapture.setTargetType(AiCaptureTarget.FOOD);
+		useCapture.setDraftJson("{}");
+		useCapture = aiCaptures.save(useCapture);
+		String useFoodName = "Yogur ficha IA " + UUID.randomUUID();
+		Food useCatalogFood = new Food();
+		useCatalogFood.setName(useFoodName);
+		useCatalogFood.setCategory(FoodCategory.DAIRY);
+		useCatalogFood.setPreparation(FoodPreparation.AS_SOLD);
+		useCatalogFood.setBaseUnit(FoodUnit.GRAM);
+		useCatalogFood.setBaseQuantity(BigDecimal.valueOf(100));
+		useCatalogFood.setProteinGrams(BigDecimal.TEN);
+		useCatalogFood.setCarbsGrams(BigDecimal.valueOf(20));
+		useCatalogFood.setFatGrams(BigDecimal.valueOf(2));
+		useCatalogFood = foods.saveAndFlush(useCatalogFood);
+		long useCatalogFoodId = useCatalogFood.getId();
+		Map<String, Object> useEstimateItem = Map.of("name", useFoodName, "category", "DAIRY", "preparation", "AS_SOLD",
+				"estimatedGrams", 200, "proteinGrams", 18, "carbsGrams", 40, "fatGrams", 4);
+		Map<String, Object> useRequest = Map.of("captureId", useCapture.getId(), "name", useFoodName,
+				"confidence", 85, "addToDiary", false, "items", List.of(useEstimateItem),
+				"resolutions", List.of(Map.of("itemIndex", 0, "choice", "USE_CATALOG", "foodId", useCatalogFoodId)));
+		ResponseEntity<String> used = rest.postForEntity("/api/nutrition/ai-registrations/confirm",
+				new HttpEntity<>(useRequest, headers), String.class);
+		assertThat(used.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(objectMapper.readTree(used.getBody()).path("food").path("id").asLong()).isEqualTo(useCatalogFoodId);
+		assertThat(objectMapper.readTree(used.getBody()).path("food").path("proteinGrams").decimalValue())
+				.isEqualByComparingTo("10.00");
+	}
+
+	@Test
+	void resolvesAiRecipeIngredientsIndividually() throws Exception {
+		HttpHeaders headers = authHeaders();
+		AppUser user = users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow();
+		String foodName = "Arroz coincidente IA " + UUID.randomUUID();
+		Food catalogFood = new Food();
+		catalogFood.setName(foodName);
+		catalogFood.setCategory(FoodCategory.CEREAL);
+		catalogFood.setPreparation(FoodPreparation.COOKED);
+		catalogFood.setBaseUnit(FoodUnit.GRAM);
+		catalogFood.setBaseQuantity(BigDecimal.valueOf(100));
+		catalogFood.setProteinGrams(new BigDecimal("4"));
+		catalogFood.setCarbsGrams(new BigDecimal("28"));
+		catalogFood.setFatGrams(BigDecimal.ONE);
+		catalogFood = foods.saveAndFlush(catalogFood);
+		long catalogFoodId = catalogFood.getId();
+		AiCapture capture = new AiCapture();
+		capture.setUser(user);
+		capture.setTargetType(AiCaptureTarget.RECIPE);
+		capture.setDraftJson("{}");
+		capture = aiCaptures.save(capture);
+		List<Map<String, Object>> items = List.of(
+				Map.of("name", foodName, "category", "CEREAL", "preparation", "COOKED", "estimatedGrams", 150,
+						"proteinGrams", 6, "carbsGrams", 42, "fatGrams", 1.5),
+				Map.of("name", "Huevo sin coincidencia " + UUID.randomUUID(), "category", "OTHER", "preparation", "COOKED",
+						"estimatedGrams", 50, "proteinGrams", 6, "carbsGrams", 0.5, "fatGrams", 5));
+		Map<String, Object> request = Map.of("captureId", capture.getId(), "name", "Arroz con huevo IA",
+				"mealType", "LUNCH", "confidence", 82, "items", items,
+				"resolutions", List.of(Map.of("itemIndex", 0, "choice", "USE_CATALOG", "foodId", catalogFoodId),
+						Map.of("itemIndex", 1, "choice", "KEEP_ESTIMATE")));
+
+		ResponseEntity<String> response = rest.postForEntity("/api/nutrition/ai-registrations/confirm",
+				new HttpEntity<>(request, headers), String.class);
+		var body = objectMapper.readTree(response.getBody());
+		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+		assertThat(body.path("recipe").path("ingredients").get(0).path("food").path("id").asLong())
+				.isEqualTo(catalogFoodId);
+		assertThat(body.path("recipe").path("ingredients").get(1).path("food").path("name").asText())
+				.startsWith("Huevo sin coincidencia");
+	}
+
+	@Test
 	void keepsReviewedNutritionWhenRegisteringTheSameAiFoodAgain() {
 		HttpHeaders headers = authHeaders();
 		AppUser user = users.findByAuthUserId(UUID.nameUUIDFromBytes("central-token-alex".getBytes())).orElseThrow();
