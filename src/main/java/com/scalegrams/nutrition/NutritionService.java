@@ -297,20 +297,22 @@ public class NutritionService {
         int offset = page * size;
         if (offset >= 500) {
             return category == null
-                    ? foods.semanticSearch(query, ModerationStatus.APPROVED, PageRequest.of(page, size))
-                    : foods.semanticSearch(query, category, ModerationStatus.APPROVED, PageRequest.of(page, size));
+                    ? foods.semanticSearch(query, ModerationStatus.APPROVED.name(), PageRequest.of(page, size))
+                    : foods.semanticSearch(query, category.name(), ModerationStatus.APPROVED.name(),
+                            PageRequest.of(page, size));
         }
         int poolSize = Math.min(500, Math.max(size, offset + size));
         PageRequest poolPage = PageRequest.of(0, poolSize);
         List<FoodSemanticSearchService.FoodMatch> semanticMatches = semanticFoods.search(query, category, null, poolSize);
         if (semanticMatches.isEmpty()) {
             return category == null
-                    ? foods.semanticSearch(query, ModerationStatus.APPROVED, PageRequest.of(page, size))
-                    : foods.semanticSearch(query, category, ModerationStatus.APPROVED, PageRequest.of(page, size));
+                    ? foods.semanticSearch(query, ModerationStatus.APPROVED.name(), PageRequest.of(page, size))
+                    : foods.semanticSearch(query, category.name(), ModerationStatus.APPROVED.name(),
+                            PageRequest.of(page, size));
         }
         Page<Food> lexical = category == null
-                ? foods.semanticSearch(query, ModerationStatus.APPROVED, poolPage)
-                : foods.semanticSearch(query, category, ModerationStatus.APPROVED, poolPage);
+                ? foods.semanticSearch(query, ModerationStatus.APPROVED.name(), poolPage)
+                : foods.semanticSearch(query, category.name(), ModerationStatus.APPROVED.name(), poolPage);
         Map<Long, RankedFood> ranked = new LinkedHashMap<>();
         for (int index = 0; index < lexical.getContent().size(); index++) {
             Food food = lexical.getContent().get(index);

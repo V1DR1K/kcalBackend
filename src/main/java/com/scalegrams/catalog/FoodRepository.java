@@ -129,7 +129,7 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
               )
             """, nativeQuery = true)
     Page<Food> semanticSearch(@Param("q") String query,
-            @Param("status") ModerationStatus status, Pageable pageable);
+            @Param("status") String status, Pageable pageable);
 
     @Query(value = """
             select f.*
@@ -183,8 +183,8 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
                       @@ plainto_tsquery('simple', :q)
               )
             """, nativeQuery = true)
-    Page<Food> semanticSearch(@Param("q") String query, @Param("category") FoodCategory category,
-            @Param("status") ModerationStatus status, Pageable pageable);
+    Page<Food> semanticSearch(@Param("q") String query, @Param("category") String category,
+            @Param("status") String status, Pageable pageable);
 
     @Override
     Page<Food> findAll(Pageable pageable);
