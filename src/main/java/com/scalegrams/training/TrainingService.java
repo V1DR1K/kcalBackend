@@ -3,7 +3,6 @@ package com.scalegrams.training;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.DayOfWeek;
-import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -43,12 +42,6 @@ import com.scalegrams.training.TrainingDtos.LegacyPlanDayResponse;
 import com.scalegrams.training.TrainingDtos.TrainingExerciseResponse;
 import com.scalegrams.training.TrainingDtos.TrainingCategoryResponse;
 import com.scalegrams.training.TrainingDtos.TrainingModuleResponse;
-import com.scalegrams.training.TrainingDtos.CardioRecordResponse;
-import com.scalegrams.training.TrainingDtos.CardioServiceResponse;
-import com.scalegrams.training.TrainingDtos.CardioSummaryResponse;
-import com.scalegrams.training.TrainingDtos.CardioDaySummaryResponse;
-import com.scalegrams.training.TrainingDtos.CreateCardioServiceRequest;
-import com.scalegrams.training.TrainingDtos.WeeklyCardioSummaryResponse;
 import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseResponse;
 import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanDetailResponse;
 import com.scalegrams.training.TrainingDtos.LegacyTrainingPlanResponse;
@@ -60,7 +53,6 @@ import com.scalegrams.training.TrainingDtos.TrainingSetRequest;
 import com.scalegrams.training.TrainingDtos.TrainingSetResponse;
 import com.scalegrams.training.TrainingDtos.UpdateTrainingSessionRequest;
 import com.scalegrams.training.TrainingDtos.UpsertExerciseRequest;
-import com.scalegrams.training.TrainingDtos.UpsertCardioRecordRequest;
 import com.scalegrams.training.TrainingDtos.UpsertTrainingCategoryRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanExerciseRequest;
 import com.scalegrams.training.TrainingDtos.LegacyPlanRequest;
@@ -80,7 +72,6 @@ import com.scalegrams.user.AppUser;
 
 @Service
 public class TrainingService {
-    private static final BigDecimal STEP_LENGTH_FACTOR = new BigDecimal("0.415");
     private final TrainingExerciseRepository exercises;
     private final TrainingCategoryRepository categories;
     private final TrainingPlanRepository presets;
@@ -89,18 +80,16 @@ public class TrainingService {
     private final TrainingSessionRepository sessions;
     private final TrainingSessionExerciseRepository sessionExercises;
     private final TrainingSessionBaselineRepository baselines;
-    private final TrainingCardioRecordRepository cardioRecords;
-    private final TrainingCardioServiceEventRepository cardioServices;
     private final com.scalegrams.user.UserRepository users;
     private final PaginationProperties pagination;
-    private final ZoneId defaultTimeZone;
+    private final TrainingProperties trainingProperties;
+    private final TrainingCardioService cardioService;
 
     public TrainingService(TrainingExerciseRepository exercises, TrainingCategoryRepository categories, TrainingPlanRepository presets,
             TrainingPlanDayRepository days, TrainingPlanExerciseRepository presetExercises,
             TrainingSessionRepository sessions, TrainingSessionExerciseRepository sessionExercises,
-            TrainingSessionBaselineRepository baselines, TrainingCardioRecordRepository cardioRecords,
-            TrainingCardioServiceEventRepository cardioServices, com.scalegrams.user.UserRepository users,
-            PaginationProperties pagination, TrainingProperties trainingProperties) {
+            TrainingSessionBaselineRepository baselines, com.scalegrams.user.UserRepository users,
+            PaginationProperties pagination, TrainingProperties trainingProperties, TrainingCardioService cardioService) {
         this.exercises = exercises;
         this.categories = categories;
         this.presets = presets;
@@ -109,11 +98,10 @@ public class TrainingService {
         this.sessions = sessions;
         this.sessionExercises = sessionExercises;
         this.baselines = baselines;
-        this.cardioRecords = cardioRecords;
-        this.cardioServices = cardioServices;
         this.users = users;
         this.pagination = pagination;
-        this.defaultTimeZone = ZoneId.of(trainingProperties.getDefaultTimeZone());
+        this.trainingProperties = trainingProperties;
+        this.cardioService = cardioService;
     }
 
     @Transactional(readOnly = true)
@@ -121,134 +109,6 @@ public class TrainingService {
         return List.of(
                 new TrainingModuleResponse(TrainingModule.GYM, "Gimnasio"),
                 new TrainingModuleResponse(TrainingModule.CALISTHENICS, "Calistenia"));
-    }
-
-    @Transactional(readOnly = true)
-    public PageResponse<CardioRecordResponse> cardio(AppUser user, int page, int size) {
-        Page<TrainingCardioRecord> result = cardioRecords.findByUser(user,
-                page(page, size, Sort.by(Sort.Order.desc("recordedAt"), Sort.Order.desc("id"))));
-        return page(result, this::toCardioRecordResponse);
-    }
-
-    @Transactional
-    public CardioRecordResponse createCardio(AppUser user, UpsertCardioRecordRequest request) {
-        TrainingCardioRecord record = new TrainingCardioRecord();
-        record.setUser(user);
-        applyCardioRecord(record, request);
-        return toCardioRecordResponse(cardioRecords.saveAndFlush(record));
-    }
-
-    @Transactional
-    public CardioRecordResponse updateCardio(AppUser user, Long id, UpsertCardioRecordRequest request) {
-        TrainingCardioRecord record = cardioRecords.findByIdAndUser(id, user)
-                .orElseThrow(() -> new NotFoundException("Registro de cardio no encontrado."));
-        applyCardioRecord(record, request);
-        return toCardioRecordResponse(record);
-    }
-
-    @Transactional
-    public void deleteCardio(AppUser user, Long id) {
-        TrainingCardioRecord record = cardioRecords.findByIdAndUser(id, user)
-                .orElseThrow(() -> new NotFoundException("Registro de cardio no encontrado."));
-        cardioRecords.delete(record);
-    }
-
-    @Transactional
-    public CardioServiceResponse createCardioService(AppUser user, CreateCardioServiceRequest request) {
-        lockCardioServiceOwner(user);
-        validateCardioService(user, null, request.equipment(), request.servicedAt(), request.notes());
-        TrainingCardioServiceEvent service = new TrainingCardioServiceEvent();
-        service.setUser(user);
-        service.setEquipment(request.equipment());
-        service.setServicedAt(request.servicedAt());
-        service.setNotes(blankToNull(request.notes()));
-        return toCardioServiceResponse(cardioServices.saveAndFlush(service));
-    }
-
-    @Transactional(readOnly = true)
-    public PageResponse<CardioServiceResponse> cardioServices(AppUser user, TrainingEquipment equipment, int page, int size) {
-        var pageable = page(page, size, Sort.by(Sort.Order.desc("servicedAt"), Sort.Order.desc("id")));
-        var result = equipment == null ? cardioServices.findByUser(user, pageable) : cardioServices.findByUserAndEquipment(user, equipment, pageable);
-        return page(result, this::toCardioServiceResponse);
-    }
-    @Transactional
-    public CardioServiceResponse updateCardioService(AppUser user, Long id, TrainingDtos.UpdateCardioServiceRequest request) {
-        lockCardioServiceOwner(user);
-        var event = ownedCardioService(user, id);
-        if (event.getAnnulledAt() != null) throw new ConflictException("Un mantenimiento anulado no se puede editar.");
-        requireCardioServiceVersion(event, request.version());
-        validateCardioService(user, id, request.equipment(), request.servicedAt(), request.notes());
-        event.setEquipment(request.equipment()); event.setServicedAt(request.servicedAt()); event.setNotes(blankToNull(request.notes()));
-        event.setUpdatedAt(OffsetDateTime.now());
-        return toCardioServiceResponse(cardioServices.saveAndFlush(event));
-    }
-    @Transactional
-    public CardioServiceResponse annulCardioService(AppUser user, Long id, TrainingDtos.AnnulCardioServiceRequest request) {
-        lockCardioServiceOwner(user);
-        var event = ownedCardioService(user, id);
-        if (event.getAnnulledAt() != null) return toCardioServiceResponse(event);
-        requireCardioServiceVersion(event, request.version());
-        event.setAnnulledAt(OffsetDateTime.now()); event.setAnnulledByUserId(user.getId()); event.setAnnulmentReason(blankToNull(request.reason()));
-        event.setUpdatedAt(event.getAnnulledAt());
-        return toCardioServiceResponse(cardioServices.saveAndFlush(event));
-    }
-    private void lockCardioServiceOwner(AppUser user) {
-        users.findByIdForUpdate(user.getId()).orElseThrow(() -> new NotFoundException("Usuario no encontrado."));
-    }
-    private TrainingCardioServiceEvent ownedCardioService(AppUser user, Long id) {
-        return cardioServices.findByIdAndUser(id, user).orElseThrow(() -> new NotFoundException("Mantenimiento no encontrado."));
-    }
-    private void requireCardioServiceVersion(TrainingCardioServiceEvent event, Long version) {
-        if (!java.util.Objects.equals(event.getVersion(), version)) throw new ConflictException("El mantenimiento cambió. Recargá el historial antes de volver a editarlo.");
-    }
-    private void validateCardioService(AppUser user, Long excludedId, TrainingEquipment equipment, OffsetDateTime date, String notes) {
-        validateNotFuture(date, "La fecha de mantenimiento no puede ser futura.");
-        if (cardioServices.existsDuplicate(user, equipment, date, blankToNull(notes), excludedId)) throw new ConflictException("Ya existe un mantenimiento con el mismo equipo, fecha y notas.");
-    }
-
-    @Transactional(readOnly = true)
-    public CardioSummaryResponse cardioSummary(AppUser user) {
-        TrainingEquipment equipment = TrainingEquipment.TREADMILL;
-        TrainingCardioServiceEvent latestService = cardioServices
-                .findFirstByUserAndEquipmentAndAnnulledAtIsNullOrderByServicedAtDescIdDesc(user, equipment).orElse(null);
-        long totalMinutes = latestService == null
-                ? cardioRecords.sumDuration(user, equipment)
-                : cardioRecords.sumDurationAfter(user, equipment, latestService.getServicedAt());
-        BigDecimal totalDistance = latestService == null
-                ? cardioRecords.sumDistance(user, equipment)
-                : cardioRecords.sumDistanceAfter(user, equipment, latestService.getServicedAt());
-        long remainingMinutes = Math.max(1200L - totalMinutes, 0L);
-        BigDecimal allTimeDistance = cardioRecords.sumDistance(user, equipment);
-        return new CardioSummaryResponse(equipment, 1200, totalMinutes, remainingMinutes,
-                totalMinutes >= 1200L, totalDistance, estimatedSteps(allTimeDistance, user.getHeightCm()),
-                user.getHeightCm(),
-                latestService == null ? null : toCardioServiceResponse(latestService));
-    }
-
-    @Transactional(readOnly = true)
-    public WeeklyCardioSummaryResponse cardioWeekly(AppUser user, LocalDate date, String timeZone) {
-        ZoneId zone = resolveTimeZone(timeZone);
-        LocalDate anchor = date == null ? LocalDate.now(zone) : date;
-        LocalDate from = anchor.minusDays(6);
-        LocalDate to = anchor;
-        OffsetDateTime fromInstant = from.atStartOfDay(zone).toOffsetDateTime();
-        OffsetDateTime toInstant = to.plusDays(1).atStartOfDay(zone).toOffsetDateTime();
-        List<TrainingCardioRecord> records = cardioRecords
-                .findByUserAndEquipmentAndRecordedAtGreaterThanEqualAndRecordedAtLessThan(user,
-                        TrainingEquipment.TREADMILL, fromInstant, toInstant);
-        Map<LocalDate, List<TrainingCardioRecord>> byDate = records.stream()
-                .collect(Collectors.groupingBy(record -> record.getRecordedAt().atZoneSameInstant(zone).toLocalDate()));
-        List<CardioDaySummaryResponse> days = from.datesUntil(to.plusDays(1)).map(day -> {
-            List<TrainingCardioRecord> dayRecords = byDate.getOrDefault(day, List.of());
-            BigDecimal distance = dayRecords.stream().map(TrainingCardioRecord::getDistanceKm)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            return new CardioDaySummaryResponse(day, distance,
-                    estimatedSteps(distance, user.getHeightCm()), dayRecords.size());
-        }).toList();
-        BigDecimal totalDistance = records.stream().map(TrainingCardioRecord::getDistanceKm)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new WeeklyCardioSummaryResponse(from, to, days, totalDistance,
-                estimatedSteps(totalDistance, user.getHeightCm()), user.getHeightCm() != null);
     }
 
     @Transactional(readOnly = true)
@@ -1010,7 +870,7 @@ public class TrainingService {
                 .toList();
 
         WeeklyTrainingSummaryResponse weeklySummary = new WeeklyTrainingSummaryResponse(
-                sessionCount, totalMinutes, totalSets, cardioWeekly(user, date, timeZone));
+                sessionCount, totalMinutes, totalSets, cardioService.cardioWeekly(user, date, timeZone));
 
         return new TrainingDashboardResponse(date, routines, recentSession, weeklySummary,
                 exercises, schedulesForDate(user, date));
@@ -1656,26 +1516,6 @@ public class TrainingService {
         }
     }
 
-    private void applyCardioRecord(TrainingCardioRecord record, UpsertCardioRecordRequest request) {
-        validateNotFuture(request.recordedAt(), "La fecha del cardio no puede ser futura.");
-        TrainingEquipment equipment = request.equipment() == null ? TrainingEquipment.TREADMILL : request.equipment();
-        if (equipment != TrainingEquipment.TREADMILL) {
-            throw new BadRequestException("Por ahora los registros de cardio solo admiten cinta de correr.");
-        }
-        record.setEquipment(equipment);
-        record.setRecordedAt(request.recordedAt());
-        record.setDistanceKm(resolveCardioDistance(request));
-        record.setDurationMinutes(request.durationMinutes());
-        record.setInclined(request.inclined());
-        record.setUpdatedAt(OffsetDateTime.now());
-    }
-
-    private void validateNotFuture(OffsetDateTime timestamp, String message) {
-        if (timestamp.isAfter(OffsetDateTime.now())) {
-            throw new BadRequestException(message);
-        }
-    }
-
     private Integer resolveDuration(OffsetDateTime startedAt, OffsetDateTime finishedAt, Integer requested,
             Integer fallback) {
         if (requested != null) return requested;
@@ -1768,51 +1608,8 @@ public class TrainingService {
                         .thenComparing(TrainingSessionExercise::getId)).map(this::toSessionExerciseResponse).toList());
     }
 
-    private CardioRecordResponse toCardioRecordResponse(TrainingCardioRecord record) {
-        return new CardioRecordResponse(record.getId(), record.getEquipment(), record.getRecordedAt(),
-                record.getDistanceKm(), record.getDurationMinutes(), record.isInclined(), speedKmh(record.getDistanceKm(), record.getDurationMinutes()),
-                estimatedSteps(record.getDistanceKm(), record.getUser().getHeightCm()), record.getCreatedAt(),
-                record.getUpdatedAt());
-    }
-
-    private BigDecimal speedKmh(BigDecimal distanceKm, int durationMinutes) {
-        if (distanceKm == null || durationMinutes <= 0) return null;
-        return distanceKm.multiply(BigDecimal.valueOf(60)).divide(BigDecimal.valueOf(durationMinutes), 2, java.math.RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal resolveCardioDistance(UpsertCardioRecordRequest request) {
-        boolean hasSpeed = request.speedKmh() != null;
-        boolean hasDistance = request.distanceKm() != null;
-        if (hasSpeed == hasDistance) {
-            throw new BadRequestException("Informá velocidad o distancia, junto con el tiempo.");
-        }
-        if (hasSpeed) {
-            return request.speedKmh().multiply(BigDecimal.valueOf(request.durationMinutes()))
-                    .divide(BigDecimal.valueOf(60), 3, RoundingMode.HALF_UP);
-        }
-        return request.distanceKm().setScale(3, RoundingMode.HALF_UP);
-    }
-
     private ZoneId resolveTimeZone(String value) {
-        if (value == null || value.isBlank()) return defaultTimeZone;
-        try {
-            return ZoneId.of(value);
-        } catch (DateTimeException ignored) {
-            return defaultTimeZone;
-        }
-    }
-
-    private Long estimatedSteps(BigDecimal distanceKm, BigDecimal heightCm) {
-        if (distanceKm == null || heightCm == null || heightCm.signum() <= 0) return null;
-        BigDecimal stepLengthMeters = heightCm.multiply(STEP_LENGTH_FACTOR).movePointLeft(2);
-        if (stepLengthMeters.signum() <= 0) return null;
-        return distanceKm.movePointRight(3).divide(stepLengthMeters, 0, java.math.RoundingMode.HALF_UP).longValue();
-    }
-
-    private CardioServiceResponse toCardioServiceResponse(TrainingCardioServiceEvent service) {
-        return new CardioServiceResponse(service.getId(), service.getEquipment(), service.getServicedAt(),
-                service.getNotes(), service.getCreatedAt(), service.getVersion(), service.getUpdatedAt(), service.getAnnulledAt(),
-                service.getAnnulledByUserId(), service.getAnnulmentReason());
+        return trainingProperties.resolveTimeZone(value);
     }
 
     private TrainingSessionSummaryResponse toSessionSummaryResponse(TrainingSession session) {

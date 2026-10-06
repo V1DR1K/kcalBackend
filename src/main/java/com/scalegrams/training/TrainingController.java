@@ -61,11 +61,14 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/training")
 public class TrainingController {
     private final TrainingService trainingService;
+    private final TrainingCardioService cardioService;
     private final TrainingPlanService trainingPlanService;
     private final CurrentUser currentUser;
 
-    public TrainingController(TrainingService trainingService, TrainingPlanService trainingPlanService, CurrentUser currentUser) {
+    public TrainingController(TrainingService trainingService, TrainingCardioService cardioService,
+            TrainingPlanService trainingPlanService, CurrentUser currentUser) {
         this.trainingService = trainingService;
+        this.cardioService = cardioService;
         this.trainingPlanService = trainingPlanService;
         this.currentUser = currentUser;
     }
@@ -78,24 +81,24 @@ public class TrainingController {
     @GetMapping("/cardio")
     PageResponse<CardioRecordResponse> cardio(Authentication authentication,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
-        return trainingService.cardio(currentUser.from(authentication), page, size);
+        return cardioService.cardio(currentUser.from(authentication), page, size);
     }
 
     @PostMapping("/cardio")
     CardioRecordResponse createCardio(Authentication authentication,
             @Valid @RequestBody UpsertCardioRecordRequest request) {
-        return trainingService.createCardio(currentUser.from(authentication), request);
+        return cardioService.createCardio(currentUser.from(authentication), request);
     }
 
     @PutMapping("/cardio/{id}")
     CardioRecordResponse updateCardio(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody UpsertCardioRecordRequest request) {
-        return trainingService.updateCardio(currentUser.from(authentication), id, request);
+        return cardioService.updateCardio(currentUser.from(authentication), id, request);
     }
 
     @DeleteMapping("/cardio/{id}")
     ResponseEntity<Void> deleteCardio(Authentication authentication, @PathVariable Long id) {
-        trainingService.deleteCardio(currentUser.from(authentication), id);
+        cardioService.deleteCardio(currentUser.from(authentication), id);
         return ResponseEntity.noContent().build();
     }
 
@@ -103,35 +106,35 @@ public class TrainingController {
     PageResponse<CardioServiceResponse> cardioServices(Authentication authentication,
             @RequestParam(required = false) TrainingEquipment equipment,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
-        return trainingService.cardioServices(currentUser.from(authentication), equipment, page, size);
+        return cardioService.cardioServices(currentUser.from(authentication), equipment, page, size);
     }
     @PutMapping("/cardio/services/{id}")
     CardioServiceResponse updateCardioService(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody TrainingDtos.UpdateCardioServiceRequest request) {
-        return trainingService.updateCardioService(currentUser.from(authentication), id, request);
+        return cardioService.updateCardioService(currentUser.from(authentication), id, request);
     }
     @PostMapping("/cardio/services/{id}/annul")
     CardioServiceResponse annulCardioService(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody TrainingDtos.AnnulCardioServiceRequest request) {
-        return trainingService.annulCardioService(currentUser.from(authentication), id, request);
+        return cardioService.annulCardioService(currentUser.from(authentication), id, request);
     }
 
     @PostMapping("/cardio/services")
     CardioServiceResponse createCardioService(Authentication authentication,
             @Valid @RequestBody CreateCardioServiceRequest request) {
-        return trainingService.createCardioService(currentUser.from(authentication), request);
+        return cardioService.createCardioService(currentUser.from(authentication), request);
     }
 
     @GetMapping("/cardio/summary")
     CardioSummaryResponse cardioSummary(Authentication authentication) {
-        return trainingService.cardioSummary(currentUser.from(authentication));
+        return cardioService.cardioSummary(currentUser.from(authentication));
     }
 
     @GetMapping("/cardio/weekly")
     WeeklyCardioSummaryResponse cardioWeekly(Authentication authentication,
             @RequestParam(required = false) LocalDate date,
             @RequestParam(required = false, defaultValue = "${app.training.default-time-zone:America/Argentina/Buenos_Aires}") String timeZone) {
-        return trainingService.cardioWeekly(currentUser.from(authentication), date, timeZone);
+        return cardioService.cardioWeekly(currentUser.from(authentication), date, timeZone);
     }
 
     @GetMapping("/categories")
