@@ -25,7 +25,7 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 
     @EntityGraph(attributePaths = "nutrients.definition")
     @Query("select f from Food f where f.deletedAt is null and f.moderationStatus = :status " +
-            "and (f.searchName = :query or concat(f.searchName, ' ', f.searchBrand) = :query)")
+            "and (f.searchName = :query or concat(concat(f.searchName, ' '), f.searchBrand) = :query)")
     java.util.List<Food> findActiveBySearchNameOrBrand(@Param("query") String query,
             @Param("status") ModerationStatus status);
 
