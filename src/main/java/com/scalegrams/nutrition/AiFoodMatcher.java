@@ -100,10 +100,15 @@ public class AiFoodMatcher {
                     candidates.removeIf(candidate -> candidate.food().getId().equals(food.getId()));
                     candidates.add(new Candidate(food, 1.0, true, isOwnedBy(food, user)));
                 });
-        return candidates.stream()
-                .max(Comparator.comparing(Candidate::personalFood)
+        Comparator<Candidate> ranking = user == null
+                ? Comparator.comparing((Candidate candidate) -> !toCatalogMatch(candidate.food(),
+                        candidate.similarity(), item).macrosDiffer())
+                        .thenComparingDouble(Candidate::similarity)
+                : Comparator.comparing(Candidate::personalFood)
                         .thenComparing(Candidate::exactName)
-                        .thenComparingDouble(Candidate::similarity))
+                        .thenComparingDouble(Candidate::similarity);
+        return candidates.stream()
+                .max(ranking)
                 .map(candidate -> toCatalogMatch(candidate.food(), candidate.similarity(), item));
     }
 
@@ -112,7 +117,14 @@ public class AiFoodMatcher {
         String query = SearchTextNormalizer.normalize(name);
         if (query.isBlank()) return Optional.empty();
         FoodPreparation requested = normalizedPreparation(preparation);
-        List<Food> candidates = foods.findActiveBySearchNameOrBrand(query, ModerationStatus.APPROVED).stream()
+        List<Food> matchedCandidates = new ArrayList<>(
+                foods.findActiveBySearchName(query, ModerationStatus.APPROVED));
+        for (Food food : foods.findActiveBySearchNameOrBrand(query, ModerationStatus.APPROVED)) {
+            if (matchedCandidates.stream().noneMatch(candidate -> candidate.getId().equals(food.getId()))) {
+                matchedCandidates.add(food);
+            }
+        }
+        List<Food> candidates = matchedCandidates.stream()
                 .filter(food -> food.getDeletedAt() == null && food.getModerationStatus() == ModerationStatus.APPROVED)
                 .filter(AiFoodMatcher::canUseForGramEstimate)
                 .toList();
