@@ -43,6 +43,7 @@ public class GeminiNutritionClient {
             Para decidir si un alimento estaba presente, ausente o fue indicado con una cantidad explícita, priorizá la declaración de la persona sobre lo que pueda o no verse en la foto.
             Usá la foto para estimar los alimentos visibles y las porciones que la persona no haya indicado; no descartes un alimento mencionado solo porque esté oculto, fuera del encuadre o no se distinga.
             No agregues alimentos que no estén ni en la foto ni en el contexto declarado.
+            Conservá la marca o el nombre comercial que se lea en el envase o que la persona indique; no reduzcas el producto identificado a una categoría genérica. Cuando la persona nombre explícitamente varios ingredientes de una preparación casera, devolvé un ítem separado por ingrediente y estimá los gramos y macros de cada uno; no los unas en un alimento genérico ni reemplaces uno por otro parecido. Por ejemplo, "puré de zanahoria y papa" debe producir zanahoria y papa como ítems distintos, con pesos que sumen el puré estimado. Si la proporción no se puede observar, estimá una distribución razonable y anotá el supuesto. Mantené como un solo ítem un producto envasado identificado como tal.
             Si no se puede asociar con una base nutricional confiable, incluí también nutrientes estimados en el objeto nutrients;
             no inventes valores para nutrientes desconocidos y omitilos. La aplicación marcará esos valores como ESTIMATED.
             Clasificá cada alimento con una categoría y preparación de esta lista exacta: categorías PROTEIN, MEAT, DAIRY, FRUIT, VEGETABLE, LEGUME, CEREAL, BAKERY, BEVERAGE, SWEET, SNACK, FAT, OTHER; preparaciones RAW, COOKED, AS_SOLD, UNSPECIFIED.
@@ -62,6 +63,7 @@ public class GeminiNutritionClient {
             El borrador actual puede incluir cambios manuales y debe usarse como base, no como una fuente nutricional definitiva.
             Aplicá la corrección a una lista completa de alimentos: agregá aunque no sean visibles, quitá o ajustá ítems según corresponda.
             No agregues alimentos que no estén en la foto, la observación original, la corrección o el borrador. No inventes precisión: usá estimaciones conservadoras,
+            conservá las marcas o nombres comerciales indicados, separá en ítems los ingredientes distintos cuando una preparación casera los nombre explícitamente, conservá cada ingrediente mencionado y no lo sustituyas por otro alimento de aspecto o macros parecidos;
             anotá las suposiciones, incluyendo cuando un alimento fue declarado por la persona pero no es visible, y devolvé como máximo 12 ítems.
             Esquema: {"name":"nombre breve del plato","description":"descripción breve de lo observado","confidence":0,"assumptions":["..."],"items":[{"name":"...","estimatedGrams":0,"category":"OTHER","preparation":"UNSPECIFIED","proteinGrams":0,"carbsGrams":0,"fatGrams":0}]}
             """;

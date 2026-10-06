@@ -23,6 +23,12 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
     java.util.List<Food> findActiveBySearchName(@Param("query") String query,
             @Param("status") ModerationStatus status);
 
+    @EntityGraph(attributePaths = "nutrients.definition")
+    @Query("select f from Food f where f.deletedAt is null and f.moderationStatus = :status " +
+            "and (f.searchName = :query or concat(f.searchName, ' ', f.searchBrand) = :query)")
+    java.util.List<Food> findActiveBySearchNameOrBrand(@Param("query") String query,
+            @Param("status") ModerationStatus status);
+
     @Query("select f from Food f where f.deletedAt is null and f.moderationStatus = :status " +
             "and f.searchName like concat('%', :token, '%') order by f.id")
     java.util.List<Food> findActiveBySearchToken(@Param("token") String token,

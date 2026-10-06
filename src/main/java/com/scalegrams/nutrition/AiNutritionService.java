@@ -165,7 +165,7 @@ public class AiNutritionService {
             if (capture.getExpiresAt().isBefore(OffsetDateTime.now())) {
                 throw new BadRequestException("La captura venció. Analizá las fotos nuevamente.");
             }
-            List<AiEstimateItem> resolvedItems = applyResolutions(request.items(), request.resolutions());
+            List<AiEstimateItem> resolvedItems = applyResolutions(user, request.items(), request.resolutions());
             ConfirmAiRegistrationRequest resolvedRequest = new ConfirmAiRegistrationRequest(request.captureId(),
                     request.name(), request.description(), request.mealType(), request.logDate(), request.confidence(),
                     request.addToDiary(), resolvedItems, request.acknowledgedArchivedFoodIds(), List.of());
@@ -194,7 +194,7 @@ public class AiNutritionService {
         List<AiRegistrationItemMatch> matches = new java.util.ArrayList<>(request.items().size());
         for (int index = 0; index < request.items().size(); index++) {
             AiEstimateItem item = request.items().get(index);
-            var match = foodMatcher.preview(item).map(candidate -> new AiCatalogFoodMatchResponse(
+            var match = foodMatcher.preview(user, item).map(candidate -> new AiCatalogFoodMatchResponse(
                     candidate.food().getId(), candidate.food().getName(), candidate.food().getBrand(),
                     candidate.similarity(), candidate.proteinGrams(), candidate.carbsGrams(),
                     candidate.fatGrams(), candidate.macrosDiffer())).orElse(null);
@@ -212,7 +212,7 @@ public class AiNutritionService {
         }
     }
 
-    private List<AiEstimateItem> applyResolutions(List<AiEstimateItem> items,
+    private List<AiEstimateItem> applyResolutions(AppUser user, List<AiEstimateItem> items,
             List<AiRegistrationResolution> resolutions) {
         Map<Integer, AiRegistrationResolution> byIndex = new java.util.HashMap<>();
         if (resolutions != null) {
@@ -231,7 +231,7 @@ public class AiNutritionService {
             AiEstimateItem item = items.get(index);
             AiRegistrationResolution resolution = byIndex.get(index);
             var candidate = resolution == null ? java.util.Optional.<AiFoodMatcher.CatalogMatch>empty()
-                    : foodMatcher.preview(item);
+                    : foodMatcher.preview(user, item);
             Long catalogFoodId = null;
             if (candidate.isPresent() && !candidate.get().macrosDiffer()) {
                 catalogFoodId = candidate.get().food().getId();

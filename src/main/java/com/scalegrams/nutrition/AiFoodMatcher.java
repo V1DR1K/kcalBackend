@@ -4,8 +4,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -19,10 +22,27 @@ import com.scalegrams.catalog.ModerationStatus;
 import com.scalegrams.common.SearchTextNormalizer;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateFoodProposal;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateItem;
+import com.scalegrams.user.AppUser;
 
 /** Keeps an AI proposal intact and only resolves catalog matches after review. */
 @Service
 public class AiFoodMatcher {
+    private static final Set<String> GENERIC_FOOD_WORDS = Set.of(
+            "a", "al", "as", "con", "cocida", "cocido", "cocidos", "cocidas", "cruda", "crudo",
+            "de", "del", "en", "frita", "frito", "grillado", "grillada", "horneado", "horneada",
+            "la", "las", "lo", "los", "and", "cooked", "food", "fresh", "fried", "grilled",
+            "mashed", "of", "pure", "puree", "roasted", "raw", "the", "with", "y");
+    private static final Map<String, String> FOOD_SYNONYMS = Map.ofEntries(
+            Map.entry("papa", "potato"), Map.entry("patata", "potato"), Map.entry("potato", "potato"),
+            Map.entry("zanahoria", "carrot"), Map.entry("carrot", "carrot"),
+            Map.entry("calabaza", "pumpkin"), Map.entry("zapallo", "pumpkin"), Map.entry("pumpkin", "pumpkin"),
+            Map.entry("squash", "pumpkin"), Map.entry("palta", "avocado"), Map.entry("aguacate", "avocado"),
+            Map.entry("avocado", "avocado"), Map.entry("frutilla", "strawberry"), Map.entry("fresa", "strawberry"),
+            Map.entry("strawberry", "strawberry"), Map.entry("anana", "pineapple"), Map.entry("pina", "pineapple"),
+            Map.entry("pineapple", "pineapple"), Map.entry("choclo", "corn"), Map.entry("maiz", "corn"),
+            Map.entry("corn", "corn"), Map.entry("batata", "sweetpotato"), Map.entry("camote", "sweetpotato"),
+            Map.entry("bread", "bread"), Map.entry("pan", "bread"));
+
     private final FoodRepository foods;
     private final FoodSemanticSearchService semanticSearch;
 
@@ -45,51 +65,102 @@ public class AiFoodMatcher {
     }
 
     public Optional<Food> resolve(AiEstimateFoodProposal proposal) {
-        return exactMatch(proposal.name(), proposal.category(), proposal.preparation());
+        return exactMatch(null, proposal.name(), proposal.category(), proposal.preparation());
     }
 
     public Optional<Food> resolve(AiEstimateItem item) {
-        return exactMatch(item.name(), item.category(), item.preparation());
+        return exactMatch(null, item.name(), item.category(), item.preparation());
     }
 
     public Optional<CatalogMatch> preview(AiEstimateItem item) {
-        List<Candidate> candidates = new ArrayList<>();
-        if (semanticSearch != null) {
-            semanticSearch.search(item.name(), item.category(), normalizedPreparation(item.preparation()), 5)
-                    .stream()
-                    .filter(match -> canUseForGramEstimate(match.food()))
-                    .filter(match -> item.category() == null || match.food().getCategory() == item.category())
-                    .filter(match -> normalizedPreparation(match.food().getPreparation())
-                            == normalizedPreparation(item.preparation()))
-                    .map(match -> new Candidate(match.food(), match.similarity()))
-                    .forEach(candidates::add);
-        }
-        exactMatch(item.name(), item.category(), item.preparation())
-                .filter(AiFoodMatcher::canUseForGramEstimate)
-                .ifPresent(food -> {
-                    if (candidates.stream().noneMatch(candidate -> candidate.food().getId().equals(food.getId()))) {
-                        candidates.add(new Candidate(food, 1.0));
-                    }
-                });
-        return candidates.stream()
-                .map(candidate -> toCatalogMatch(candidate.food(), candidate.similarity(), item))
-                .min(Comparator.comparing(CatalogMatch::macrosDiffer)
-                        .thenComparing(Comparator.comparingDouble(CatalogMatch::similarity).reversed()));
+        return preview(null, item);
     }
 
-    private Optional<Food> exactMatch(String name, FoodCategory category, FoodPreparation preparation) {
+    public Optional<CatalogMatch> preview(AppUser user, AiEstimateItem item) {
+        List<Candidate> candidates = new ArrayList<>();
+        if (semanticSearch != null) {
+            List<FoodSemanticSearchService.FoodMatch> semanticMatches = user == null
+                    ? semanticSearch.search(item.name(), item.category(), normalizedPreparation(item.preparation()), 5)
+                    : semanticSearch.search(item.name(), null, null, 20, user.getId());
+            semanticMatches.stream()
+                    .filter(match -> canUseForGramEstimate(match.food()))
+                    .filter(match -> isOwnedBy(match.food(), user)
+                            || item.category() == null || match.food().getCategory() == item.category())
+                    .filter(match -> isOwnedBy(match.food(), user)
+                            || normalizedPreparation(match.food().getPreparation())
+                                    == normalizedPreparation(item.preparation()))
+                    .filter(match -> sharesFoodIdentity(item.name(), match.food()))
+                    .map(match -> new Candidate(match.food(), match.similarity(), false,
+                            isOwnedBy(match.food(), user)))
+                    .forEach(candidates::add);
+        }
+        exactMatch(user, item.name(), item.category(), item.preparation())
+                .filter(AiFoodMatcher::canUseForGramEstimate)
+                .ifPresent(food -> {
+                    candidates.removeIf(candidate -> candidate.food().getId().equals(food.getId()));
+                    candidates.add(new Candidate(food, 1.0, true, isOwnedBy(food, user)));
+                });
+        return candidates.stream()
+                .max(Comparator.comparing(Candidate::personalFood)
+                        .thenComparing(Candidate::exactName)
+                        .thenComparingDouble(Candidate::similarity))
+                .map(candidate -> toCatalogMatch(candidate.food(), candidate.similarity(), item));
+    }
+
+    private Optional<Food> exactMatch(AppUser user, String name, FoodCategory category,
+            FoodPreparation preparation) {
         String query = SearchTextNormalizer.normalize(name);
         if (query.isBlank()) return Optional.empty();
         FoodPreparation requested = normalizedPreparation(preparation);
-        List<Food> candidates = foods.findActiveBySearchName(query, ModerationStatus.APPROVED).stream()
+        List<Food> candidates = foods.findActiveBySearchNameOrBrand(query, ModerationStatus.APPROVED).stream()
                 .filter(food -> food.getDeletedAt() == null && food.getModerationStatus() == ModerationStatus.APPROVED)
-                .filter(food -> category == null || food.getCategory() == category)
-                .filter(food -> normalizedPreparation(food.getPreparation()) == requested)
                 .filter(AiFoodMatcher::canUseForGramEstimate)
+                .toList();
+
+        List<Food> personalMatches = candidates.stream()
+                .filter(food -> isOwnedBy(food, user))
+                .toList();
+        if (personalMatches.size() == 1) return Optional.of(personalMatches.getFirst());
+        Optional<Food> uniquePersonalMetadataMatch = uniqueMetadataMatch(personalMatches, category, requested);
+        if (uniquePersonalMetadataMatch.isPresent()) return uniquePersonalMetadataMatch;
+
+        List<Food> sharedMatches = candidates.stream()
+                .filter(food -> food.getCreatedBy() == null)
                 // A proposal without an explicit brand cannot identify a packaged product.
                 .filter(food -> food.getBrand() == null || food.getBrand().isBlank())
                 .toList();
-        return candidates.size() == 1 ? Optional.of(candidates.getFirst()) : Optional.empty();
+        return uniqueMetadataMatch(sharedMatches, category, requested);
+    }
+
+    private static Optional<Food> uniqueMetadataMatch(List<Food> candidates, FoodCategory category,
+            FoodPreparation preparation) {
+        List<Food> compatible = candidates.stream()
+                .filter(food -> category == null || food.getCategory() == category)
+                .filter(food -> normalizedPreparation(food.getPreparation()) == preparation)
+                .toList();
+        return compatible.size() == 1 ? Optional.of(compatible.getFirst()) : Optional.empty();
+    }
+
+    private static boolean isOwnedBy(Food food, AppUser user) {
+        return user != null && user.getId() != null && food.getCreatedBy() != null
+                && user.getId().equals(food.getCreatedBy().getId());
+    }
+
+    private static boolean sharesFoodIdentity(String proposedName, Food food) {
+        Set<String> proposedTokens = identityTokens(proposedName);
+        if (proposedTokens.isEmpty()) return false;
+        Set<String> catalogTokens = identityTokens(food.getName() + " " + (food.getBrand() == null ? "" : food.getBrand()));
+        proposedTokens.retainAll(catalogTokens);
+        return !proposedTokens.isEmpty();
+    }
+
+    private static Set<String> identityTokens(String value) {
+        Set<String> tokens = new HashSet<>();
+        for (String token : SearchTextNormalizer.normalize(value).replaceAll("[^a-z0-9]+", " ").split("\\s+")) {
+            if (token.length() < 2 || GENERIC_FOOD_WORDS.contains(token)) continue;
+            tokens.add(FOOD_SYNONYMS.getOrDefault(token, token));
+        }
+        return tokens;
     }
 
     private static CatalogMatch toCatalogMatch(Food food, double similarity, AiEstimateItem item) {
@@ -126,6 +197,6 @@ public class AiFoodMatcher {
             BigDecimal carbsGrams, BigDecimal fatGrams, boolean macrosDiffer) {
     }
 
-    private record Candidate(Food food, double similarity) {
+    private record Candidate(Food food, double similarity, boolean exactName, boolean personalFood) {
     }
 }

@@ -22,6 +22,11 @@ public class FoodVectorRepository {
 
     public List<FoodVectorMatch> findSimilar(float[] embedding, String model, FoodCategory category,
             FoodPreparation preparation, int limit, double minimumSimilarity) {
+        return findSimilar(embedding, model, category, preparation, limit, minimumSimilarity, null);
+    }
+
+    public List<FoodVectorMatch> findSimilar(float[] embedding, String model, FoodCategory category,
+            FoodPreparation preparation, int limit, double minimumSimilarity, Long ownerUserId) {
         String vector = toPgVector(embedding);
         StringBuilder sql = new StringBuilder("""
                 select e.food_id, 1 - (e.embedding <=> cast(? as vector)) as similarity
@@ -33,6 +38,10 @@ public class FoodVectorRepository {
                   and (e.embedding <=> cast(? as vector)) <= ?
                 """);
         List<Object> args = new ArrayList<>(List.of(vector, model, vector, 1.0 - minimumSimilarity));
+        if (ownerUserId != null) {
+            sql.append(" and (f.created_by_id is null or f.created_by_id = ?)");
+            args.add(ownerUserId);
+        }
         if (category != null) {
             sql.append(" and f.category = ?");
             args.add(category.name());

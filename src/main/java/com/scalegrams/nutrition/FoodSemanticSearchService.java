@@ -38,13 +38,18 @@ public class FoodSemanticSearchService {
     }
 
     public List<FoodMatch> search(String query, FoodCategory category, FoodPreparation preparation, int limit) {
+        return search(query, category, preparation, limit, null);
+    }
+
+    public List<FoodMatch> search(String query, FoodCategory category, FoodPreparation preparation, int limit,
+            Long ownerUserId) {
         EmbeddingModel model = availableModel();
         if (model == null || query == null || query.isBlank() || limit < 1) return List.of();
         try {
             float[] embedding = model.embed(queryText(query, category, preparation));
             List<FoodVectorRepository.FoodVectorMatch> matches = vectors.findSimilar(embedding,
                     properties.getEmbeddingModel(), category, preparation, limit,
-                    properties.getMinimumSimilarity());
+                    properties.getMinimumSimilarity(), ownerUserId);
             if (matches.isEmpty()) return List.of();
             Map<Long, Food> foodsById = new HashMap<>();
             foods.findAllById(matches.stream().map(FoodVectorRepository.FoodVectorMatch::foodId).toList())
