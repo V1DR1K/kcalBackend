@@ -30,10 +30,13 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/foods")
 public class FoodController {
     private final NutritionService nutritionService;
+    private final FoodCatalogSearchService foodCatalogSearchService;
     private final CurrentUser currentUser;
 
-    public FoodController(NutritionService nutritionService, CurrentUser currentUser) {
+    public FoodController(NutritionService nutritionService, FoodCatalogSearchService foodCatalogSearchService,
+            CurrentUser currentUser) {
         this.nutritionService = nutritionService;
+        this.foodCatalogSearchService = foodCatalogSearchService;
         this.currentUser = currentUser;
     }
 
@@ -42,7 +45,7 @@ public class FoodController {
             @RequestParam(required = false) FoodCategory category,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
-        return nutritionService.searchFoods(q, category, page, size);
+        return foodCatalogSearchService.search(q, category, page, size);
     }
 
     @PostMapping

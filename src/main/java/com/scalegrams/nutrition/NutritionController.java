@@ -51,44 +51,50 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/nutrition")
 public class NutritionController {
     private final NutritionService nutritionService;
+    private final NutritionOverviewService nutritionOverviewService;
+    private final DayPresetService dayPresetService;
     private final AiNutritionService aiNutritionService;
     private final CurrentUser currentUser;
 
-    public NutritionController(NutritionService nutritionService, AiNutritionService aiNutritionService, CurrentUser currentUser) {
+    public NutritionController(NutritionService nutritionService, NutritionOverviewService nutritionOverviewService,
+            DayPresetService dayPresetService,
+            AiNutritionService aiNutritionService, CurrentUser currentUser) {
         this.nutritionService = nutritionService;
+        this.nutritionOverviewService = nutritionOverviewService;
+        this.dayPresetService = dayPresetService;
         this.aiNutritionService = aiNutritionService;
         this.currentUser = currentUser;
     }
 
     @GetMapping("/dashboard")
     DashboardResponse dashboard(Authentication authentication, @RequestParam(required = false) LocalDate date) {
-        return nutritionService.dashboard(currentUser.from(authentication), date);
+        return nutritionOverviewService.dashboard(currentUser.from(authentication), date);
     }
 
     @GetMapping("/meal-types")
     List<MealTypeResponse> mealTypes() {
-        return nutritionService.mealTypes();
+        return nutritionOverviewService.mealTypes();
     }
 
     @GetMapping("/day-presets")
     List<DayPresetResponse> dayPresets(Authentication authentication) {
-        return nutritionService.dayPresets(currentUser.from(authentication));
+        return dayPresetService.list(currentUser.from(authentication));
     }
 
     @PostMapping("/day-presets")
     DayPresetResponse createDayPreset(Authentication authentication, @Valid @RequestBody CreateDayPresetRequest request) {
-        return nutritionService.createDayPreset(currentUser.from(authentication), request);
+        return dayPresetService.create(currentUser.from(authentication), request);
     }
 
     @PutMapping("/day-presets/{id}")
     DayPresetResponse updateDayPreset(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody UpdateDayPresetRequest request) {
-        return nutritionService.updateDayPreset(currentUser.from(authentication), id, request);
+        return dayPresetService.update(currentUser.from(authentication), id, request);
     }
 
     @DeleteMapping("/day-presets/{id}")
     ResponseEntity<Void> deleteDayPreset(Authentication authentication, @PathVariable Long id) {
-        nutritionService.deleteDayPreset(currentUser.from(authentication), id);
+        dayPresetService.delete(currentUser.from(authentication), id);
         return ResponseEntity.noContent().build();
     }
 
@@ -228,6 +234,6 @@ public class NutritionController {
         if (month < 1 || month > 12) {
             throw new com.scalegrams.common.BadRequestException("El mes debe estar entre 1 y 12.");
         }
-        return nutritionService.history(currentUser.from(authentication), year, month);
+        return nutritionOverviewService.history(currentUser.from(authentication), year, month);
     }
 }

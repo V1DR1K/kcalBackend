@@ -5,7 +5,6 @@ import java.util.Objects;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.YearMonth;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -24,12 +23,8 @@ import org.springframework.beans.factory.annotation.Value;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,27 +58,15 @@ import com.scalegrams.nutrition.NutritionDtos.CreateFoodRequest;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeRequest;
 import com.scalegrams.nutrition.NutritionDtos.CreateRecipeFromMealRequest;
 import com.scalegrams.nutrition.NutritionDtos.AddRecipeMealLogRequest;
-import com.scalegrams.nutrition.NutritionDtos.DashboardResponse;
-import com.scalegrams.nutrition.NutritionDtos.CreateDayPresetRequest;
 import com.scalegrams.nutrition.NutritionDtos.DayPresetItemRequest;
-import com.scalegrams.nutrition.NutritionDtos.DayPresetResponse;
-import com.scalegrams.nutrition.NutritionDtos.DaySummary;
 import com.scalegrams.nutrition.NutritionDtos.FoodLogResponse;
 import com.scalegrams.nutrition.NutritionDtos.FoodResponse;
-import com.scalegrams.nutrition.NutritionDtos.FoodSummaryResponse;
-import com.scalegrams.nutrition.NutritionDtos.HistoryResponse;
-import com.scalegrams.nutrition.NutritionDtos.MacroProgress;
-import com.scalegrams.nutrition.NutritionDtos.MealSummary;
-import com.scalegrams.nutrition.NutritionDtos.MealTypeResponse;
 import com.scalegrams.nutrition.NutritionDtos.NutritionPreviewResponse;
 import com.scalegrams.nutrition.NutritionDtos.UpdateFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateAiEstimateRequest;
-import com.scalegrams.nutrition.NutritionDtos.UpdateDayPresetRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeLogIngredientsRequest;
 import com.scalegrams.nutrition.NutritionDtos.UpdateRecipeFoodLogRequest;
 import com.scalegrams.nutrition.NutritionDtos.SaveAiEstimateItemRequest;
-import com.scalegrams.common.PageResponse;
-import com.scalegrams.common.PaginationProperties;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientResponse;
 import com.scalegrams.nutrition.NutritionDtos.RecipeIngredientRequest;
 import com.scalegrams.nutrition.NutritionDtos.RecipeReferenceResponse;
@@ -97,9 +80,6 @@ import com.scalegrams.nutrition.NutritionDtos.NutrientUpdateRequest;
 import com.scalegrams.recipe.Recipe;
 import com.scalegrams.recipe.RecipeIngredient;
 import com.scalegrams.recipe.RecipeRepository;
-import com.scalegrams.profile.NutritionPlan;
-import com.scalegrams.profile.ProfileDtos.NutritionPlanResponse;
-import com.scalegrams.profile.ProfileService;
 import com.scalegrams.user.AppUser;
 import com.scalegrams.user.Role;
 
@@ -110,88 +90,45 @@ public class NutritionService {
     private final RecipeRepository recipes;
     private final FoodLogRepository foodLogs;
     private final DayPresetRepository dayPresets;
-    private final ProfileService profileService;
     private final ExternalFoodLookupService externalFoodLookup;
     private final ObjectMapper objectMapper;
     private final NutrientDefinitionRepository nutrientDefinitions;
     private final UsdaFoodDataProvider usda;
     private final AiFoodMatcher aiFoodMatcher;
     private final FoodSemanticSearchService semanticFoods;
+    private final FoodNutrientMapper foodNutrientMapper;
     private final JdbcTemplate jdbcTemplate;
     private final boolean postgres;
-    private final PaginationProperties pagination;
+    private final DayPresetCodec dayPresetCodec;
 
     public NutritionService(FoodRepository foods, RecipeRepository recipes, FoodLogRepository foodLogs,
             DayPresetRepository dayPresets,
-            ProfileService profileService,
             ExternalFoodLookupService externalFoodLookup, ObjectMapper objectMapper,
             NutrientDefinitionRepository nutrientDefinitions, UsdaFoodDataProvider usda, AiFoodMatcher aiFoodMatcher,
-            JdbcTemplate jdbcTemplate, FoodSemanticSearchService semanticFoods,
-            PaginationProperties pagination,
+            JdbcTemplate jdbcTemplate, FoodSemanticSearchService semanticFoods, FoodNutrientMapper foodNutrientMapper,
+            DayPresetCodec dayPresetCodec,
             @Value("${spring.datasource.driver-class-name:org.postgresql.Driver}") String driver) {
         this.foods = foods;
         this.recipes = recipes;
         this.foodLogs = foodLogs;
         this.dayPresets = dayPresets;
-        this.profileService = profileService;
         this.externalFoodLookup = externalFoodLookup;
         this.objectMapper = objectMapper;
         this.nutrientDefinitions = nutrientDefinitions;
         this.usda = usda;
         this.aiFoodMatcher = aiFoodMatcher;
         this.semanticFoods = semanticFoods;
+        this.foodNutrientMapper = foodNutrientMapper;
         this.jdbcTemplate = jdbcTemplate;
-        this.pagination = pagination;
+        this.dayPresetCodec = dayPresetCodec;
         this.postgres = driver.toLowerCase().contains("postgres");
-    }
-
-    @Transactional(readOnly = true)
-    public List<DayPresetResponse> dayPresets(AppUser user) {
-        return dayPresets.findByUserAndDeletedAtIsNullOrderByUpdatedAtDesc(user).stream()
-                .map(this::toDayPresetResponse).toList();
-    }
-
-    @Transactional
-    public DayPresetResponse createDayPreset(AppUser user, CreateDayPresetRequest request) {
-        checkArchived(templateFoods(request.items()), request.acknowledgedArchivedFoodIds());
-        String name = normalizedPresetName(request.name());
-        ensurePresetNameAvailable(user, name, null);
-        DayPreset preset = new DayPreset();
-        preset.setUser(user);
-        preset.setName(name);
-        preset.setDescription(cleanPresetDescription(request.description()));
-        preset.setItemsJson(writePresetItems(validatePresetItems(request.items())));
-        preset.setCreatedAt(OffsetDateTime.now());
-        preset.setUpdatedAt(OffsetDateTime.now());
-        return toDayPresetResponse(dayPresets.save(preset));
-    }
-
-    @Transactional
-    public DayPresetResponse updateDayPreset(AppUser user, Long id, UpdateDayPresetRequest request) {
-        checkArchived(templateFoods(request.items()), request.acknowledgedArchivedFoodIds());
-        DayPreset preset = ownedDayPreset(user, id);
-        String name = normalizedPresetName(request.name());
-        ensurePresetNameAvailable(user, name, id);
-        preset.setName(name);
-        preset.setDescription(cleanPresetDescription(request.description()));
-        preset.setItemsJson(writePresetItems(validatePresetItems(request.items())));
-        preset.setUpdatedAt(OffsetDateTime.now());
-        return toDayPresetResponse(dayPresets.save(preset));
-    }
-
-    @Transactional
-    public void deleteDayPreset(AppUser user, Long id) {
-        DayPreset preset = ownedDayPreset(user, id);
-        preset.setDeletedAt(OffsetDateTime.now());
-        preset.setUpdatedAt(OffsetDateTime.now());
-        dayPresets.save(preset);
     }
 
     @Transactional
     public void applyDayPreset(AppUser user, Long id, ApplyDayPresetRequest request) {
         DayPreset preset = ownedDayPreset(user, id);
         LocalDate date = request.logDate();
-        List<DayPresetItemRequest> items = readPresetItems(preset.getItemsJson());
+        List<DayPresetItemRequest> items = dayPresetCodec.read(preset.getItemsJson());
         checkArchived(templateFoods(items), request.acknowledgedArchivedFoodIds());
         if (request.replace()) foodLogs.deleteAll(foodLogs.findByUserAndLogDate(user, date));
         for (int presetIndex = 0; presetIndex < items.size(); presetIndex++) {
@@ -218,143 +155,8 @@ public class NutritionService {
                 .orElseThrow(() -> new NotFoundException("El preset no existe."));
     }
 
-    private String normalizedPresetName(String value) {
-        String name = value == null ? "" : value.trim();
-        if (name.isBlank()) throw new BadRequestException("El nombre del preset es obligatorio.");
-        return name;
-    }
-
-    private String cleanPresetDescription(String value) {
-        String description = value == null ? "" : value.trim();
-        return description.isBlank() ? null : description;
-    }
-
-    private void ensurePresetNameAvailable(AppUser user, String name, Long ignoredId) {
-        boolean taken = dayPresets.existsActiveName(user, name);
-        if (taken && (ignoredId == null || dayPresets.findByIdAndUserAndDeletedAtIsNull(ignoredId, user)
-                .map(preset -> !preset.getName().equalsIgnoreCase(name)).orElse(true))) {
-            throw new BadRequestException("Ya existe un preset con ese nombre.");
-        }
-    }
-
-    private List<DayPresetItemRequest> validatePresetItems(List<DayPresetItemRequest> items) {
-        if (items == null || items.isEmpty()) throw new BadRequestException("El día no tiene alimentos para guardar.");
-        for (DayPresetItemRequest item : items) {
-            if (item.itemType() == MealItemType.AI_ESTIMATE) {
-                if (item.itemId() != null) throw new BadRequestException("La estimación no puede tener alimento asociado.");
-            } else if (item.itemId() == null || item.itemId() <= 0) {
-                throw new BadRequestException("El preset contiene un alimento inválido.");
-            }
-        }
-        return items;
-    }
-
-    private String writePresetItems(List<DayPresetItemRequest> items) {
-        try { return objectMapper.writeValueAsString(items); }
-        catch (JsonProcessingException error) { throw new BadRequestException("No se pudo guardar el contenido del preset."); }
-    }
-
-    private List<DayPresetItemRequest> readPresetItems(String json) {
-        try { return objectMapper.readValue(json, new TypeReference<List<DayPresetItemRequest>>() {}); }
-        catch (JsonProcessingException error) { throw new BadRequestException("El contenido del preset no es válido."); }
-    }
-
-    private DayPresetResponse toDayPresetResponse(DayPreset preset) {
-        List<DayPresetItemRequest> items = readPresetItems(preset.getItemsJson());
-        Map<String, Integer> mealCounts = items.stream().collect(Collectors.groupingBy(item -> item.mealType().name(),
-                LinkedHashMap::new, Collectors.collectingAndThen(Collectors.counting(), Long::intValue)));
-        return new DayPresetResponse(preset.getId(), preset.getName(), preset.getDescription(), preset.getCreatedAt(), preset.getUpdatedAt(),
-                items, items.size(), mealCounts);
-    }
-
-    @Transactional
-    public PageResponse<FoodSummaryResponse> searchFoods(String query, FoodCategory category, int page, int size) {
-        int normalizedPage = pagination.normalizePage(page);
-        int normalizedSize = pagination.normalizeSize(size);
-        Pageable pageable = pagination.pageRequest(page, size,
-                Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
-        Page<Food> result;
-        query = SearchTextNormalizer.normalize(query);
-        boolean hasQuery = !query.isBlank();
-        if (hasQuery) pageable = pagination.pageRequest(page, size, Sort.unsorted());
-        if (hasQuery) {
-            if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
-            if (query.length() < 2) return page(new org.springframework.data.domain.PageImpl<>(List.of(), pageable, 0));
-        }
-        if (hasQuery && category != null) {
-            result = postgres
-                    ? searchFoodsHybrid(query, category, normalizedPage, normalizedSize)
-                    : foods.search(query, category, ModerationStatus.APPROVED, pageable);
-        } else if (hasQuery) {
-            result = postgres
-                    ? searchFoodsHybrid(query, null, normalizedPage, normalizedSize)
-                    : foods.search(query, ModerationStatus.APPROVED, pageable);
-        } else if (category != null) {
-            result = foods.findByModerationStatusAndCategoryAndDeletedAtIsNull(ModerationStatus.APPROVED, category, pageable);
-        } else {
-            result = foods.findByModerationStatusAndDeletedAtIsNull(ModerationStatus.APPROVED, pageable);
-        }
-        return page(result.map(this::toFoodSummaryResponse));
-    }
-
-    private Page<Food> searchFoodsHybrid(String query, FoodCategory category, int page, int size) {
-        int offset = page * size;
-        if (offset >= 500) {
-            return category == null
-                    ? foods.semanticSearch(query, ModerationStatus.APPROVED.name(), PageRequest.of(page, size))
-                    : foods.semanticSearch(query, category.name(), ModerationStatus.APPROVED.name(),
-                            PageRequest.of(page, size));
-        }
-        int poolSize = Math.min(500, Math.max(size, offset + size));
-        PageRequest poolPage = PageRequest.of(0, poolSize);
-        List<FoodSemanticSearchService.FoodMatch> semanticMatches = semanticFoods.search(query, category, null, poolSize);
-        if (semanticMatches.isEmpty()) {
-            return category == null
-                    ? foods.semanticSearch(query, ModerationStatus.APPROVED.name(), PageRequest.of(page, size))
-                    : foods.semanticSearch(query, category.name(), ModerationStatus.APPROVED.name(),
-                            PageRequest.of(page, size));
-        }
-        Page<Food> lexical = category == null
-                ? foods.semanticSearch(query, ModerationStatus.APPROVED.name(), poolPage)
-                : foods.semanticSearch(query, category.name(), ModerationStatus.APPROVED.name(), poolPage);
-        Map<Long, RankedFood> ranked = new LinkedHashMap<>();
-        for (int index = 0; index < lexical.getContent().size(); index++) {
-            Food food = lexical.getContent().get(index);
-            ranked.computeIfAbsent(food.getId(), ignored -> new RankedFood(food))
-                    .addLexicalRank(index);
-        }
-        for (int index = 0; index < semanticMatches.size(); index++) {
-            FoodSemanticSearchService.FoodMatch match = semanticMatches.get(index);
-            ranked.computeIfAbsent(match.food().getId(), ignored -> new RankedFood(match.food()))
-                    .addSemanticRank(index, match.similarity());
-        }
-        List<Food> ordered = ranked.values().stream().sorted(RankedFood.ORDER)
-                .map(RankedFood::food).toList();
-        int from = Math.min(offset, ordered.size());
-        int to = Math.min(from + size, ordered.size());
-        long total = Math.max(lexical.getTotalElements(), ordered.size());
-        return new PageImpl<>(ordered.subList(from, to), PageRequest.of(page, size), total);
-    }
-
-    private static final class RankedFood {
-        private static final java.util.Comparator<RankedFood> ORDER = java.util.Comparator
-                .comparingDouble(RankedFood::score).reversed()
-                .thenComparing(java.util.Comparator.comparingDouble(RankedFood::similarity).reversed())
-                .thenComparing(rank -> rank.food.getName(), String.CASE_INSENSITIVE_ORDER)
-                .thenComparing(rank -> rank.food.getId());
-        private final Food food;
-        private double score;
-        private double similarity;
-
-        private RankedFood(Food food) { this.food = food; }
-        private void addLexicalRank(int rank) { score += 1.0 / (rank + 1.0); }
-        private void addSemanticRank(int rank, double similarity) {
-            this.similarity = similarity;
-            score += 0.5 * similarity / (rank + 1.0);
-        }
-        private double score() { return score; }
-        private double similarity() { return similarity; }
-        private Food food() { return food; }
+    void ensureDayPresetItemsAvailable(List<DayPresetItemRequest> items, Set<Long> acknowledged) {
+        checkArchived(templateFoods(items), acknowledged);
     }
 
     @Transactional
@@ -703,47 +505,6 @@ public class NutritionService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<RecipeResponse> searchRecipes(String query, int page, int size) {
-        Pageable pageable = pagination.pageRequest(page, size,
-                Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
-        query = SearchTextNormalizer.normalize(query);
-        if (!query.isBlank()) {
-            if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
-        }
-        Page<Recipe> result = !query.isBlank()
-                ? recipes.findBySearchNameContainingAndDeletedAtIsNull(query, pageable)
-                : recipes.findAllByDeletedAtIsNull(pageable);
-        return recipeSummaryPage(result);
-    }
-
-    @Transactional(readOnly = true)
-    public PageResponse<RecipeResponse> searchOwnedRecipes(AppUser user, String query, int page, int size) {
-        Pageable pageable = recipePageable(page, size);
-        query = SearchTextNormalizer.normalize(query);
-        Page<Recipe> result = hasRecipeQuery(query)
-                ? recipes.findByCreatedByIdAndSearchNameContainingAndDeletedAtIsNull(user.getId(), query, pageable)
-                : recipes.findByCreatedByIdAndDeletedAtIsNull(user.getId(), pageable);
-        return recipeSummaryPage(result);
-    }
-
-    @Transactional(readOnly = true)
-    public List<RecipeOwnerResponse> recipeAuthors(AppUser user) {
-        return recipes.findAuthorCountsExcluding(user.getId()).stream()
-                .map(author -> new RecipeOwnerResponse(author.getOwnerId(), author.getOwnerName(), author.getRecipeCount()))
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public PageResponse<RecipeResponse> searchRecipesByOwner(Long ownerId, String query, int page, int size) {
-        Pageable pageable = recipePageable(page, size);
-        query = SearchTextNormalizer.normalize(query);
-        Page<Recipe> result = hasRecipeQuery(query)
-                ? recipes.findByCreatedByIdAndSearchNameContainingAndDeletedAtIsNull(ownerId, query, pageable)
-                : recipes.findByCreatedByIdAndDeletedAtIsNull(ownerId, pageable);
-        return recipeSummaryPage(result);
-    }
-
-    @Transactional(readOnly = true)
     public RecipeResponse findRecipe(Long id) {
         Recipe recipe = recipes.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new NotFoundException("Receta no encontrada."));
@@ -1060,17 +821,6 @@ public class NutritionService {
         } else if (request.cookedTotalWeightGrams() != null) {
             recipe.setCookedTotalWeightGrams(scaleWeight(request.cookedTotalWeightGrams()));
         }
-    }
-
-    private Pageable recipePageable(int page, int size) {
-        return pagination.pageRequest(page, size,
-                Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
-    }
-
-    private boolean hasRecipeQuery(String query) {
-        if (query == null || query.isBlank()) return false;
-        if (query.length() > 120) throw new BadRequestException("La búsqueda no puede superar 120 caracteres.");
-        return true;
     }
 
     @Transactional(readOnly = true)
@@ -1686,73 +1436,6 @@ public class NutritionService {
         foodLogs.save(log);
     }
 
-    @Transactional(readOnly = true)
-    public DashboardResponse dashboard(AppUser user, LocalDate date) {
-        LocalDate targetDate = date == null ? LocalDate.now() : date;
-        NutritionPlan plan = profileService.resolvePlan(user, targetDate);
-        List<FoodLog> logs = foodLogs.findByUserAndLogDate(user, targetDate);
-        BigDecimal protein = sum(logs, FoodLog::getProteinGrams);
-        BigDecimal carbs = sum(logs, FoodLog::getCarbsGrams);
-        BigDecimal fat = sum(logs, FoodLog::getFatGrams);
-        Map<String, NutrientValueResponse> dailyNutrients = new LinkedHashMap<>();
-        logs.forEach(log -> mergeNutrients(dailyNutrients, log.getNutrientSnapshot().stream().map(this::toNutrientResponse).toList()));
-        int calories = logs.stream().map(FoodLog::getCalories).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
-        Map<MealType, List<FoodLog>> byMeal = logs.stream().collect(Collectors.groupingBy(FoodLog::getMealType));
-        List<MealSummary> meals = Arrays.stream(MealType.values()).map(meal -> {
-            List<FoodLogResponse> items = byMeal.getOrDefault(meal, List.of()).stream().map(this::toFoodLogResponse).toList();
-            BigDecimal mealProtein = sumResponses(items, FoodLogResponse::proteinGrams);
-            BigDecimal mealCarbs = sumResponses(items, FoodLogResponse::carbsGrams);
-            BigDecimal mealFat = sumResponses(items, FoodLogResponse::fatGrams);
-            return new MealSummary(meal, label(meal), items.stream().map(FoodLogResponse::calories).filter(Objects::nonNull).mapToInt(Integer::intValue).sum(), mealProtein,
-                    mealCarbs, mealFat, items);
-        }).toList();
-        return new DashboardResponse(targetDate, plan.getDailyCalories(), calories,
-                Math.max(0, plan.getDailyCalories() - calories),
-                List.of(
-                        progress("protein", "Proteina", protein, BigDecimal.valueOf(plan.getProteinGoalGrams())),
-                        progress("carbs", "Carbohidratos", carbs, BigDecimal.valueOf(plan.getCarbsGoalGrams())),
-                        progress("fat", "Grasas", fat, BigDecimal.valueOf(plan.getFatGoalGrams()))),
-                meals,
-                profileService.activePlan(user, targetDate), dailyNutrients.values().stream().toList());
-    }
-
-    @Transactional(readOnly = true)
-    public List<MealTypeResponse> mealTypes() {
-        return Arrays.stream(MealType.values()).map(meal -> new MealTypeResponse(meal, label(meal))).toList();
-    }
-
-    @Transactional(readOnly = true)
-    public HistoryResponse history(AppUser user, int year, int month) {
-        YearMonth ym = YearMonth.of(year, month);
-        List<FoodLogRepository.DayNutritionProjection> summaries = foodLogs.summarizeByDate(user, ym.atDay(1), ym.atEndOfMonth());
-        Map<LocalDate, FoodLogRepository.DayNutritionProjection> byDate = summaries.stream()
-                .collect(Collectors.toMap(FoodLogRepository.DayNutritionProjection::getDate, item -> item));
-        List<NutritionPlan> plans = profileService.plansForRange(user, ym.atDay(1), ym.atEndOfMonth());
-        LocalDate today = LocalDate.now();
-        List<DaySummary> days = ym.atDay(1).datesUntil(ym.atEndOfMonth().plusDays(1)).map(date -> {
-            FoodLogRepository.DayNutritionProjection summary = byDate.get(date);
-            long count = summary == null ? 0 : summary.getRecordCount();
-            boolean energyComplete = count > 0 && summary.getEnergyCount() == count;
-            boolean proteinComplete = count > 0 && summary.getProteinCount() == count;
-            boolean carbsComplete = count > 0 && summary.getCarbsCount() == count;
-            boolean fatComplete = count > 0 && summary.getFatCount() == count;
-            boolean complete = energyComplete && proteinComplete && carbsComplete && fatComplete;
-            int calories = summary == null ? 0 : Math.toIntExact(summary.getCalories());
-            BigDecimal protein = summary == null ? BigDecimal.ZERO : scale(summary.getProteinGrams());
-            BigDecimal carbs = summary == null ? BigDecimal.ZERO : scale(summary.getCarbsGrams());
-            BigDecimal fat = summary == null ? BigDecimal.ZERO : scale(summary.getFatGrams());
-            NutritionPlan plan = profileService.resolvePlanFromRange(user, date, plans);
-            return new DaySummary(date, calories, plan.getDailyCalories(), proteinComplete ? protein : null,
-                    carbsComplete ? carbs : null, fatComplete ? fat : null,
-                    !date.isAfter(today) && energyComplete && calories <= plan.getDailyCalories(), plan.getId(), plan.getName(),
-                    count, energyComplete, complete, count == 0 ? "NONE" : complete ? "COMPLETE" : "PARTIAL", protein, carbs, fat);
-        }).toList();
-        List<DaySummary> eligible = days.stream().filter(day -> !day.date().isAfter(today) && day.recordCount() > 0 && day.energyComplete()).toList();
-        Integer average = eligible.isEmpty() ? null : (int) Math.round(eligible.stream().mapToInt(DaySummary::caloriesConsumed).average().orElseThrow());
-        long completed = eligible.stream().filter(DaySummary::goalReached).count();
-        return new HistoryResponse(year, month, days, average, completed, eligible.size());
-    }
-
     private void checkArchived(List<Food> referenced, Set<Long> acknowledged) {
         List<Food> archived = referenced.stream().filter(food -> food.getDeletedAt() != null)
                 .filter(food -> acknowledged == null || !acknowledged.contains(food.getId()))
@@ -1919,7 +1602,7 @@ public class NutritionService {
                 protein,
                 carbs,
                 fat,
-                scaleNutrients(food, ratio));
+                foodNutrientMapper.scaleNutrients(food, ratio));
     }
 
     private NutritionPreviewResponse previewRecipeServing(Recipe recipe, BigDecimal quantity, FoodUnit unit,
@@ -2117,29 +1800,17 @@ public class NutritionService {
         throw new BadRequestException("No se puede convertir " + unit + " a la unidad base de este alimento.");
     }
 
-    private MacroProgress progress(String key, String label, BigDecimal consumed, BigDecimal goal) {
-        return new MacroProgress(key, label, consumed, goal, goal.subtract(consumed).max(BigDecimal.ZERO));
-    }
-
     private FoodResponse toFoodResponse(Food food) {
         if (food == null) return null;
         return new FoodResponse(food.getId(), food.getName(), food.getBrand(), food.getBarcode(), food.getCategory(),
                 food.getBaseUnit(), food.getBaseQuantity(), food.getCalories(), food.getProteinGrams(), food.getCarbsGrams(),
                 food.getFatGrams(), food.getPreparation(), food.getPreparationSource(), food.getPreparationGroup(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl(), food.getSource(), food.getSourceId(), food.getLastSyncedAt(),
                 copyTags(food.getTags()), food.getCreatedBy() == null ? null : food.getCreatedBy().getId(),
-                food.getCreatedAt(), food.getModerationStatus(), scaleNutrients(food, BigDecimal.ONE),
+                food.getCreatedAt(), food.getModerationStatus(), foodNutrientMapper.scaleNutrients(food, BigDecimal.ONE),
                 food.getCookedYieldFactor(), food.getCookedYieldSource(), food.getCookedYieldAssumption(), food.getDeletedAt() != null);
     }
 
-    private FoodSummaryResponse toFoodSummaryResponse(Food food) {
-        return new FoodSummaryResponse(food.getId(), food.getName(), food.getBrand(), food.getBarcode(), food.getCategory(), food.getBaseUnit(),
-                food.getBaseQuantity(), food.getCalories(),
-                food.getProteinGrams(), food.getCarbsGrams(), food.getFatGrams(), food.getPreparation(),
-                food.getPreparationGroup(), food.getServingName(), food.getServingWeightGrams(), food.getImageUrl(), scaleNutrients(food, BigDecimal.ONE),
-                food.getCookedYieldFactor(), food.getCookedYieldSource(), food.getCookedYieldAssumption());
-    }
-
-    private FoodLogResponse toFoodLogResponse(FoodLog log) {
+    FoodLogResponse toFoodLogResponse(FoodLog log) {
         return new FoodLogResponse(log.getId(), log.getLogDate(), log.getMealType(), log.getItemType(),
                 toFoodResponse(log.getFood()), log.getRecipe() == null ? null : toRecipeResponse(log),
                 log.getQuantity(), log.getUnit(), log.getRecipeRawTotalWeightGrams(), log.getRecipeCookedTotalWeightGrams(),
@@ -2196,19 +1867,6 @@ public class NutritionService {
                 recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams());
     }
 
-    private PageResponse<RecipeResponse> recipeSummaryPage(Page<Recipe> result) {
-        if (result.isEmpty()) return page(result.map(recipe -> toRecipeSummary(recipe, 0)));
-        Map<Long, Integer> counts = recipes.countIngredientsForPage(result.getContent().stream().map(Recipe::getId).toList())
-                .stream().collect(Collectors.toMap(RecipeRepository.RecipeIngredientCountProjection::getRecipeId, item -> Math.toIntExact(item.getIngredientCount())));
-        return page(result.map(recipe -> toRecipeSummary(recipe, counts.getOrDefault(recipe.getId(), 0))));
-    }
-
-    private RecipeResponse toRecipeSummary(Recipe recipe, int ingredientCount) {
-        return new RecipeResponse(recipe.getId(), recipe.getName(), recipe.getDescription(), recipe.getRawTotalWeightGrams(),
-                recipe.getRawTotalWeightGrams(), recipe.getCookedTotalWeightGrams(), recipe.getCalories(),
-                recipe.getProteinGrams(), recipe.getCarbsGrams(), recipe.getFatGrams(), List.of(), List.of(), ingredientCount);
-    }
-
     private static BigDecimal sum(List<FoodLog> logs, java.util.function.Function<FoodLog, BigDecimal> mapper) {
         return logs.stream().map(mapper).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(1, RoundingMode.HALF_UP);
     }
@@ -2231,7 +1889,7 @@ public class NutritionService {
         return scaleNutrientResponses(values.values().stream().toList(), ratio);
     }
 
-    private void mergeNutrients(Map<String, NutrientValueResponse> target, List<NutrientValueResponse> source) {
+    void mergeNutrients(Map<String, NutrientValueResponse> target, List<NutrientValueResponse> source) {
         for (NutrientValueResponse value : source) {
             NutrientValueResponse current = target.get(value.code());
             if (current == null) target.put(value.code(), value);
@@ -2248,36 +1906,7 @@ public class NutritionService {
                 value.value() == null ? null : scale(value.value().multiply(ratio)), value.source(), value.status(), NutritionMath.scaled(value.knownValue(), ratio), value.complete())).toList();
     }
 
-    private List<NutrientValueResponse> scaleNutrients(Food food, BigDecimal ratio) {
-        Map<String, FoodNutrient> existing = food.getNutrients().stream().filter(item -> item.getDefinition() != null)
-                .collect(Collectors.toMap(item -> item.getDefinition().getCode(), item -> item, (left, right) -> left, LinkedHashMap::new));
-        List<NutrientValueResponse> values = nutrientDefinitions.findAll().stream()
-                .filter(NutrientDefinition::isVisible)
-                .sorted(Comparator.comparing(NutrientDefinition::getDisplayOrder))
-                .map(definition -> {
-                    FoodNutrient item = existing.get(definition.getCode());
-                    BigDecimal legacyValue = switch (definition.getCode()) {
-                        case "CALORIES" -> food.getCalories() == null ? null : BigDecimal.valueOf(food.getCalories());
-                        case "PROTEIN" -> food.getProteinGrams();
-                        case "CARBOHYDRATE" -> food.getCarbsGrams();
-                        case "FAT" -> food.getFatGrams();
-                        default -> null;
-                    };
-                    BigDecimal value = item == null ? legacyValue : item.getValue();
-                    String source = item == null ? (legacyValue == null ? NutrientSource.LEGACY.name() : NutrientSource.LEGACY.name())
-                            : item.getSource() == null ? NutrientSource.LEGACY.name() : item.getSource().name();
-                    String status = item == null ? (legacyValue == null ? NutrientStatus.MISSING.name() : NutrientStatus.PARTIAL.name())
-                            : item.getStatus() == null ? NutrientStatus.MISSING.name() : item.getStatus().name();
-                    return new NutrientValueResponse(definition.getCode(), definition.getName(), definition.getNutrientGroup(), definition.getUnit(),
-                            value == null ? null : scale(value.multiply(ratio)), source, status);
-                }).toList();
-        return values.isEmpty() ? List.of(
-                new NutrientValueResponse("PROTEIN", "Proteínas", "MACRO", "g", NutritionMath.scaled(food.getProteinGrams(), ratio), "LEGACY", "PARTIAL"),
-                new NutrientValueResponse("CARBOHYDRATE", "Carbohidratos", "MACRO", "g", NutritionMath.scaled(food.getCarbsGrams(), ratio), "LEGACY", "PARTIAL"),
-                new NutrientValueResponse("FAT", "Grasas", "MACRO", "g", NutritionMath.scaled(food.getFatGrams(), ratio), "LEGACY", "PARTIAL")) : values;
-    }
-
-    private NutrientValueResponse toNutrientResponse(FoodLogNutrient item) {
+    NutrientValueResponse toNutrientResponse(FoodLogNutrient item) {
         NutrientDefinition definition = item.getDefinition();
         return new NutrientValueResponse(definition.getCode(), definition.getName(), definition.getNutrientGroup(), definition.getUnit(),
                 item.getValue(), item.getSource() == null ? "LEGACY" : item.getSource().name(),
@@ -2303,14 +1932,6 @@ public class NutritionService {
             case AFTERNOON_SNACK -> "Merienda";
             case DINNER -> "Cena";
         };
-    }
-
-    private static <T> PageResponse<T> page(Page<T> page) {
-        return PageResponse.from(page);
-    }
-
-    private static BigDecimal sumResponses(List<FoodLogResponse> logs, java.util.function.Function<FoodLogResponse, BigDecimal> mapper) {
-        return logs.stream().map(mapper).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(1, RoundingMode.HALF_UP);
     }
 
     private String clean(String value) {
