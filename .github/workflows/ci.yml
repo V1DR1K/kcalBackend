@@ -41,7 +41,14 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
-        run: ssh "$VPS_USER@$VPS_HOST" "cd /opt/projects/scalegrams/back/scalegrams-backend && git fetch origin main && git diff --quiet && git diff --cached --quiet && git checkout main && git pull --ff-only origin main && test \"\$(git rev-parse HEAD)\" = '${{ github.sha }}' && bash scripts/release-api.sh ${{ github.sha }}"
+        run: |
+          set +e
+          ssh "$VPS_USER@$VPS_HOST" "cd /opt/projects/scalegrams/back/scalegrams-backend && git fetch origin main && git diff --quiet && git diff --cached --quiet && git checkout main && git pull --ff-only origin main && test \"\$(git rev-parse HEAD)\" = '${{ github.sha }}' && bash scripts/release-api.sh ${{ github.sha }}"
+          deploy_status=$?
+          if [ "$deploy_status" -ne 0 ]; then
+            ssh "$VPS_USER@$VPS_HOST" "cd /opt/projects/scalegrams/back/scalegrams-backend && docker compose -f docker-compose.prod.yml ps app && docker compose -f docker-compose.prod.yml logs --no-color --tail=400 app 2>&1 | grep -E 'APPLICATION FAILED|Application run failed|Failed to start|Caused by:' | sed -E 's/(password|api.?key|token|secret)([^[:alnum:]]+)[^ ,;]+/\1\2[REDACTED]/Ig' | tail -n 60" || true
+          fi
+          exit "$deploy_status"
       - name: Verify API health on VPS
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
