@@ -30,12 +30,14 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/foods")
 public class FoodController {
     private final NutritionService nutritionService;
+    private final FoodCatalogService foodCatalogService;
     private final FoodCatalogSearchService foodCatalogSearchService;
     private final CurrentUser currentUser;
 
-    public FoodController(NutritionService nutritionService, FoodCatalogSearchService foodCatalogSearchService,
-            CurrentUser currentUser) {
+    public FoodController(NutritionService nutritionService, FoodCatalogService foodCatalogService,
+            FoodCatalogSearchService foodCatalogSearchService, CurrentUser currentUser) {
         this.nutritionService = nutritionService;
+        this.foodCatalogService = foodCatalogService;
         this.foodCatalogSearchService = foodCatalogSearchService;
         this.currentUser = currentUser;
     }
@@ -50,70 +52,70 @@ public class FoodController {
 
     @PostMapping
     FoodResponse create(Authentication authentication, @Valid @RequestBody CreateFoodRequest request) {
-        return nutritionService.createFood(request, currentUser.from(authentication));
+        return foodCatalogService.create(request, currentUser.from(authentication));
     }
 
     @GetMapping("/mine")
     List<FoodResponse> mine(Authentication authentication) {
-        return nutritionService.findFoodsCreatedBy(currentUser.from(authentication));
+        return foodCatalogService.findCreatedBy(currentUser.from(authentication));
     }
 
     @GetMapping("/mine/deleted")
     List<FoodResponse> deleted(Authentication authentication) {
-        return nutritionService.findDeletedFoodsCreatedBy(currentUser.from(authentication));
+        return foodCatalogService.findDeletedCreatedBy(currentUser.from(authentication));
     }
 
     @PutMapping("/{id}")
     FoodResponse update(Authentication authentication, @PathVariable Long id, @Valid @RequestBody CreateFoodRequest request) {
-        return nutritionService.updateOwnedFood(id, request, currentUser.from(authentication));
+        return foodCatalogService.update(id, request, currentUser.from(authentication));
     }
 
     @DeleteMapping("/{id}")
     ResponseEntity<Void> delete(Authentication authentication, @PathVariable Long id) {
-        nutritionService.deleteOwnedFood(id, currentUser.from(authentication));
+        foodCatalogService.delete(id, currentUser.from(authentication));
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/restore")
     FoodResponse restore(Authentication authentication, @PathVariable Long id) {
-        return nutritionService.restoreOwnedFood(id, currentUser.from(authentication));
+        return foodCatalogService.restore(id, currentUser.from(authentication));
     }
 
     @GetMapping("/{id}")
     FoodResponse find(@PathVariable Long id) {
-        return nutritionService.findFood(id);
+        return foodCatalogService.find(id);
     }
 
     @GetMapping("/nutrient-definitions")
     List<NutritionDtos.NutrientValueResponse> nutrientDefinitions() {
-        return nutritionService.nutrientDefinitions();
+        return foodCatalogService.nutrientDefinitions();
     }
 
     @PostMapping("/{id}/enrich")
     FoodResponse enrich(Authentication authentication, @PathVariable Long id) {
-        return nutritionService.enrichFood(id, currentUser.from(authentication));
+        return foodCatalogService.enrich(id, currentUser.from(authentication));
     }
 
     @PutMapping("/{id}/nutrients")
     FoodResponse updateNutrients(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody NutrientUpdateRequest request) {
-        return nutritionService.updateNutrients(id, request, currentUser.from(authentication));
+        return foodCatalogService.updateNutrients(id, request, currentUser.from(authentication));
     }
 
     @PostMapping("/enrich-existing")
-    NutritionService.EnrichmentReport enrichExisting(Authentication authentication,
+    FoodCatalogService.EnrichmentReport enrichExisting(Authentication authentication,
             @RequestParam(defaultValue = "50") int limit) {
-        return nutritionService.enrichFoodCatalog(currentUser.from(authentication), limit);
+        return foodCatalogService.enrichCatalog(currentUser.from(authentication), limit);
     }
 
     @GetMapping("/{id}/preparations")
     List<FoodResponse> preparations(@PathVariable Long id) {
-        return nutritionService.findPreparationOptions(id);
+        return foodCatalogService.preparationOptions(id);
     }
 
     @GetMapping("/barcode/{barcode}")
     FoodResponse barcode(@PathVariable String barcode) {
-        return nutritionService.findByBarcode(barcode);
+        return foodCatalogService.findByBarcode(barcode);
     }
 
     @PostMapping("/preview")

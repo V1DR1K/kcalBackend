@@ -62,16 +62,13 @@ import jakarta.validation.Valid;
 public class TrainingController {
     private final TrainingService trainingService;
     private final TrainingCardioService cardioService;
-    private final TrainingPlanService trainingPlanService;
     private final TrainingCatalogService trainingCatalogService;
     private final CurrentUser currentUser;
 
     public TrainingController(TrainingService trainingService, TrainingCardioService cardioService,
-            TrainingPlanService trainingPlanService, TrainingCatalogService trainingCatalogService,
-            CurrentUser currentUser) {
+            TrainingCatalogService trainingCatalogService, CurrentUser currentUser) {
         this.trainingService = trainingService;
         this.cardioService = cardioService;
-        this.trainingPlanService = trainingPlanService;
         this.trainingCatalogService = trainingCatalogService;
         this.currentUser = currentUser;
     }
@@ -215,54 +212,54 @@ public class TrainingController {
             @RequestParam(required = false) TrainingModule module,
             @RequestParam(defaultValue = "false") boolean includeInactive,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "${app.pagination.default-size:20}") int size) {
-        return trainingPlanService.search(currentUser.from(authentication), module, includeInactive, page, size);
+        return trainingService.plans(currentUser.from(authentication), module, includeInactive, page, size);
     }
 
     @GetMapping("/plans/{id}")
     TrainingPlanDetailResponse plan(Authentication authentication, @PathVariable Long id) {
-        return trainingPlanService.find(currentUser.from(authentication), id);
+        return trainingService.plan(currentUser.from(authentication), id);
     }
 
     @PostMapping("/plans")
     TrainingPlanDetailResponse createPlan(Authentication authentication,
             @Valid @RequestBody UpsertTrainingPlanRequest request) {
-        return trainingPlanService.create(currentUser.from(authentication), request);
+        return trainingService.createPlan(currentUser.from(authentication), request);
     }
 
     @PutMapping("/plans/{id}")
     TrainingPlanDetailResponse updatePlan(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody UpsertTrainingPlanRequest request) {
-        return trainingPlanService.update(currentUser.from(authentication), id, request);
+        return trainingService.updatePlan(currentUser.from(authentication), id, request);
     }
 
     @org.springframework.web.bind.annotation.PatchMapping("/plans/{id}/availability")
     TrainingPlanDetailResponse availability(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody TrainingDtos.PlanAvailabilityRequest request) {
-        return trainingPlanService.availability(currentUser.from(authentication), id, request);
+        return trainingService.changePlanAvailability(currentUser.from(authentication), id, request);
     }
 
     @DeleteMapping("/plans/{id}")
     ResponseEntity<Void> deletePlan(Authentication authentication, @PathVariable Long id) {
-        trainingPlanService.delete(currentUser.from(authentication), id);
+        trainingService.deletePreset(currentUser.from(authentication), id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/plans/{id}/duplicate")
     TrainingPlanDetailResponse duplicatePlan(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody DuplicateTrainingPlanRequest request) {
-        return trainingPlanService.duplicate(currentUser.from(authentication), id, request);
+        return trainingService.duplicatePlan(currentUser.from(authentication), id, request);
     }
 
     @GetMapping("/plans/{id}/resolve")
     TrainingPlanResolutionResponse resolvePlan(Authentication authentication, @PathVariable Long id,
             @RequestParam LocalDate date) {
-        return trainingPlanService.resolve(currentUser.from(authentication), id, date);
+        return trainingService.resolvePlan(currentUser.from(authentication), id, date);
     }
 
     @PostMapping("/plans/{id}/skip")
     TrainingSessionResponse skipPlanSession(Authentication authentication, @PathVariable Long id,
             @Valid @RequestBody SkipTrainingPlanSessionRequest request) {
-        return trainingPlanService.skipSession(currentUser.from(authentication), id, request);
+        return trainingService.skipPlanSession(currentUser.from(authentication), id, request);
     }
 
     @GetMapping("/presets/{id}")

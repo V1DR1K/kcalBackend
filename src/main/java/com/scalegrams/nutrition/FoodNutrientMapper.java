@@ -3,6 +3,7 @@ package com.scalegrams.nutrition;
 import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import com.scalegrams.catalog.Food;
 import com.scalegrams.nutrition.NutritionDtos.FoodSummaryResponse;
+import com.scalegrams.nutrition.NutritionDtos.FoodResponse;
 import com.scalegrams.nutrition.NutritionDtos.NutrientValueResponse;
 
 @Component
@@ -27,6 +29,18 @@ public class FoodNutrientMapper {
                 food.getFatGrams(), food.getPreparation(), food.getPreparationGroup(), food.getServingName(),
                 food.getServingWeightGrams(), food.getImageUrl(), scaleNutrients(food, BigDecimal.ONE),
                 food.getCookedYieldFactor(), food.getCookedYieldSource(), food.getCookedYieldAssumption());
+    }
+
+    public FoodResponse toResponse(Food food) {
+        if (food == null) return null;
+        return new FoodResponse(food.getId(), food.getName(), food.getBrand(), food.getBarcode(), food.getCategory(),
+                food.getBaseUnit(), food.getBaseQuantity(), food.getCalories(), food.getProteinGrams(), food.getCarbsGrams(),
+                food.getFatGrams(), food.getPreparation(), food.getPreparationSource(), food.getPreparationGroup(),
+                food.getServingName(), food.getServingWeightGrams(), food.getImageUrl(), food.getSource(), food.getSourceId(),
+                food.getLastSyncedAt(), food.getTags() == null ? java.util.Set.of() : new LinkedHashSet<>(food.getTags()),
+                food.getCreatedBy() == null ? null : food.getCreatedBy().getId(), food.getCreatedAt(),
+                food.getModerationStatus(), scaleNutrients(food, BigDecimal.ONE), food.getCookedYieldFactor(),
+                food.getCookedYieldSource(), food.getCookedYieldAssumption(), food.getDeletedAt() != null);
     }
 
     public List<NutrientValueResponse> scaleNutrients(Food food, BigDecimal ratio) {
