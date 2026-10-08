@@ -18,6 +18,8 @@ services:
     networks:
       internal:
         aliases: [scalegrams-postgres]
+      repository_manager:
+        aliases: [scalegrams-repository-db]
 
   app:
     build:
@@ -106,3 +108,6 @@ networks:
   edge:
     external: true
     name: kaza_default
+  repository_manager:
+    external: true
+    name: repositories_scalegrams
