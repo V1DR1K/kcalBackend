@@ -62,16 +62,18 @@ public class AuthService {
     }
 
     private AuthResponse localSession(CentralAuthClient.TokenResponse central) {
-        UUID authUserId = centralJwt.subject(central.accessToken());
+        CentralJwtService.Identity identity = centralJwt.identity(central.accessToken());
+        UUID authUserId = identity.userId();
         if (!authUserId.equals(central.user().id())) {
             throw new BadRequestException("El token central no coincide con el usuario autenticado.");
         }
-        AppUser user = provision(authUserId, central.user().username());
+        String role = central.user().role() == null ? identity.role() : central.user().role();
+        AppUser user = provision(authUserId, central.user().username(), role);
         return new AuthResponse(central.accessToken(), central.tokenType(), central.refreshToken(), summary(user, central.user().username()),
                 central.user().mustChangePassword());
     }
 
-    private AppUser provision(UUID authUserId, String username) {
+    private AppUser provision(UUID authUserId, String username, String centralRole) {
         AppUser user = users.findByAuthUserId(authUserId).orElseGet(() -> {
             String legacyEmail = LEGACY_EMAIL_BY_USERNAME.get(username.trim().toLowerCase());
             return legacyEmail == null ? new AppUser() : users.findByEmailIgnoreCase(legacyEmail)
@@ -89,6 +91,13 @@ public class AuthService {
         if (newUser) {
             user.setFullName(username);
             user.setRole(defaultRole);
+        }
+        if (centralRole != null) {
+            try {
+                user.setRole(Role.valueOf(centralRole.trim().toUpperCase(java.util.Locale.ROOT)));
+            } catch (IllegalArgumentException ex) {
+                throw new BadRequestException("El rol central recibido no es válido.");
+            }
         }
         return users.save(user);
     }

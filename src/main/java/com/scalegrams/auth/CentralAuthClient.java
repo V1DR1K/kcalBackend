@@ -27,22 +27,22 @@ public class CentralAuthClient {
     }
 
     public TokenResponse login(String username, String password) {
-        return post("/api/login", new Credentials(username, password), TokenResponse.class);
+        return post("/api/login", new Credentials(username, password, "scalegrams"), TokenResponse.class);
     }
 
     public TokenResponse refresh(String refreshToken) {
-        return post("/api/refresh", new RefreshRequest(refreshToken), TokenResponse.class);
+        return post("/api/refresh", new RefreshRequest(refreshToken, "scalegrams"), TokenResponse.class);
     }
 
     public void logout(String refreshToken) {
-        post("/api/logout", new RefreshRequest(refreshToken), MessageResponse.class);
+        post("/api/logout", new RefreshRequest(refreshToken, "scalegrams"), MessageResponse.class);
     }
 
     public void changePassword(String accessToken, String currentPassword, String newPassword) {
         try {
             client.post().uri("/api/change-password")
                     .header("Authorization", "Bearer " + accessToken)
-                    .body(new ChangePasswordRequest(currentPassword, newPassword))
+                    .body(new ChangePasswordRequest(currentPassword, newPassword, "scalegrams"))
                     .retrieve().body(MessageResponse.class);
         } catch (RestClientResponseException ex) {
             throw new BadRequestException(messageFor(ex.getStatusCode()));
@@ -61,14 +61,16 @@ public class CentralAuthClient {
         return status.value() == 401 ? "Usuario o contraseña incorrectos." : "No se pudo contactar al servicio de autenticación.";
     }
 
-    private record Credentials(String username, String password) {}
-    private record RefreshRequest(String refreshToken) {}
-    private record ChangePasswordRequest(String currentPassword, String newPassword) {}
+    private record Credentials(String username, String password, String clientApp) {}
+    private record RefreshRequest(String refreshToken, String clientApp) {}
+    private record ChangePasswordRequest(String currentPassword, String newPassword, String clientApp) {}
     private record MessageResponse(String message) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record TokenResponse(String accessToken, String refreshToken, String tokenType, CentralUser user) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record CentralUser(UUID id, String username, boolean mustChangePassword) {}
+    public record CentralUser(UUID id, String username, boolean mustChangePassword, String role) {
+        public CentralUser(UUID id, String username, boolean mustChangePassword) { this(id, username, mustChangePassword, null); }
+    }
 }
