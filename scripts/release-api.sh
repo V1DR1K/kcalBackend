@@ -31,6 +31,57 @@ export POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD
 backup_root="${SCALEGRAMS_BACKUP_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/scalegrams/backups}"
 backup="$backup_root/ux-audit-$revision"
 mkdir -p "$backup"
+
+# V50 uses pgvector. Refresh the configured image before the logical backup so
+# pg_dump can inspect vector indexes left by an earlier release. Never let this
+# step turn into an implicit PostgreSQL major-version upgrade.
+postgres_image="$("${compose[@]}" config --images | grep '^pgvector/pgvector:' | head -n 1)"
+target_pg_major="${postgres_image##*:pg}"
+current_pg_version_num="$(docker exec "$postgres_id" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc 'SHOW server_version_num')"
+if [[ ! "$target_pg_major" =~ ^[0-9]+$ || ! "$current_pg_version_num" =~ ^[0-9]+$ ]]; then
+  printf 'Could not verify the PostgreSQL major version; deployment stopped before backup.\n' >&2
+  exit 1
+fi
+current_pg_major="$((current_pg_version_num / 10000))"
+if [[ "$current_pg_major" != "$target_pg_major" ]]; then
+  printf 'PostgreSQL data uses major %s but the configured image targets %s; refusing an automatic major-version upgrade.\n' \
+    "$current_pg_major" "$target_pg_major" >&2
+  exit 1
+fi
+
+previous_postgres_image="$(docker inspect --format '{{.Config.Image}}' "$postgres_id")"
+if [[ ! -f "$backup/READY" ]]; then
+  printf '%s\n' "$previous_postgres_image" > "$backup/postgres-image-before-release.txt"
+fi
+restore_previous_postgres_image() {
+  local override
+  override="$(mktemp)"
+  printf 'services:\n  postgres:\n    image: %s\n' "$previous_postgres_image" > "$override"
+  if ! "${compose[@]}" -f "$override" up -d --no-deps postgres; then
+    printf 'Could not restore the previous PostgreSQL image (%s).\n' "$previous_postgres_image" >&2
+  fi
+  rm -f "$override"
+}
+"${compose[@]}" pull postgres
+if ! "${compose[@]}" up -d --no-deps postgres; then
+  restore_previous_postgres_image
+  printf 'Could not start the configured PostgreSQL image. Deployment stopped before backup.\n' >&2
+  exit 1
+fi
+postgres_id="$("${compose[@]}" ps -q postgres)"
+postgres_health=""
+for attempt in $(seq 1 30); do
+  postgres_health="$(docker inspect --format '{{.State.Health.Status}}' "$postgres_id" 2>/dev/null || true)"
+  [[ "$postgres_health" == "healthy" ]] && break
+  sleep 2
+done
+if [[ "$postgres_health" != "healthy" ]]; then
+  docker logs --tail 100 "$postgres_id" >&2 || true
+  restore_previous_postgres_image
+  printf 'PostgreSQL did not become healthy after refreshing its image. Deployment stopped before backup.\n' >&2
+  exit 1
+fi
+
 if [[ ! -f "$backup/READY" ]]; then
   docker exec -e POSTGRES_USER="$POSTGRES_USER" -e POSTGRES_DB="$POSTGRES_DB" \
     -e PGPASSWORD="$POSTGRES_PASSWORD" "$postgres_id" \
@@ -48,20 +99,6 @@ if [[ ! -f "$backup/READY" ]]; then
     printf '{"status":"unavailable"}\n' > "$backup/previous-api-version.json"
   fi
   touch "$backup/READY"
-fi
-# The API deployer only replaces the app service; refresh Postgres so V50 can load pgvector.
-"${compose[@]}" pull postgres
-"${compose[@]}" up -d --no-deps postgres
-postgres_id="$("${compose[@]}" ps -q postgres)"
-for attempt in $(seq 1 30); do
-  postgres_health="$(docker inspect --format '{{.State.Health.Status}}' "$postgres_id" 2>/dev/null || true)"
-  [[ "$postgres_health" == "healthy" ]] && break
-  sleep 2
-done
-if [[ "$postgres_health" != "healthy" ]]; then
-  docker logs --tail 100 "$postgres_id" >&2 || true
-  printf 'PostgreSQL did not become healthy after updating its image. Backup: %s\n' "$backup" >&2
-  exit 1
 fi
 GIT_HASH="$revision" /opt/infra/bin/deploy-service scalegrams api
 for attempt in $(seq 1 12); do
