@@ -33,6 +33,7 @@ import com.scalegrams.auth.CentralAuthClient;
 import com.scalegrams.auth.CentralAuthClient.CentralUser;
 import com.scalegrams.auth.CentralAuthClient.TokenResponse;
 import com.scalegrams.auth.CentralJwtService;
+import com.scalegrams.auth.CentralJwtTestSupport;
 import com.scalegrams.nutrition.NutritionDtos.AiEstimateResponse;
 import com.scalegrams.user.AppUser;
 
@@ -55,8 +56,7 @@ class AiNutritionControllerMultipartTests {
 		reset(aiNutritionService, centralAuth, centralJwt);
 		when(centralAuth.login(anyString(), anyString())).thenAnswer(invocation -> centralToken(invocation.getArgument(0, String.class)));
 		when(centralAuth.refresh(anyString())).thenReturn(centralToken("alex"));
-		when(centralJwt.subject(anyString())).thenAnswer(invocation ->
-				UUID.nameUUIDFromBytes(invocation.getArgument(0, String.class).getBytes()));
+		CentralJwtTestSupport.stubIdentity(centralJwt);
 	}
 
 	@Test

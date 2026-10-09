@@ -37,6 +37,7 @@ import com.scalegrams.catalog.FoodUnit;
 import com.scalegrams.catalog.Food;
 import com.scalegrams.auth.CentralAuthClient;
 import com.scalegrams.auth.CentralJwtService;
+import com.scalegrams.auth.CentralJwtTestSupport;
 import com.scalegrams.externalfood.ExternalFoodCandidate;
 import com.scalegrams.externalfood.ExternalFoodLookupService;
 import com.scalegrams.nutrition.FoodLog;
@@ -95,7 +96,7 @@ class ScaleGramsApplicationTests {
 		when(externalFoodLookup.lookupByBarcode(anyString())).thenReturn(Optional.empty());
 		when(centralAuth.login(anyString(), anyString())).thenAnswer(invocation -> centralToken(invocation.getArgument(0, String.class)));
 		when(centralAuth.refresh(anyString())).thenReturn(centralToken("alex"));
-		when(centralJwt.subject(anyString())).thenAnswer(invocation -> UUID.nameUUIDFromBytes(invocation.getArgument(0, String.class).getBytes()));
+		CentralJwtTestSupport.stubIdentity(centralJwt);
 		nutrientDefinitions.findById("SODIUM").orElseGet(() -> {
 			NutrientDefinition sodium = new NutrientDefinition();
 			sodium.setCode("SODIUM");

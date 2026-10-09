@@ -17,6 +17,7 @@ import org.springframework.http.*;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import com.scalegrams.auth.CentralAuthClient;
 import com.scalegrams.auth.CentralJwtService;
+import com.scalegrams.auth.CentralJwtTestSupport;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ProfileTimelineIntegrationTests extends com.scalegrams.PostgresTestSupport {
@@ -31,7 +32,7 @@ class ProfileTimelineIntegrationTests extends com.scalegrams.PostgresTestSupport
             return new CentralAuthClient.TokenResponse(token, "refresh-" + name, "Bearer",
                     new CentralAuthClient.CentralUser(UUID.nameUUIDFromBytes(token.getBytes()), name, false));
         });
-        when(jwt.subject(anyString())).thenAnswer(call -> UUID.nameUUIDFromBytes(call.getArgument(0, String.class).getBytes()));
+        CentralJwtTestSupport.stubIdentity(jwt);
     }
     HttpHeaders headers(String name) {
         ResponseEntity<Map> login = rest.postForEntity("/api/auth/login", Map.of("username", name, "password", "fixture-password"), Map.class);

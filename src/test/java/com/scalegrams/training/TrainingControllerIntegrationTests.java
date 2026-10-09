@@ -23,6 +23,7 @@ import org.springframework.http.ResponseEntity;
 
 import com.scalegrams.auth.CentralAuthClient;
 import com.scalegrams.auth.CentralJwtService;
+import com.scalegrams.auth.CentralJwtTestSupport;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class TrainingControllerIntegrationTests extends com.scalegrams.PostgresTestSupport {
@@ -41,8 +42,7 @@ class TrainingControllerIntegrationTests extends com.scalegrams.PostgresTestSupp
         reset(centralAuth, centralJwt);
         when(centralAuth.login(anyString(), anyString()))
                 .thenAnswer(invocation -> centralToken(invocation.getArgument(0, String.class)));
-        when(centralJwt.subject(anyString()))
-                .thenAnswer(invocation -> UUID.nameUUIDFromBytes(invocation.getArgument(0, String.class).getBytes()));
+        CentralJwtTestSupport.stubIdentity(centralJwt);
     }
 
     @Test
